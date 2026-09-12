@@ -42,6 +42,15 @@ export function useCanvasNavigation(options: NavigationOptions) {
       if (!container) return;
       const card = [...container.querySelectorAll<HTMLElement>("[data-canvas-node-id]")]
         .find(element => ids.includes(element.dataset["canvasNodeId"] ?? "") && !element.dataset["parked"]);
+      // A single-node jump should leave its composer ready for typing. Keep
+      // multi-node overview focus on the card, and never alter a saved draft.
+      const input = ids.length === 1 ? [...(card?.querySelectorAll<HTMLElement>(
+        '[data-canvas-focus-target]:not(:disabled):not([readonly])',
+      ) ?? [])].find(element => !element.closest('[hidden], [inert], [aria-hidden="true"]')) : undefined;
+      if (input) {
+        input.focus({ preventScroll: true });
+        if (document.activeElement === input) return;
+      }
       const destination = card ?? container;
       destination.tabIndex = -1;
       destination.focus({ preventScroll: true });

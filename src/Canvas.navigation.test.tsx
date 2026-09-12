@@ -8,8 +8,13 @@ import { canvasReducer } from "./canvas-state.ts";
 import { graphReducer } from "./graph-runtime.ts";
 import type { CanvasNode } from "./types.ts";
 import { ActivityView } from "./ActivityView.tsx";
+import { LeaderPromptBar } from "./nodes/leader/prompt/LeaderPromptBar.tsx";
 
-registerNodeType({ type: "leader", label: "Leader", defaultSize: { width: 250, height: 180 }, render: ({ node }) => <h2>{(node.data as { taskName: string }).taskName}</h2> });
+registerNodeType({ type: "leader", label: "Leader", defaultSize: { width: 250, height: 180 }, render: ({ node }) => <>
+  <h2>{(node.data as { taskName: string }).taskName}</h2>
+  <LeaderPromptBar input={`Draft for ${node.id}`} onInputChange={() => {}} onKeyDown={() => {}} onSubmit={() => {}}
+    placeholder="Reply" submitLabel="Send" disabled={false} active={false} />
+</> });
 const initial = { x: 40, y: 70, scale: .6 };
 const initialNodes: CanvasNode[] = [
   { id: "first", type: "leader", position: { x: 100, y: 100 }, size: { width: 250, height: 180 }, data: { taskName: "Repair OAuth", sessionKey: "first-session", status: "idle", tasks: [] } },
@@ -44,11 +49,35 @@ describe("Canvas wayfinding integration", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     expect(screen.getByTestId("camera")).not.toHaveTextContent(JSON.stringify(initial));
-    await waitFor(() => expect(document.activeElement?.getAttribute("data-canvas-node-id")).toBe("second"));
+    const prompt = document.querySelector('[data-canvas-node-id="second"] textarea');
+    await waitFor(() => expect(prompt).toHaveFocus());
+    expect(prompt).toHaveValue("Draft for second");
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     expect(screen.getByTestId("camera")).toHaveTextContent(JSON.stringify(initial));
     expect(screen.queryByRole("button", { name: "Back" })).not.toBeInTheDocument();
     expect(document.querySelectorAll("[data-canvas-node-id]")).toHaveLength(2);
+  });
+  it("focuses the prompt when cycling active nodes and wraps back to the first", async () => {
+    render(<Harness />);
+    const focus = vi.spyOn(HTMLTextAreaElement.prototype, "focus");
+    fireEvent.keyDown(window, { key: "n", code: "KeyN" });
+    const first = document.querySelector('[data-canvas-node-id="first"] textarea');
+    const second = document.querySelector('[data-canvas-node-id="second"] textarea');
+    await waitFor(() => expect(first).toHaveFocus());
+    fireEvent.click(screen.getByTitle("Focus next active node (N)"));
+    await waitFor(() => expect(second).toHaveFocus());
+    fireEvent.click(screen.getByTitle("Focus next active node (N)"));
+    await waitFor(() => expect(first).toHaveFocus());
+    expect(first).toHaveValue("Draft for first");
+    expect(second).toHaveValue("Draft for second");
+    expect(first).not.toHaveAttribute("tabindex", "-1");
+    expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+  });
+  it("falls back to the card when the destination has no editable prompt", async () => {
+    render(<Harness />);
+    document.querySelector('[data-canvas-node-id="first"] textarea')?.setAttribute("disabled", "");
+    fireEvent.keyDown(window, { key: "n", code: "KeyN" });
+    await waitFor(() => expect(document.querySelector('[data-canvas-node-id="first"]')).toHaveFocus());
   });
   it("routes the attention list through the same camera history", () => {
     render(<Harness />);

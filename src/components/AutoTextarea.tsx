@@ -12,6 +12,8 @@ interface AutoTextareaProps {
   maxRows?: number;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Prefer this input when canvas navigation focuses its node. */
+  canvasFocusTarget?: boolean;
   textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
   ariaLabel?: string;
   ariaControls?: string | undefined;
@@ -37,6 +39,7 @@ export function AutoTextarea({
   maxRows = 8,
   disabled,
   autoFocus,
+  canvasFocusTarget,
   textareaRef,
   ariaLabel,
   ariaControls,
@@ -93,6 +96,7 @@ export function AutoTextarea({
         aria-expanded={ariaExpanded}
         aria-activedescendant={ariaActiveDescendant}
         data-testid={testId}
+        data-canvas-focus-target={canvasFocusTarget || undefined}
         placeholder={placeholder}
         disabled={disabled}
         rows={1}

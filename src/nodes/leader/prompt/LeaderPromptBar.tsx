@@ -229,6 +229,7 @@ export function LeaderPromptBar({
             }}
             {...(attachments ? { onPaste: attachments.onPaste } : {})}
             autoFocus={autoFocus}
+            canvasFocusTarget
             ariaLabel="Leader prompt"
             ariaControls={query !== null ? slashMenuId : undefined}
             ariaExpanded={menuOpen}
