@@ -1,0 +1,3 @@
+version: 1
+name: Swarmcrews system model
+summary: Dense cross-surface model of Swarmcrews work orchestration, portable registered workspaces, sandbox-aware execution, context routing, review, and recovery.

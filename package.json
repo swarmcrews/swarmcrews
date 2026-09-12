@@ -1,0 +1,121 @@
+{
+  "name": "swarmcrews",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "A spatial workspace for orchestrating coding agents and parallel workflows",
+  "keywords": [
+    "ai-agents",
+    "coding-agents",
+    "claude-code",
+    "codex",
+    "developer-tools",
+    "orchestration"
+  ],
+  "homepage": "https://github.com/hipsterusername/minions#readme",
+  "bugs": {
+    "url": "https://github.com/hipsterusername/minions/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hipsterusername/minions.git"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "dev": "node scripts/run.mjs dev",
+    "server": "node --import ./scripts/register-typescript.mjs server/index.ts",
+    "start": "node scripts/start.mjs start",
+    "stop": "node scripts/start.mjs stop",
+    "restart": "node scripts/start.mjs restart",
+    "status": "node scripts/start.mjs status",
+    "build": "tsc -b && vite build",
+    "preview": "node scripts/run.mjs preview",
+    "serve:tailscale": "node scripts/tailscale-serve.mjs --port 4173",
+    "serve:tailscale:dev": "node scripts/tailscale-serve.mjs --port 6173",
+    "typecheck": "tsc -b --noEmit",
+    "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:install": "node --test tests/install/startup.test.mjs",
+    "test:sqlite": "node --import ./scripts/register-typescript.mjs scripts/sqlite-smoke.mjs",
+    "test:coverage": "vitest run --coverage",
+    "test:smoke": "playwright test --config playwright.smoke.config.mjs",
+    "test:e2e": "pnpm test:smoke && playwright test",
+    "test:mutation": "stryker run",
+    "coverage:report": "node scripts/coverage-report.mjs",
+    "audit:prod": "pnpm audit --prod --audit-level high",
+    "check:licenses": "node scripts/check-licenses.mjs",
+    "system-model:validate": "node --import ./scripts/register-typescript.mjs scripts/system-model-validate.mjs",
+    "verify": "pnpm typecheck && pnpm typecheck:server && pnpm test:run && pnpm check:licenses && pnpm system-model:validate -- --strict && pnpm build",
+    "agent:preflight": "node scripts/agent-workflow-preflight.mjs",
+    "preflight": "node --import ./scripts/register-typescript.mjs scripts/preflight.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.241",
+    "@codemirror/commands": "6.11.0",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/search": "6.7.1",
+    "@codemirror/state": "6.7.1",
+    "@codemirror/view": "6.43.9",
+    "@fontsource-variable/dm-sans": "5.3.0",
+    "@fontsource-variable/fraunces": "5.3.0",
+    "@fontsource-variable/instrument-sans": "5.3.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/nunito-sans": "5.3.0",
+    "@fontsource-variable/plus-jakarta-sans": "5.3.0",
+    "@fontsource-variable/recursive": "5.3.0",
+    "@fontsource-variable/source-sans-3": "5.3.0",
+    "@fontsource-variable/space-grotesk": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@fontsource/space-mono": "5.3.0",
+    "@lezer/highlight": "1.2.3",
+    "@openai/codex-sdk": "^0.153.4",
+    "ajv": "8.20.0",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.2.1",
+    "lucide-react": "1.33.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "ws": "^8.21.3",
+    "yaml": "^2.8.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "6.0.5",
+    "@vitest/coverage-v8": "4.1.11",
+    "jsdom": "30.0.1",
+    "tsx": "^4.23.12",
+    "typescript": "7.0.2",
+    "vite": "8.2.1",
+    "vitest": "4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "fast-uri": "3.1.6",
+      "ip-address": "10.3.1"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  }
+}

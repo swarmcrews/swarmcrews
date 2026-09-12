@@ -1,0 +1,2579 @@
+import { activeWorkspaceId, createZone, visibleZoneNodes } from "./canvas-zones.ts";
+import { canvasReducer } from "./canvas-state.ts";
+import { createReplaySocket } from "../tests/harness/ws-replay.ts";
+import { canonicalLeaderResponder } from "../tests/harness/canonical-leader.ts";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { act, useState, type ReactNode } from "react";
+import { HarnessListProvider } from "./use-harness-list.tsx";
+
+import {
+  ActivityView,
+  lifecycleActionError,
+  selectActivityMinions,
+} from "./ActivityView.tsx";
+import type { SocketSubscribe } from "./use-socket.ts";
+import type { CanvasNode } from "./types.ts";
+import type { LeaderData } from "./nodes/leader/types.ts";
+import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
+import { normalizedToDisplayMessages, type DisplayMessage } from "./sdk-messages.ts";
+import { createGraphFixture } from "./task-graph/fixtures.ts";
+import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
+
+import { loadImageFromFile } from "./nodes/image-loader.ts";
+vi.mock("./nodes/image-loader.ts", () => ({ loadImageFromFile: vi.fn() }));
+
+function session(overrides: Partial<MobileSessionInfo>): MobileSessionInfo {
+  return {
+    sessionKey: overrides.sessionKey ?? "s-1",
+    sessionId: null,
+    status: overrides.status ?? "idle",
+    cwd: "/tmp/project",
+    ...overrides,
+  };
+}
+
+const completeLifecycle = {
+  reviewState: "completion_to_review" as const,
+  reviewReason: "Read the final report and review the dashboard",
+  finalReport: "Implemented the migration and verified all tests.",
+  finalDashboardRevision: 2,
+  dashboardRevision: 2,
+  terminalReason: "completed" as const,
+  terminalAt: 10,
+  acknowledgedAt: null,
+  dismissedAt: null,
+  lifecycleRevision: 3,
+};
+
+function leaderNode(
+  sessionKey: string,
+  messages: DisplayMessage[] = [],
+  overrides: Partial<LeaderData> = {},
+): CanvasNode {
+  const data: Partial<LeaderData> = {
+    sessionKey,
+    status: "running",
+    messages,
+    streamingText: "",
+    totalCost: 0,
+    turns: 0,
+    ...overrides,
+  };
+  return {
+    id: `node-${sessionKey}`,
+    type: "leader",
+    position: { x: 0, y: 0 },
+    size: { width: 400, height: 300 },
+    data,
+  };
+}
+
+const noop = {
+  onLaunchLeader: () => {},
+  onCommitLaunchLeader: () => {},
+  onCancelLaunchLeader: () => {},
+  onOpenInCanvas: () => {},
+  onExpandFullscreen: () => {},
+  onStopSession: () => {},
+  onAttachToCanvas: () => {},
+  onUpdateNodeData: () => {},
+};
+
+function activityList(): HTMLElement {
+  const list = document.querySelector<HTMLElement>(".act-main");
+  if (!list) throw new Error("Activity list did not render");
+  return list;
+}
+
+function ReadyLaunchHarness({ children, codex = false }: { children: ReactNode; codex?: boolean }) {
+  return <HarnessListProvider connected send={() => {}} subscribe={(listener) => {
+    listener({ type: "harness_list", harnesses: [{ name: codex ? "codex" : "claude",
+      models: [{ id: codex ? "gpt-6-astra" : "opus", label: codex ? "Astra" : "Opus" }], builtInTools: [], commands: [], agents: [],
+      account: { provider: "anthropic" }, capabilities: { mutationInterception: "complete",
+        thinking: true, promptCaching: true, mcp: true, permissionPrompts: true,
+        resume: true, partialMessages: true, builtInFilesystem: true } }] });
+    return () => {};
+  }}>{children}</HarnessListProvider>;
+}
+
+function makeSubscribe() {
+  const handlers = new Set<(msg: unknown) => void>();
+  const subscribe = Object.assign(
+    ((...args: unknown[]) => {
+      const handler = (args.length === 1 ? args[0] : args[1]) as (msg: unknown) => void;
+      handlers.add(handler);
+      return () => { handlers.delete(handler); };
+    }) as SocketSubscribe,
+    { supportsTopics: true as const },
+  );
+  return {
+    subscribe,
+    emit: (msg: unknown) => act(() => handlers.forEach((handler) => handler(msg))),
+  };
+}
+
+function sentCommand(socketSend: ReturnType<typeof vi.fn>, type: string) {
+  return socketSend.mock.calls.map(([command]) => command as Record<string, unknown>)
+    .find((command) => command["type"] === type)!;
+}
+
+describe("ActivityView", () => {
+  it.each([false, true])("renders file and web links in the final report (JSON: %s)", structured => {
+    const path = "/workspace/project/docs/report.md";
+    const summary = `[Completed audit and graph](${path})\n[Website](https://example.com/audit)`;
+    render(<ActivityView sessions={[session({ sessionKey: "report-links", taskName: "Audit report",
+      projectId: "workspace", reviewLifecycle: { ...completeLifecycle,
+        finalReport: structured ? JSON.stringify({ summary }) : summary,
+      },
+    })]} nodes={[]} {...noop} />);
+    fireEvent.click(screen.getByRole("button", { name: /audit report/i }));
+    const report = screen.getByRole("article", { name: "Final report" });
+    const link = within(report).getByRole("link", { name: "Completed audit and graph" });
+    const url = new URL(link.getAttribute("href")!, "http://localhost");
+    expect(url.pathname).toBe("/file-view");
+    expect(url.searchParams.get("project")).toBe("workspace");
+    expect(url.searchParams.get("path")).toBe(path);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(within(report).getByRole("link", { name: "Website" })).toHaveAttribute("href", "https://example.com/audit");
+    expect(report).not.toHaveTextContent("[Completed audit and graph]");
+  });
+
+  it("opens a report from Read, restores its focus on repeat clicks, and preserves manual navigation on updates", async () => {
+    const item = session({ sessionKey: "report-action", status: "completed", taskName: "Report action",
+      reviewLifecycle: completeLifecycle,
+      renderState: { layout: { columns: 1 }, components: [{ id: "progress", type: "text", content: "Release progress" }] },
+    });
+    const { rerender } = render(<ActivityView sessions={[item]} nodes={[]} {...noop} />);
+    const read = within(activityList()).getByRole("button", { name: "Read" });
+    fireEvent.click(read);
+    const inspector = screen.getByRole("complementary", { name: "Session details" });
+    const report = within(inspector).getByRole("article", { name: "Final report" });
+    await waitFor(() => expect(report).toHaveFocus());
+    expect(inspector).toHaveAttribute("data-compact-pane", "context");
+    expect(report).toHaveTextContent(completeLifecycle.finalReport);
+    expect(within(inspector).getByText("Session information").closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(within(inspector).getByRole("tab", { name: "Dashboard" }));
+    rerender(<ActivityView sessions={[{ ...item, lastActivity: "New activity" }]} nodes={[]} {...noop} />);
+    expect(within(inspector).getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(read);
+    await waitFor(() => expect(within(inspector).getByRole("article", { name: "Final report" })).toHaveFocus());
+  });
+
+  it("opens changes from Review without acknowledging the session", async () => {
+    const socketSend = vi.fn();
+    render(<ActivityView sessions={[session({ sessionKey: "changes-action", taskName: "Review changes" })]}
+      nodes={[leaderNode("changes-action", [], { worktreeIsolation: true, worktreeStatus: "active" })]}
+      {...noop} socketSend={socketSend} />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: "Review" }));
+    await waitFor(() => expect(screen.getByRole("article", { name: "Changes" })).toHaveFocus());
+    expect(socketSend.mock.calls.some(([message]) => message.type === "acknowledge_session")).toBe(false);
+  });
+
+  it("routes Reply to a nested pending decision and submits through the existing form transport", async () => {
+    const socketSend = vi.fn();
+    const { subscribe } = makeSubscribe();
+    render(<ActivityView sessions={[session({ sessionKey: "nested-decision-action", status: "waiting", taskName: "Choose release",
+      renderState: { layout: { columns: 1 }, components: [{ id: "section", type: "section", title: "Release context", components: [
+        { id: "release-form", type: "form", title: "Release decision", fields: [{ id: "release-answer", kind: "text", label: "Release choice", required: true }], submitLabel: "Confirm choice" },
+      ] }] },
+    })]} nodes={[]} {...noop} socketSend={socketSend} socketSubscribe={subscribe} />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: "Reply" }));
+    const input = screen.getByRole("textbox", { name: /release choice/i });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(screen.getByRole("complementary", { name: "Session details" })).toHaveAttribute("data-compact-pane", "context");
+    fireEvent.change(input, { target: { value: "Ship" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm choice" }));
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({ type: "submit_form", sessionKey: "nested-decision-action",
+      formComponentId: "release-form", formAnswers: { "release-answer": "Ship" }, requestId: expect.any(String) }));
+  });
+
+  it("focuses the composer for Reply when the dashboard has no pending forms", async () => {
+    render(<ActivityView sessions={[session({ sessionKey: "reply-action", status: "waiting", taskName: "Reply action",
+      renderState: { layout: { columns: 1 }, components: [{ id: "answered", type: "form", fields: [], submittedAnswers: {} }] },
+    })]} nodes={[]} {...noop} socketSend={() => {}} />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: "Reply" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Reply or steer this agent" })).toHaveFocus());
+    expect(screen.getByRole("complementary", { name: "Session details" })).toHaveAttribute("data-compact-pane", "conversation");
+  });
+
+  it("shows unknown telemetry honestly and keeps empty context tabs out of navigation", () => {
+    render(<ActivityView sessions={[session({ sessionKey: "unknown", taskName: "Unknown telemetry" })]} nodes={[]} {...noop} />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: /unknown telemetry/i }));
+    const inspector = screen.getByRole("complementary", { name: "Session details" });
+    expect(within(inspector).queryByRole("tab", { name: /dashboard|minions|graph/i })).not.toBeInTheDocument();
+    fireEvent.click(within(inspector).getByText("Session information"));
+    expect(within(inspector).queryByText("$0.00")).not.toBeInTheDocument();
+    expect(within(inspector).queryByText("0")).not.toBeInTheDocument();
+    expect(within(inspector).getAllByText("Not reported")).toHaveLength(4);
+  });
+
+
+  it("returns from a session with a back button before the activity icon", () => {
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "focused", taskName: "Focused session" })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /focused session/i }));
+
+    const inspector = screen.getByRole("complementary", { name: "Session details" });
+    const back = within(inspector).getByRole("button", { name: "Back to activity" });
+    const avatar = inspector.querySelector(".act-inspector-avatar");
+    expect(back.nextElementSibling).toBe(avatar);
+    expect(within(inspector).queryByRole("button", { name: "Close inspector" }))
+      .not.toBeInTheDocument();
+
+    fireEvent.click(back);
+    expect(screen.queryByRole("complementary", { name: "Session details" }))
+      .not.toBeInTheDocument();
+  });
+
+  it("routes constructed task graphs through a conditional leader-panel tab", () => {
+    const listeners = new Map<string, Set<(message: unknown) => void>>();
+    const socketSubscribe = Object.assign(
+      ((topic: string, listener: (message: unknown) => void) => {
+        const topicListeners = listeners.get(topic) ?? new Set();
+        topicListeners.add(listener);
+        listeners.set(topic, topicListeners);
+        return () => { topicListeners.delete(listener); };
+      }) as unknown as SocketSubscribe,
+      { supportsTopics: true as const },
+    );
+    const socketSend = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "graph-run",
+          workItemId: "work-graph",
+          canonicalWorkItem: true,
+          role: "leader",
+          status: "running",
+          taskName: "Coordinate the graph",
+        })]}
+        nodes={[leaderNode("graph-run", [], { workItemId: "work-graph" })]}
+        workItemRuns={{ "work-graph": [{
+          runKey: "child-run", workItemId: "work-graph", runKind: "child",
+          parentRunKey: "graph-run", taskId: "node-1", attemptId: "attempt-1-2",
+          attemptNumber: 2, runNumber: null, previousRunKey: null,
+          providerSessionId: null, outcome: "none", startedAt: 1,
+          endedAt: null, finalReport: null,
+        }] }}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={socketSubscribe}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /coordinate the graph/i }));
+    expect(screen.queryByRole("tab", { name: "Graph" })).not.toBeInTheDocument();
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "get_task_graph_snapshot",
+      workItemId: "work-graph",
+    }));
+
+    act(() => {
+      for (const listener of listeners.get("work-item:work-graph") ?? []) {
+        listener({
+          topic: "work-item:work-graph",
+          type: "task_graph_plan_snapshot",
+          workItemId: "work-graph",
+          revision: 1,
+          timestamp: 1,
+          snapshot: {
+            proposalId: "proposal-graph",
+            workItemId: "work-graph",
+            primaryRunKey: "graph-run",
+            revision: 1,
+            proposalRevision: 1,
+            baseProposalRevision: null,
+            state: "ready",
+            mode: "auto",
+            objective: "Coordinate the graph",
+            acceptanceCriteria: ["Verified"],
+            assumptions: [],
+            questions: [],
+            workPacketId: null,
+            steps: [{
+              key: "inspect",
+              nodeId: "node-1",
+              title: "Inspect the graph",
+              objective: "Verify the constructed graph",
+              acceptanceCriteria: ["Graph is visible"],
+              dependsOn: [],
+              contextSelectors: [],
+              inputBindings: {},
+              outputSchemas: {},
+              outputExamples: {},
+              executorClass: "standard",
+              risk: "low",
+              requiresApproval: false,
+            }],
+            materializedRevisionId: "revision-graph",
+            graphRunId: null,
+            sourceSnapshotId: "source-graph",
+            autoStartEligible: true,
+            canStart: true,
+            error: null,
+            updatedAt: 1,
+          },
+        });
+      }
+    });
+
+    const graphTab = screen.getByRole("tab", { name: "Graph" });
+    expect(graphTab).toHaveAttribute("aria-selected", "false");
+    fireEvent.click(graphTab);
+    expect(graphTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: /execution plan coordinate the graph/i }))
+      .toBeInTheDocument();
+
+    act(() => {
+      for (const listener of listeners.get("work-item:work-graph") ?? []) {
+        listener({
+          topic: "work-item:work-graph",
+          type: "task_graph_snapshot",
+          workItemId: "work-graph",
+          runId: "run-graph-1",
+          revision: 42,
+          cause: "command_snapshot",
+          snapshot: createGraphFixture(10),
+          timestamp: 1,
+        });
+      }
+    });
+
+    expect(graphTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("region", { name: /task graph 10-node research graph/i }))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open graph" }));
+    expect(screen.getByRole("dialog", { name: /10-node research graph/i }))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close graph inspector" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Session details" }));
+    expect(screen.getByText("Child run · Task 1 · Active now")).toBeInTheDocument();
+    expect(screen.queryByText(/Child run.*node-1/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Inspect Child run · Task 1" }));
+    expect(graphTab).toHaveAttribute("aria-selected", "true");
+    const inspector = screen.getByRole("dialog", { name: /10-node research graph/i });
+    expect(within(inspector).getByRole("heading", { name: "Task 1" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Toggle details rail" }))
+      .toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(inspector).getByRole("button", { name: "Close graph inspector" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open graph" }));
+    expect(screen.queryByRole("heading", { name: "Task 1" })).not.toBeInTheDocument();
+  });
+
+  it("uses the canvas task plan as the canonical 1:1 minion roster", () => {
+    const leader = session({
+      sessionKey: "leader-with-stale-roster",
+      role: "leader",
+      activeMinions: [{
+        taskId: "running-only",
+        title: "Running only",
+        status: "running",
+        sessionKey: "minion-running",
+      }],
+    });
+    const canvasPlan: LeaderData["taskPlan"] = [
+      {
+        taskId: "running-only",
+        title: "Running only",
+        description: "",
+        priority: "high",
+        status: "running",
+        executor: "minion",
+        minionSessionKey: "minion-running",
+        result: null,
+        cost: 0,
+        createdAt: 1,
+        completedAt: null,
+        sessionSummary: "",
+      },
+      {
+        taskId: "completed-minion",
+        title: "Completed minion",
+        description: "",
+        priority: "medium",
+        status: "completed",
+        executor: "minion",
+        minionSessionKey: "minion-completed",
+        result: "done",
+        cost: 0,
+        createdAt: 2,
+        completedAt: 3,
+        sessionSummary: "",
+      },
+      {
+        taskId: "leader-work",
+        title: "Leader work",
+        description: "",
+        priority: "low",
+        status: "planned",
+        executor: "leader",
+        minionSessionKey: null,
+        result: null,
+        cost: 0,
+        createdAt: 4,
+        completedAt: null,
+        sessionSummary: "",
+      },
+    ];
+
+    expect(selectActivityMinions(leader, canvasPlan).map((minion) => minion.taskId))
+      .toEqual(["running-only", "completed-minion"]);
+
+    render(
+      <ActivityView
+        sessions={[leader]}
+        nodes={[leaderNode(leader.sessionKey, [], { taskPlan: canvasPlan })]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /leader-with-stale-roster/i }));
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    expect(within(inspector).getByRole("tab", { name: /minions2/i }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(within(inspector).getByText("Running only")).toBeInTheDocument();
+    const completedMinion = within(inspector).getByText("Completed minion").closest(".act-minion-row");
+    expect(completedMinion).toHaveAttribute("data-tone", "completed");
+    expect(within(inspector).queryByText("Leader work")).not.toBeInTheDocument();
+  });
+
+  it("opens on a relevance-first session dashboard instead of an instruction", () => {
+    const onLaunchLeader = vi.fn();
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "current",
+            taskName: "Continue the release",
+            status: "running",
+            lastActivity: "The build is green and the release checklist is ready.",
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+        onLaunchLeader={onLaunchLeader}
+      />,
+    );
+
+    const dashboard = screen.getByRole("main", { name: /session dashboard/i });
+    expect(within(dashboard).getByText("Best next step")).toBeInTheDocument();
+    expect(within(dashboard).getByRole("heading", { name: "Continue the release" }))
+      .toBeInTheDocument();
+    expect(within(dashboard).queryByText(/select a session/i)).not.toBeInTheDocument();
+
+    fireEvent.click(within(dashboard).getByRole("button", { name: /open session/i }));
+    expect(screen.getByRole("complementary", { name: /session details/i }))
+      .toHaveTextContent("Continue the release");
+  });
+
+  it("shows all non-dismissed sessions by default and exposes history filters", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "open", taskName: "Open work", reviewLifecycle: completeLifecycle }),
+          session({
+            sessionKey: "dismissed",
+            taskName: "Dismissed work",
+            reviewLifecycle: { ...completeLifecycle, dismissedAt: 20 },
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /open work/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /dismissed work/i })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: "dismissed" } });
+    expect(screen.getByRole("button", { name: /dismissed work/i })).toBeInTheDocument();
+  });
+
+  it("shows an interrupted inactive work item as inactive", () => {
+    const socketSend = vi.fn();
+    const onDetachFromCanvas = vi.fn();
+    const { subscribe, emit } = makeSubscribe();
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "inactive-run",
+          taskName: "Inactive work",
+          status: "inactive",
+          lastActivity: "Inactive",
+          reviewLifecycle: {
+            ...completeLifecycle,
+            reviewState: "interrupted_to_review",
+            reviewReason: "Inactive",
+            finalReport: null,
+            terminalReason: "abort",
+          },
+        })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={subscribe}
+        onDetachFromCanvas={onDetachFromCanvas}
+      />,
+    );
+
+    const list = activityList();
+    const row = within(list).getByText("Inactive work").closest(".act-triage-row") as HTMLElement;
+    expect(row).toHaveClass("act-triage-row--inactive");
+    expect(row).not.toHaveClass("act-triage-row--error");
+    expect(within(list).getAllByText(/inactive/i).length).toBeGreaterThan(0);
+    expect(within(list).queryByText(/interrupted/i)).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "View" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(row).getByText("Inactive work").closest("button")!);
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    expect(within(inspector).getByText(
+      "Review keeps this work in Activity. Review & remove clears it from Activity and detaches it from Canvas.",
+    )).toBeInTheDocument();
+    const inspectorReview = within(inspector).getByRole("button", { name: "Review" });
+    const inspectorRemove = within(inspector).getByRole("button", {
+      name: "Review and remove from Activity",
+    });
+    expect(inspectorReview).toHaveTextContent("");
+    expect(inspectorReview.querySelector("svg")).toBeInTheDocument();
+    expect(inspectorRemove).toHaveTextContent("");
+    expect(inspectorRemove.querySelector(".lucide-list-x")).toBeInTheDocument();
+
+    const rowReview = within(row).getByRole("button", { name: "Review" });
+    const rowRemove = within(row).getByRole("button", {
+      name: "Review and remove from Activity",
+    });
+    expect(rowReview).toHaveTextContent("");
+    expect(rowRemove).toHaveTextContent("");
+
+    fireEvent.click(rowReview);
+    const reviewCommand = sentCommand(socketSend, "acknowledge_session");
+    expect(reviewCommand).toEqual(expect.objectContaining({
+      type: "acknowledge_session",
+      sessionKey: "inactive-run",
+      requestId: expect.any(String),
+    }));
+    expect(onDetachFromCanvas).not.toHaveBeenCalled();
+
+    // One lifecycle action per activity remains locked until its matching reply.
+    expect(rowRemove).toBeDisabled();
+    emit({
+      type: "control_response",
+      command: "acknowledge_session",
+      requestId: reviewCommand["requestId"],
+      success: true,
+    });
+
+    fireEvent.click(rowRemove);
+    const dismissCommand = sentCommand(socketSend, "dismiss_session");
+    expect(onDetachFromCanvas).not.toHaveBeenCalled();
+    expect(dismissCommand).toEqual(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "inactive-run",
+      requestId: expect.any(String),
+    }));
+    emit({
+      type: "control_response",
+      command: "dismiss_session",
+      requestId: dismissCommand["requestId"],
+      success: true,
+    });
+    expect(onDetachFromCanvas).toHaveBeenCalledWith({ sessionKey: "inactive-run" });
+  });
+
+  it("dismisses a non-canonical work-item session via the session envelope", () => {
+    // Regression: a session referencing a work item whose canonical snapshot
+    // is not loaded (legacy-migrated item under a stale projectId) carries the
+    // SESSION's lifecycle revision. Routing it to archive_work_item made the
+    // server reject the click with "stale work-item lifecycle" — it must use
+    // dismiss_session, which resolves fresh work-item state server-side.
+    const socketSend = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "leader-new",
+          workItemId: "legacy-work-1",
+          taskName: "hi",
+          reviewLifecycle: completeLifecycle,
+        })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+      />,
+    );
+    const row = within(activityList()).getByText("hi").closest(".act-triage-row") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: /^dismiss$/i }));
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "leader-new",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+    expect(socketSend).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "archive_work_item" }),
+    );
+  });
+
+  it("detaches a completed session from Canvas when it is dismissed", () => {
+    const socketSend = vi.fn();
+    const onDetachFromCanvas = vi.fn();
+    const { subscribe, emit } = makeSubscribe();
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "completed-run",
+          workItemId: "work-1",
+          canonicalWorkItem: true,
+          taskName: "Completed work",
+          reviewLifecycle: completeLifecycle,
+        })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={subscribe}
+        onDetachFromCanvas={onDetachFromCanvas}
+      />,
+    );
+
+    const row = within(activityList()).getByText("Completed work")
+      .closest(".act-triage-row") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Dismiss" }));
+
+    const command = sentCommand(socketSend, "archive_work_item");
+    expect(onDetachFromCanvas).not.toHaveBeenCalled();
+    expect(command).toEqual(expect.objectContaining({
+      type: "archive_work_item",
+      workItemId: "work-1",
+      requestId: expect.any(String),
+    }));
+    emit({
+      type: "work_item_response",
+      command: "archive_work_item",
+      requestId: command["requestId"],
+      success: true,
+    });
+    expect(onDetachFromCanvas).toHaveBeenCalledWith({
+      sessionKey: "completed-run",
+      workItemId: "work-1",
+    });
+  });
+
+  it("keeps a parent-owned dismissal request alive when Activity unmounts", () => {
+    const socketSend = vi.fn();
+    const onDetachFromCanvas = vi.fn();
+    const { subscribe, emit } = makeSubscribe();
+    const completed = session({
+      sessionKey: "tab-switch-run",
+      taskName: "Tab switch work",
+      reviewLifecycle: completeLifecycle,
+    });
+
+    function ParentHarness() {
+      const [showActivity, setShowActivity] = useState(true);
+      const lifecycleController = useActivityLifecycle({
+        socketSend,
+        socketSubscribe: subscribe,
+        onDetachFromCanvas,
+      });
+      return (
+        <>
+          <button type="button" onClick={() => setShowActivity(false)}>Open other tab</button>
+          {showActivity ? (
+            <ActivityView
+              sessions={[completed]}
+              nodes={[]}
+              {...noop}
+              lifecycleController={lifecycleController}
+            />
+          ) : <div>Other tab</div>}
+        </>
+      );
+    }
+
+    render(<ParentHarness />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: /^dismiss$/i }));
+    const command = sentCommand(socketSend, "dismiss_session");
+    fireEvent.click(screen.getByRole("button", { name: /open other tab/i }));
+    expect(screen.queryByRole("heading", { name: "Activity" })).not.toBeInTheDocument();
+
+    emit({ type: "control_response", command: "dismiss_session",
+      requestId: command["requestId"], success: true });
+
+    expect(onDetachFromCanvas).toHaveBeenCalledWith({ sessionKey: "tab-switch-run" });
+  });
+
+  it("removes a session from Open after the server confirms dismissal", () => {
+    const { rerender } = render(
+      <ActivityView
+        sessions={[session({ sessionKey: "done", taskName: "Dismiss this", reviewLifecycle: completeLifecycle })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /dismiss this/i })).toBeInTheDocument();
+    rerender(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "done",
+          taskName: "Dismiss this",
+          reviewLifecycle: { ...completeLifecycle, dismissedAt: 30, lifecycleRevision: 4 },
+        })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /dismiss this/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the persisted final report and sends revisioned review commands", () => {
+    const socketSend = vi.fn();
+    const { subscribe, emit } = makeSubscribe();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "done", taskName: "Finished task", reviewLifecycle: completeLifecycle })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={subscribe}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /finished task/i }));
+    expect(screen.getByText(/implemented the migration/i)).toBeInTheDocument();
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    fireEvent.click(within(inspector).getByRole("button", { name: /mark reviewed/i }));
+    const reviewCommand = sentCommand(socketSend, "acknowledge_session");
+    expect(reviewCommand).toEqual(expect.objectContaining({
+      type: "acknowledge_session",
+      sessionKey: "done",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+    emit({ type: "control_response", command: "acknowledge_session",
+      requestId: reviewCommand["requestId"], success: true });
+    fireEvent.click(within(inspector).getByRole("button", { name: /^dismiss$/i }));
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "done",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+  });
+
+  it("resolves an individual session inline from the list without opening the inspector", () => {
+    const socketSend = vi.fn();
+    const { subscribe, emit } = makeSubscribe();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "done", taskName: "Finished task", reviewLifecycle: completeLifecycle })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={subscribe}
+      />,
+    );
+
+    // No inspector is open — the session sits in the Needs you triage lane.
+    expect(screen.queryByRole("complementary", { name: /session details/i })).not.toBeInTheDocument();
+    const row = within(activityList()).getByText("Finished task")
+      .closest(".act-triage-row") as HTMLElement;
+    const primaryAction = within(row).getByRole("button", { name: /^read$/i });
+    const reviewAction = within(row).getByRole("button", { name: /mark reviewed/i });
+    const dismissAction = within(row).getByRole("button", { name: /^dismiss$/i });
+    expect(primaryAction).toHaveClass("act-mini-btn--primary");
+    expect(reviewAction.querySelector("svg")).not.toBeNull();
+    expect(reviewAction.textContent).toBe("");
+    expect(dismissAction.querySelector("svg")).not.toBeNull();
+    expect(dismissAction.textContent).toBe("");
+
+    fireEvent.click(reviewAction);
+    const reviewCommand = sentCommand(socketSend, "acknowledge_session");
+    expect(reviewCommand).toEqual(expect.objectContaining({
+      type: "acknowledge_session",
+      sessionKey: "done",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+    // Still no inspector — the action was immediate.
+    expect(screen.queryByRole("complementary", { name: /session details/i })).not.toBeInTheDocument();
+
+    expect(dismissAction).toBeDisabled();
+    emit({ type: "control_response", command: "acknowledge_session",
+      requestId: reviewCommand["requestId"], success: true });
+    fireEvent.click(dismissAction);
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "done",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+  });
+
+  describe("on a non-secure origin (no crypto.randomUUID)", () => {
+    const UUID_V4 =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+    const originalCrypto = globalThis.crypto;
+
+    afterEach(() => {
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        value: originalCrypto,
+      });
+    });
+
+    /** Simulate http://<lan-ip>: getRandomValues exists, randomUUID does not. */
+    function stubInsecureCrypto() {
+      Object.defineProperty(globalThis, "crypto", {
+        configurable: true,
+        value: {
+          getRandomValues<T extends ArrayBufferView>(array: T): T {
+            const bytes = new Uint8Array(
+              array.buffer,
+              array.byteOffset,
+              array.byteLength,
+            );
+            for (let i = 0; i < bytes.length; i += 1) {
+              bytes[i] = Math.floor(Math.random() * 256);
+            }
+            return array;
+          },
+        },
+      });
+    }
+
+    it("still resolves a work-item session from the triage lane", () => {
+      // Regression: sendLifecycle minted its requestId with crypto.randomUUID(),
+      // which throws on non-secure origins — every Check/X click was a silent
+      // no-op and the command never reached the socket.
+      stubInsecureCrypto();
+      const socketSend = vi.fn();
+      const { subscribe, emit } = makeSubscribe();
+      render(
+        <ActivityView
+          sessions={[session({
+            sessionKey: "run-1",
+            workItemId: "work-1",
+            canonicalWorkItem: true,
+            taskName: "Canonical done",
+            reviewLifecycle: completeLifecycle,
+          })]}
+          nodes={[]}
+          {...noop}
+          socketSend={socketSend}
+          socketSubscribe={subscribe}
+        />,
+      );
+
+      const row = within(activityList()).getByText("Canonical done")
+        .closest(".act-triage-row") as HTMLElement;
+      fireEvent.click(within(row).getByRole("button", { name: /mark reviewed/i }));
+      expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+        type: "review_work_item",
+        workItemId: "work-1",
+        expectedLifecycleRevision: 3,
+        expectedCurrentRunKey: "run-1",
+        requestId: expect.stringMatching(UUID_V4),
+      }));
+
+      const reviewCommand = sentCommand(socketSend, "review_work_item");
+      emit({ type: "work_item_response", command: "review_work_item",
+        requestId: reviewCommand["requestId"], success: true });
+
+      fireEvent.click(within(row).getByRole("button", { name: /^dismiss$/i }));
+      expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+        type: "archive_work_item",
+        workItemId: "work-1",
+        requestId: expect.stringMatching(UUID_V4),
+      }));
+    });
+
+    it("still bulk-dismisses selected sessions", () => {
+      stubInsecureCrypto();
+      const socketSend = vi.fn();
+      render(
+        <ActivityView
+          sessions={[
+            session({ sessionKey: "a", status: "idle", taskName: "First idle" }),
+            session({ sessionKey: "b", status: "idle", taskName: "Second idle" }),
+          ]}
+          nodes={[]}
+          {...noop}
+          socketSend={socketSend}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("checkbox", { name: /select first idle/i }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /select second idle/i }));
+      const bulk = screen.getByRole("toolbar", { name: /bulk actions/i });
+      fireEvent.click(within(bulk).getByRole("button", { name: /dismiss 2/i }));
+
+      expect(socketSend).toHaveBeenCalledTimes(2);
+      expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+        type: "dismiss_session",
+        sessionKey: "a",
+        expectedLifecycleRevision: 0,
+        requestId: expect.stringMatching(UUID_V4),
+      }));
+      expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+        type: "dismiss_session",
+        sessionKey: "b",
+        expectedLifecycleRevision: 0,
+        requestId: expect.stringMatching(UUID_V4),
+      }));
+    });
+  });
+
+  it("dismisses multiple sessions at once from the bulk action bar", () => {
+    const socketSend = vi.fn();
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "a", status: "idle", taskName: "First idle" }),
+          session({ sessionKey: "b", status: "idle", taskName: "Second idle" }),
+          session({ sessionKey: "c", status: "idle", taskName: "Third idle" }),
+        ]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select first idle/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select second idle/i }));
+
+    const bulk = screen.getByRole("toolbar", { name: /bulk actions/i });
+    expect(within(bulk).getByText(/2 selected/i)).toBeInTheDocument();
+    fireEvent.click(within(bulk).getByRole("button", { name: /dismiss 2/i }));
+
+    expect(socketSend).toHaveBeenCalledTimes(2);
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "a",
+      expectedLifecycleRevision: 0,
+      requestId: expect.any(String),
+    }));
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "dismiss_session",
+      sessionKey: "b",
+      expectedLifecycleRevision: 0,
+      requestId: expect.any(String),
+    }));
+    // Selection clears after the bulk action, hiding the toolbar.
+    expect(screen.queryByRole("toolbar", { name: /bulk actions/i })).not.toBeInTheDocument();
+  });
+
+  it("selects every visible session from the bulk bar and marks them reviewed", () => {
+    const socketSend = vi.fn();
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "r1", taskName: "Review one", reviewLifecycle: completeLifecycle }),
+          session({ sessionKey: "r2", taskName: "Review two", reviewLifecycle: completeLifecycle }),
+        ]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select review one/i }));
+    const bulk = screen.getByRole("toolbar", { name: /bulk actions/i });
+    fireEvent.click(within(bulk).getByRole("button", { name: /select all/i }));
+    expect(within(bulk).getByText(/2 selected/i)).toBeInTheDocument();
+
+    fireEvent.click(within(bulk).getByRole("button", { name: /mark 2 reviewed/i }));
+    expect(socketSend).toHaveBeenCalledTimes(2);
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "acknowledge_session",
+      sessionKey: "r1",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+    expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "acknowledge_session",
+      sessionKey: "r2",
+      expectedLifecycleRevision: 3,
+      requestId: expect.any(String),
+    }));
+  });
+
+  it("presents count-free bulk actions side by side with the individual-card icons", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "retained",
+            taskName: "Interrupted work",
+            status: "inactive",
+            reviewLifecycle: {
+              ...completeLifecycle,
+              reviewState: "interrupted_to_review",
+              acknowledgedAt: null,
+              dismissedAt: null,
+            },
+          }),
+          session({ sessionKey: "open", taskName: "Open work" }),
+          session({
+            sessionKey: "dismissed",
+            taskName: "Dismissed work",
+            reviewLifecycle: { ...completeLifecycle, dismissedAt: 20 },
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: "all" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /select interrupted work/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select open work/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select dismissed work/i }));
+
+    const bulk = screen.getByRole("toolbar", { name: /bulk actions/i });
+    const actions = within(bulk).getByRole("group", { name: /selected activity actions/i });
+    const review = within(actions).getByRole("button", { name: /^review 1$/i });
+    const remove = within(actions).getByRole("button", {
+      name: /review and remove 1 from activity/i,
+    });
+    const dismiss = within(actions).getByRole("button", { name: /^dismiss 1$/i });
+    const restore = within(actions).getByRole("button", { name: /^restore 1$/i });
+
+    expect(review).toHaveTextContent("Review and keep in Activity");
+    expect(review.querySelector(".lucide-check")).toBeInTheDocument();
+    expect(remove).toHaveTextContent("Review and remove");
+    expect(remove.querySelector(".lucide-list-x")).toBeInTheDocument();
+    expect(dismiss).toHaveTextContent("Dismiss");
+    expect(dismiss.querySelector(".lucide-x")).toBeInTheDocument();
+    expect(restore).toHaveTextContent("Restore");
+    expect(restore.querySelector(".lucide-rotate-ccw")).toBeInTheDocument();
+    expect(actions.querySelector("strong")).not.toBeInTheDocument();
+    expect(actions).toHaveClass("act-bulk-actions");
+    expect(within(bulk).getByRole("button", { name: /clear selection/i })).toBeInTheDocument();
+  });
+
+  describe("lifecycle action failures", () => {
+    it("surfaces only the failure correlated to the pending lifecycle command", () => {
+      const { subscribe, emit } = makeSubscribe();
+      const socketSend = vi.fn();
+      render(
+        <ActivityView
+          sessions={[session({ sessionKey: "done", taskName: "Finished task", reviewLifecycle: completeLifecycle })]}
+          nodes={[]}
+          {...noop}
+          socketSend={socketSend}
+          socketSubscribe={subscribe}
+        />,
+      );
+
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      const dismiss = within(activityList()).getByRole("button", { name: /^dismiss$/i });
+      fireEvent.click(dismiss);
+      const command = sentCommand(socketSend, "dismiss_session");
+      emit({
+        type: "control_response",
+        command: "dismiss_session",
+        requestId: command["requestId"],
+        success: false,
+        error: "Lifecycle revision conflict",
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /dismiss failed: lifecycle revision conflict/i,
+      );
+
+      // An unrelated success cannot erase this activity's failure.
+      emit({
+        type: "work_item_response",
+        command: "archive_work_item",
+        requestId: "another-request",
+        success: true,
+        result: {},
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent(/lifecycle revision conflict/i);
+    });
+
+    it("surfaces control_response failures and supports manual dismissal", () => {
+      const { subscribe, emit } = makeSubscribe();
+      const socketSend = vi.fn();
+      render(
+        <ActivityView
+          sessions={[session({ sessionKey: "done", taskName: "Finished task", reviewLifecycle: completeLifecycle })]}
+          nodes={[]}
+          {...noop}
+          socketSend={socketSend}
+          socketSubscribe={subscribe}
+        />,
+      );
+
+      fireEvent.click(within(activityList()).getByRole("button", { name: /mark reviewed/i }));
+      const command = sentCommand(socketSend, "acknowledge_session");
+      emit({
+        type: "control_response",
+        command: "acknowledge_session",
+        sessionKey: "done",
+        requestId: command["requestId"],
+        success: false,
+        error: "Session done not found",
+      });
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent(/mark reviewed failed: session done not found/i);
+
+      fireEvent.click(within(alert).getByRole("button", { name: /dismiss error/i }));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("ignores unrelated responses", () => {
+      expect(lifecycleActionError({ type: "work_item_response", command: "list_work_items", success: false })).toBeNull();
+      expect(lifecycleActionError({ type: "control_response", command: "stop_task", success: false })).toBeNull();
+      expect(lifecycleActionError({ type: "sdk_event" })).toBeNull();
+      expect(lifecycleActionError({
+        type: "control_response", command: "dismiss_session", success: false,
+      })).toEqual({ failed: true, error: "Dismiss failed: The server rejected the action." });
+    });
+  });
+
+  it("keeps canvas user turns between their responses after Activity sync and live updates", () => {
+    const { subscribe, emit } = makeSubscribe();
+    const firstResponse = { kind: "text", role: "assistant", text: "First response" } as const;
+    const secondResponse = { kind: "text", role: "assistant", text: "Second response" } as const;
+    const messages: DisplayMessage[] = [
+      { id: "local-first", role: "user", content: "First prompt", timestamp: 1 },
+      ...normalizedToDisplayMessages(firstResponse, "lm"),
+      { id: "local-second", role: "user", content: "Second prompt", timestamp: 3 },
+      ...normalizedToDisplayMessages(secondResponse, "lm"),
+    ];
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Ordered chat" })]}
+        nodes={[leaderNode("run", messages)]}
+        {...noop}
+        socketSubscribe={subscribe}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /ordered chat/i }));
+    const sync = {
+      type: "sync_response", sessionKey: "run", found: true, status: "running",
+      events: [firstResponse, secondResponse].map((event) => ({
+        type: "sdk_event", sessionKey: "run", event,
+      })),
+    };
+    const contents = () => Array.from(document.querySelectorAll(".act-tx-msg"))
+      .map((element) => element.textContent);
+    const expected = ["First prompt", "First response", "Second prompt", "Second response"];
+    emit(sync);
+    expect(contents()).toEqual(expected.map((content) => expect.stringContaining(content)));
+    emit(sync);
+    expect(contents()).toEqual(expected.map((content) => expect.stringContaining(content)));
+    emit({ type: "sdk_event", sessionKey: "run", event: {
+      kind: "text", role: "assistant", text: "Further progress",
+    } });
+    expect(contents()).toEqual([...expected, "Further progress"].map((content) => expect.stringContaining(content)));
+  });
+
+  it("shows an optimistic user turn and thinking state while steering a selected session", () => {
+    const socketSend = vi.fn();
+    const listeners = new Set<(message: unknown) => void>();
+    const socketSubscribe = ((
+      topicOrListener: string | ((message: unknown) => void),
+      maybeListener?: (message: unknown) => void,
+    ) => {
+      const listener = typeof topicOrListener === "function"
+        ? topicOrListener
+        : maybeListener!;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }) as SocketSubscribe;
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Working" })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={socketSubscribe}
+      />,
+    );
+    fireEvent.click(within(screen.getByRole("region", { name: "Active" })).getByText("Working").closest("button")!);
+    const composer = screen.getByRole("textbox", { name: /reply or steer/i });
+    expect(composer).toHaveAttribute("rows", "3");
+    fireEvent.change(composer, {
+      target: { value: "Use the safer migration." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(socketSend).toHaveBeenCalledWith({
+      type: "send_message",
+      sessionKey: "run",
+      prompt: "Use the safer migration.",
+      displayPrompt: "Use the safer migration.",
+    });
+    expect(screen.getByText("Use the safer migration.")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Leader is thinking…");
+
+    act(() => {
+      for (const listener of listeners) {
+        listener({
+          type: "sdk_event",
+          sessionKey: "run",
+          event: { kind: "text", role: "user", text: "Use the safer migration.", id: "server-user" },
+        });
+      }
+    });
+    expect(screen.getAllByText("Use the safer migration.")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("Leader is thinking…");
+
+    act(() => {
+      for (const listener of listeners) {
+        listener({
+          type: "sdk_event",
+          sessionKey: "run",
+          event: { kind: "text", role: "assistant", text: "I’ll apply that migration." },
+        });
+      }
+    });
+    expect(screen.getByText("I’ll apply that migration.")).toBeInTheDocument();
+    expect(screen.queryByText("Leader is thinking…")).not.toBeInTheDocument();
+  });
+
+  it("starts a new iteration for a non-canonical work-item session via send_message", () => {
+    const socketSend = vi.fn();
+    const onPromptWorkItem = vi.fn();
+    const props = {
+      nodes: [],
+      ...noop,
+      socketSend,
+      onPromptWorkItem,
+    };
+    const { rerender } = render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "existing-agent",
+          workItemId: "unloaded-work-item",
+          canonicalWorkItem: false,
+          status: "inactive",
+          taskName: "Existing agent",
+        })]}
+        {...props}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /existing agent/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), {
+      target: { value: "Start another iteration." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(socketSend).toHaveBeenCalledWith({
+      type: "send_message",
+      sessionKey: "existing-agent",
+      prompt: "Start another iteration.",
+      displayPrompt: "Start another iteration.",
+    });
+    expect(onPromptWorkItem).not.toHaveBeenCalled();
+
+    rerender(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "next-iteration",
+          workItemId: "unloaded-work-item",
+          canonicalWorkItem: true,
+          status: "running",
+          taskName: "Existing agent",
+        })]}
+        {...props}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /existing agent/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("complementary", { name: /session details/i }))
+      .toHaveTextContent("Existing agent");
+  });
+
+  it("routes canonical initiation through the conflict-recovering work-item client", () => {
+    const socketSend = vi.fn();
+    const onPromptWorkItem = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run-1", workItemId: "work-1",
+          canonicalWorkItem: true, status: "inactive", taskName: "Completed",
+          reviewLifecycle: completeLifecycle })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        onPromptWorkItem={onPromptWorkItem}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /completed/i }));
+    fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), {
+      target: { value: "Start the next iteration." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    expect(onPromptWorkItem).toHaveBeenCalledWith("work-1", "Start the next iteration.");
+    expect(socketSend).not.toHaveBeenCalledWith(expect.objectContaining({
+      type: "start_work_item_run",
+    }));
+  });
+
+  it("restores a terminally failed canonical prompt and shows its error inline", async () => {
+    const sessionRow = session({ sessionKey: "run-1", workItemId: "work-1",
+      canonicalWorkItem: true, status: "inactive", taskName: "Completed",
+      reviewLifecycle: completeLifecycle });
+    const onPromptWorkItem = vi.fn();
+    const onClearPromptFailure = vi.fn();
+    const props = {
+      sessions: [sessionRow], nodes: [], ...noop, socketSend: vi.fn(),
+      onPromptWorkItem, onClearPromptFailure,
+    };
+    const { rerender } = render(<ActivityView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /completed/i }));
+    const composer = screen.getByRole("textbox", { name: /reply or steer/i });
+    fireEvent.change(composer, { target: { value: "Do not lose this." } });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(composer).toHaveValue("");
+
+    rerender(<ActivityView {...props} promptFailures={{
+      "work-1": { prompt: "Do not lose this.", error: "Harness unavailable" },
+    }} />);
+
+    await waitFor(() => expect(composer).toHaveValue("Do not lose this."));
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/harness unavailable/i);
+    fireEvent.click(within(alert).getByRole("button", { name: /dismiss prompt error/i }));
+    expect(onClearPromptFailure).toHaveBeenCalledWith("work-1");
+    expect(composer).toHaveValue("Do not lose this.");
+  });
+
+  it.each([false, true])("sends image and text files from Activity (canonical: %s)", async canonical => {
+    vi.mocked(loadImageFromFile).mockResolvedValue({ src: "data:image/png;base64,cGl4ZWxz",
+      filename: "shot.png", mediaType: "image/png", naturalWidth: 100, naturalHeight: 100 });
+    const socketSend = vi.fn();
+    render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "Attachments",
+      ...(canonical ? { workItemId: "work-1", canonicalWorkItem: true } : {}) })]}
+      nodes={[]} {...noop} socketSend={socketSend} />);
+    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    const picker = screen.getByLabelText("Image or text attachments");
+    const openPicker = vi.spyOn(picker, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Attach images or text files" }));
+    expect(openPicker).toHaveBeenCalledOnce();
+    fireEvent.change(picker, { target: { files: [
+      new File(["pixels"], "shot.png", { type: "image/png" }),
+      new File(["Acceptance criteria"], "notes.md", { type: "text/markdown" }),
+    ] } });
+    expect(screen.getByRole("button", { name: /^send$/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled());
+    expect(screen.getByRole("img", { name: "shot.png" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    const command = sentCommand(socketSend, canonical ? "continue_work_item" : "send_message");
+    expect(command).toMatchObject({ displayPrompt: "Use the attached context.",
+      attachments: [{ kind: "image", filename: "shot.png", mediaType: "image/png", data: "cGl4ZWxz" }] });
+    expect(command["prompt"]).toContain("Acceptance criteria");
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+  });
+
+  it("restores canonical attachments after failure and keeps them when submission is declined", async () => {
+    const onPromptWorkItem = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const props = { sessions: [session({ sessionKey: "run-1", workItemId: "work-1",
+      canonicalWorkItem: true, taskName: "Attachments" })], nodes: [], ...noop,
+      socketSend: vi.fn(), onPromptWorkItem };
+    const { rerender } = render(<ActivityView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    fireEvent.paste(screen.getByRole("textbox", { name: /reply or steer/i }), { clipboardData: {
+      files: [new File(["Acceptance criteria"], "notes.md", { type: "text/markdown" })], getData: () => "",
+    } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(screen.getByLabelText("Attached context")).toHaveTextContent("notes.md");
+    const contextItems = onPromptWorkItem.mock.calls[0]![2];
+    expect(contextItems).toEqual([expect.objectContaining({ label: "notes.md", content: "Acceptance criteria" })]);
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+    rerender(<ActivityView {...props} promptFailures={{ "work-1": {
+      prompt: "Use the attached context.", error: "Harness unavailable", contextItems,
+    } }} />);
+    expect(await screen.findByLabelText("Attached context")).toHaveTextContent("notes.md");
+    fireEvent.click(screen.getByRole("button", { name: "Remove notes.md" }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+  });
+
+  it("blocks unsupported files and clears attachment drafts when selecting another leader", async () => {
+    const socketSend = vi.fn();
+    render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "First leader" }),
+      session({ sessionKey: "run-2", taskName: "Second leader" })]} nodes={[]} {...noop} socketSend={socketSend} />);
+    fireEvent.click(screen.getByRole("button", { name: /first leader/i }));
+    fireEvent.change(screen.getByLabelText("Image or text attachments"), {
+      target: { files: [new File(["binary"], "archive.zip", { type: "application/zip" })] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Use PNG, JPEG, GIF, WebP, or a text file.");
+    fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), { target: { value: "Review" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: /reply or steer/i }), { key: "Enter" });
+    expect(sentCommand(socketSend, "send_message")).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: /second leader/i }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+    expect(screen.getByRole("textbox", { name: /reply or steer/i })).toHaveValue("");
+  });
+
+  it("offers a New action from the activity header", () => {
+    const onLaunchLeader = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Working" })]}
+        nodes={[]}
+        {...noop}
+        onLaunchLeader={onLaunchLeader}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(onLaunchLeader).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an unfinished leader as a resumable draft while browsing Activity or Canvas", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    const onLaunchLeader = vi.fn(() => draft);
+    const onDraftPresenceChange = vi.fn();
+    const props = { ...noop, sessions: [session({ sessionKey: "other", taskName: "Existing work" })],
+      nodes: [createZone("release", "Release")], onLaunchLeader, onDraftPresenceChange };
+    const view = render(<ActivityView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /leader prompt/i }), { target: { value: "Keep my exact draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /name optional/i }), { target: { value: "Release prep" } });
+    fireEvent.click(screen.getByRole("button", { name: "Workspace Global" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose Release" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+
+    const notice = screen.getByRole("region", { name: "Leader draft" });
+    expect(notice).toHaveTextContent("Release prep");
+    expect(screen.queryByRole("region", { name: "New leader" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: /leader prompt/i })).toBeNull();
+    fireEvent.click(within(notice).getByRole("button", { name: "Resume draft" }));
+    expect(screen.getByRole("textbox", { name: /leader prompt/i })).toHaveValue("Keep my exact draft");
+    expect(screen.getByRole("button", { name: "Workspace Release" })).toBeVisible();
+
+    view.rerender(<ActivityView {...props} active={false} />);
+    view.rerender(<ActivityView {...props} active />);
+    expect(screen.queryByRole("region", { name: "New leader" })).toBeNull();
+    fireEvent.click(within(screen.getByRole("region", { name: "Leader draft" })).getByRole("button", { name: "Resume draft" }));
+    expect(screen.getByRole("textbox", { name: /leader prompt/i })).toHaveValue("Keep my exact draft");
+    expect(screen.getByRole("textbox", { name: /name optional/i })).toHaveValue("Release prep");
+    view.rerender(<ActivityView {...props} active homeRequest={1} />);
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(screen.queryByRole("region", { name: "Leader draft" })).toBeNull();
+    expect(onLaunchLeader).toHaveBeenCalledOnce();
+    expect(onDraftPresenceChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("lets a pending launch finish in the background without reopening its panel", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "creating" });
+    const props = { ...noop, sessions: [session({ sessionKey: "other", taskName: "Existing work" })],
+      nodes: [draft], onLaunchLeader: () => draft.id };
+    const view = render(<ActivityView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    const notice = screen.getByRole("region", { name: "Leader draft" });
+    expect(notice).toHaveTextContent("Starting leader");
+    expect(within(notice).getByRole("button", { name: "View launch" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Discard draft" })).toBeNull();
+    view.rerender(<ActivityView {...props}
+      nodes={[{ ...draft, data: { ...draft.data as LeaderData, sessionKey: "new-run", status: "running" } }]}
+      sessions={[...props.sessions, session({ sessionKey: "new-run", taskName: "New work" })]} />);
+    expect(screen.queryByRole("region", { name: "Leader draft" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "New leader" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Back to activity" })).toBeNull();
+  });
+
+  it("creates a workspace from Activity and commits its leader only after the session is initiated", async () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    let canvasNodes = canvasReducer([createZone("release", "Release"), createZone("research", "Research")],
+      { type: "SET_ACTIVE_WORKSPACE", id: "research" });
+    const onCommitLaunchLeader = vi.fn((node: CanvasNode, workspaceId: string) => {
+      canvasNodes = canvasReducer(canvasNodes, { type: "ADD_NODE", node, workspaceId });
+    });
+    const { socket, replay } = createReplaySocket();
+    const socketSend = vi.fn(canonicalLeaderResponder(replay));
+    function Harness() {
+      const [nodes, setNodes] = useState(canvasNodes);
+      return (
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Working" })]}
+        nodes={nodes}
+        {...noop}
+        onLaunchLeader={() => draft}
+        onCommitLaunchLeader={onCommitLaunchLeader}
+        onCreateWorkspace={(name) => {
+          const workspace = createZone("workspace-created", name);
+          canvasNodes = canvasReducer(canvasNodes, { type: "ADD_NODE", node: workspace });
+          setNodes(canvasNodes);
+          return workspace.id;
+        }}
+        socketSend={socketSend}
+        socketSubscribe={socket.subscribe}
+        projectId="project-1"
+        projectPath="/tmp/project"
+      />);
+    }
+    render(<Harness />, { wrapper: ReadyLaunchHarness });
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(onCommitLaunchLeader).not.toHaveBeenCalled();
+
+    const launchPanel = screen.getByRole("region", { name: /new leader/i });
+    const workspace = within(launchPanel).getByRole("button", { name: "Workspace Research" });
+    fireEvent.click(workspace);
+    expect(screen.getByRole("button", { name: "Choose Global" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Choose Research" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Choose Release" }));
+    expect(workspace).toHaveAccessibleName("Workspace Release");
+    fireEvent.click(within(launchPanel).getByRole("checkbox", { name: /isolated worktree/i }));
+    expect(onCommitLaunchLeader).not.toHaveBeenCalled();
+    fireEvent.change(within(launchPanel).getByRole("textbox", { name: /leader prompt/i }), {
+      target: { value: "Start only when submitted." },
+    });
+    fireEvent.click(workspace);
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), { target: { value: "Launch prep" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    expect(workspace).toHaveAccessibleName("Workspace Launch prep");
+    expect(within(launchPanel).getByRole("textbox", { name: /leader prompt/i })).toHaveValue("Start only when submitted.");
+    expect(onCommitLaunchLeader).not.toHaveBeenCalled();
+    fireEvent.click(within(launchPanel).getByRole("button", { name: /^launch leader$/i }));
+
+    await waitFor(() => expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "continue_work_item",
+      prompt: "Start only when submitted.",
+    })));
+    expect(onCommitLaunchLeader).toHaveBeenCalledTimes(1);
+    expect(onCommitLaunchLeader).toHaveBeenCalledWith(expect.objectContaining({
+      id: draft.id,
+      data: expect.objectContaining({
+        sessionKey: "run-1",
+        worktreeIsolation: true,
+      }),
+    }), "workspace-created");
+    expect(visibleZoneNodes(canvasNodes, "workspace-created").map(node => node.id)).toContain(draft.id);
+    expect(activeWorkspaceId(canvasNodes)).toBe("research");
+  });
+
+  it("auto-opens a compact launch composer with settings available in one panel", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    const onUpdateNodeData = vi.fn();
+    render(
+      <ActivityView
+        sessions={[]}
+        nodes={[draft]}
+        {...noop}
+        onLaunchLeader={() => draft.id}
+        onUpdateNodeData={onUpdateNodeData}
+        projectPath="/tmp/project"
+      />,
+    );
+
+    // The empty state embeds the full composer with zero extra clicks.
+    expect(screen.getByRole("region", { name: /add an agent/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Describe your project goal...")).toBeInTheDocument();
+    const setup = screen.getByRole("complementary", { name: /run setup/i });
+    expect(setup.querySelector("details")).toBeNull();
+    expect(within(setup).getByText("Run configuration")).toBeVisible();
+    expect(within(setup).getByRole("combobox", { name: /model/i })).toBeVisible();
+    expect(within(setup).getByRole("combobox", { name: /permissions/i })).toBeVisible();
+    expect(within(setup).getByRole("button", { name: "Workspace Global" })).toBeVisible();
+    expect(within(setup).getByRole("checkbox", { name: /isolated worktree/i })).toBeVisible();
+    expect(within(setup).queryByText("/tmp/project")).not.toBeInTheDocument();
+    expect(within(setup).getByText("Skills")).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /new leader form open/i })).toBeDisabled();
+
+    const prompt = screen.getByRole("textbox", { name: "Leader prompt" });
+    const promptSurface = prompt.closest(".leader-launch-prompt");
+    fireEvent.change(prompt, { target: { value: "/" } });
+    const commandMenu = screen.getByRole("listbox", { name: "Leader context shortcuts" });
+    expect(promptSurface).not.toContainElement(commandMenu);
+    expect(document.body).toContainElement(commandMenu);
+
+    fireEvent.click(within(setup).getByRole("checkbox", { name: /isolated worktree/i }));
+    expect(onUpdateNodeData).toHaveBeenLastCalledWith(
+      draft.id,
+      expect.objectContaining({ worktreeIsolation: true }),
+    );
+    expect(screen.queryByRole("button", { name: /open on canvas/i })).not.toBeInTheDocument();
+  });
+
+  it("lays out first-run guidance like a new leader and keeps it outside the session-list gutter", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    render(
+      <ActivityView
+        sessions={[]}
+        nodes={[draft]}
+        {...noop}
+        onLaunchLeader={() => draft.id}
+      />,
+    );
+
+    const onboarding = screen.getByRole("banner", { name: /getting started with swarmcrews/i });
+    const workspace = screen.getByRole("main", { name: /activity workspace/i });
+    const composer = screen.getByRole("region", { name: /add an agent/i });
+    const sessionList = document.querySelector(".act-main");
+
+    expect(workspace).toContainElement(onboarding);
+    expect(workspace).toContainElement(composer);
+    expect(workspace).toHaveClass("act-launch-panel");
+    expect(onboarding).toHaveClass("act-launch-head");
+    expect(composer.closest(".act-launch-inputs")).toBeInTheDocument();
+    expect(sessionList).not.toContainElement(onboarding);
+    expect(sessionList).not.toContainElement(composer);
+    expect(sessionList).toHaveTextContent("Your leader sessions will appear here");
+    expect(onboarding).toHaveTextContent("What should it do?");
+    const capabilityGroup = onboarding.querySelector(".act-onboarding__capability-group");
+    expect(capabilityGroup?.firstElementChild).toHaveTextContent("You can tell the leader to:");
+    expect(capabilityGroup?.lastElementChild).toHaveAttribute("aria-label", "Things a leader can do");
+    expect(onboarding).toHaveTextContent("Spawn Minions");
+    expect(onboarding).toHaveTextContent("Delegate focused work in parallel");
+    expect(onboarding).toHaveTextContent("Display a dashboard");
+    expect(onboarding).toHaveTextContent("progress, decisions, or results");
+  });
+
+  it("removes an unlaunched draft when the launch workspace is cancelled", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    const onCancelLaunchLeader = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Working" })]}
+        nodes={[draft]}
+        {...noop}
+        onLaunchLeader={() => draft.id}
+        onCancelLaunchLeader={onCancelLaunchLeader}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel new leader/i }));
+
+    expect(onCancelLaunchLeader).toHaveBeenCalledWith(draft.id);
+    expect(screen.queryByRole("region", { name: /new leader/i })).not.toBeInTheDocument();
+  });
+
+  it("launches from the Activity workspace without opening another surface", async () => {
+    const draft = leaderNode("", [], {
+      sessionKey: null,
+      status: "disconnected",
+      model: "opus",
+      permissionMode: "auto",
+      thinkingConfig: { enabled: true, effort: "high", display: "summarized" },
+      worktreeIsolation: false,
+      skillIds: [],
+      skillValues: {},
+    });
+    const { socket, replay } = createReplaySocket();
+    const socketSend = vi.fn(canonicalLeaderResponder(replay));
+    render(
+      <ActivityView
+        sessions={[]}
+        nodes={[draft]}
+        {...noop}
+        onLaunchLeader={() => draft.id}
+        socketSend={socketSend}
+        socketSubscribe={socket.subscribe}
+        projectId="project-1"
+        projectPath="/tmp/project"
+      />, { wrapper: ReadyLaunchHarness },
+    );
+
+    const workspace = screen.getByRole("region", { name: /add an agent/i });
+    fireEvent.change(within(workspace).getByRole("textbox", { name: /leader prompt/i }), {
+      target: { value: "Repair the release workflow and verify it." },
+    });
+    fireEvent.click(within(workspace).getByRole("button", { name: /^launch leader$/i }));
+
+    await waitFor(() => expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "continue_work_item",
+      prompt: "Repair the release workflow and verify it.",
+      workItemId: "work-1",
+    })));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it.each(["create_work_item", "attach_work_item_surface", "continue_work_item"])(
+    "keeps a first launch mounted when the roster changes during %s", async (pendingType) => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected",
+      harness: "codex", model: "gpt-6-astra", worktreeIsolation: false, skillIds: [], skillValues: {} });
+    const { socket, replay } = createReplaySocket();
+    const respond = canonicalLeaderResponder(replay);
+    const socketSend = vi.fn((command: unknown) => {
+      if ((command as { type: string }).type !== pendingType) respond(command);
+    });
+    const cancel = vi.fn();
+    const props = { ...noop, onLaunchLeader: () => draft, onCancelLaunchLeader: cancel,
+      socketSend, socketSubscribe: socket.subscribe, projectId: "project-1", projectPath: "/tmp/project" };
+    const { rerender } = render(<ActivityView sessions={[]} nodes={[]} {...props} />,
+      { wrapper: ({ children }) => <ReadyLaunchHarness codex>{children}</ReadyLaunchHarness> });
+    const prompt = screen.getByRole("textbox", { name: /leader prompt/i });
+    fireEvent.change(prompt, { target: { value: "Keep the selected launch settings" } });
+    fireEvent.click(screen.getByRole("button", { name: /^launch leader$/i }));
+    await waitFor(() => expect(sentCommand(socketSend, pendingType)).toBeDefined());
+    const pending = sentCommand(socketSend, pendingType);
+    rerender(<ActivityView sessions={[session({ sessionKey: "work-item:work-1", workItemId: "work-1",
+      canonicalWorkItem: true, status: "idle", taskName: "New task" })]} nodes={[]} {...props} />);
+    // Roster updates must neither relocate the requester nor cancel its in-flight launch.
+    expect(screen.getByRole("textbox", { name: /leader prompt/i })).toBe(prompt);
+    expect(cancel).not.toHaveBeenCalled();
+    socketSend.mockImplementation(respond);
+    await act(async () => { respond(pending); });
+    await waitFor(() => expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+      type: "continue_work_item", harness: "codex", model: "gpt-6-astra",
+      prompt: "Keep the selected launch settings",
+    })));
+  });
+
+  it("selects the newly created leader in Activity when its session appears", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    const props = {
+      ...noop,
+      onLaunchLeader: () => draft.id,
+      projectPath: "/tmp/project",
+    };
+    const { rerender } = render(<ActivityView sessions={[]} nodes={[draft]} {...props} />);
+
+    expect(screen.getByRole("region", { name: /add an agent/i })).toBeInTheDocument();
+
+    const startedNode = {
+      ...leaderNode("leader-new", [], { taskName: "Fresh task", status: "running" }),
+      id: draft.id,
+    };
+    rerender(
+      <ActivityView
+        sessions={[session({ sessionKey: "leader-new", taskName: "Fresh task", status: "running" })]}
+        nodes={[startedNode]}
+        {...props}
+      />,
+    );
+
+    expect(screen.queryByRole("region", { name: /add an agent/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: /session details/i })).toHaveTextContent("Fresh task");
+    expect(screen.getByText("Leader started")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "Fresh task", level: 2 })).toHaveFocus();
+  });
+
+  it("offers New from the empty activity state when no draft could be created", () => {
+    // onLaunchLeader returns void — the auto-open attempt yields no draft, so
+    // the empty state falls back to an explicit New CTA.
+    const onLaunchLeader = vi.fn();
+    render(
+      <ActivityView
+        sessions={[]}
+        nodes={[]}
+        {...noop}
+        onLaunchLeader={onLaunchLeader}
+      />,
+    );
+
+    expect(onLaunchLeader).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(screen.getByRole("region", { name: /add an agent/i }))
+      .getByRole("button", { name: /^new$/i }));
+    expect(onLaunchLeader).toHaveBeenCalledTimes(2);
+  });
+
+  it("previews recent agent work in the empty state and opens it on the canvas", () => {
+    const onOpenInCanvas = vi.fn();
+    const messages: DisplayMessage[] = [
+      { id: "a1", role: "assistant", content: "Shipped the schema migration.", timestamp: 5 },
+    ];
+    render(
+      <ActivityView
+        sessions={[]}
+        nodes={[leaderNode("prior", messages, { taskName: "Prior work" })]}
+        {...noop}
+        onOpenInCanvas={onOpenInCanvas}
+      />,
+    );
+
+    const recent = screen.getByRole("region", { name: /recent agent work/i });
+    const card = within(recent).getByRole("button", { name: /prior work/i });
+    expect(card).toHaveTextContent("Shipped the schema migration.");
+    fireEvent.click(card);
+    expect(onOpenInCanvas).toHaveBeenCalledWith("node-prior");
+  });
+
+  it("opens node-less recent work in Activity without attaching it to the canvas", () => {
+    const onAttachToCanvas = vi.fn();
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "idle-1", status: "idle", taskName: "Quiet agent", lastActivityAt: 3 }),
+        ]}
+        nodes={[]}
+        {...noop}
+        onAttachToCanvas={onAttachToCanvas}
+      />,
+    );
+
+    // A zero-result filter stays focused: no draft, composer, or recent-work cards.
+    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /add an agent/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /recent agent work/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^clear filter$/i }));
+    expect(screen.getByRole("button", { name: /quiet agent/i })).toBeInTheDocument();
+    expect(onAttachToCanvas).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { visibility: "All", activityName: "Dismissed in all" },
+    { visibility: "Dismissed", activityName: "Dismissed only" },
+  ])("keeps $visibility visibility when clearing an empty summary filter", ({
+    visibility, activityName,
+  }) => {
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: `dismissed-${visibility.toLowerCase()}`,
+          taskName: activityName,
+          status: "idle",
+          reviewLifecycle: { ...completeLifecycle, dismissedAt: 20 },
+        })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: visibility.toLowerCase() } });
+    expect(screen.getByRole("button", { name: new RegExp(activityName, "i") }))
+      .toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^clear filter$/i }));
+
+    expect(screen.getByRole("combobox", { name: "Activity visibility" })).toHaveValue(visibility.toLowerCase());
+    expect(screen.getByRole("button", { name: new RegExp(activityName, "i") }))
+      .toBeInTheDocument();
+  });
+
+  it("groups sessions Active → Idle → Stopped and excludes minions from the count", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "run", status: "running", taskName: "Working", lastActivityAt: 100 }),
+          session({ sessionKey: "idle", status: "idle", taskName: "Waiting" }),
+          session({ sessionKey: "done", status: "completed", taskName: "Finished" }),
+          session({ sessionKey: "m", role: "minion", status: "running", taskName: "Minion" }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const sections = screen.getAllByRole("region");
+    expect(sections.map((s) => s.getAttribute("aria-label"))).toEqual([
+      "Active",
+      "Idle",
+      "Stopped / Cleared",
+    ]);
+    expect(screen.queryByText("Minion")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Activity visibility" })).toHaveDisplayValue("Open · 3");
+  });
+
+  it("shows compact session context and keeps telemetry in the inspector", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "run",
+            role: "leader",
+            status: "running",
+            taskName: "Dependency audit",
+            lastActivity: "Checking production licenses and release constraints.",
+            lastActivityAt: Date.now() - 60_000,
+            totalCost: 7.25,
+            turns: 18,
+            model: "internal-debug-model",
+            activeMinions: [
+              {
+                taskId: "licenses",
+                title: "Check licenses",
+                status: "running",
+                sessionKey: "minion-licenses",
+              },
+              {
+                taskId: "docs",
+                title: "Read docs",
+                status: "planned",
+                sessionKey: "minion-docs",
+              },
+            ],
+          }),
+          session({
+            sessionKey: "idle",
+            status: "idle",
+            taskName: "Release notes",
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const activeCard = within(screen.getByRole("region", { name: /^active$/i }))
+      .getByRole("button", { name: /dependency audit/i });
+    expect(activeCard).toHaveTextContent("Working now");
+    expect(activeCard).toHaveTextContent("Checking production licenses");
+    expect(within(activeCard).getByLabelText("Updated 1m ago")).toHaveTextContent("1m ago");
+    expect(activeCard).not.toHaveTextContent("1 minion working");
+    expect(activeCard).not.toHaveTextContent("$7.25");
+    expect(activeCard).not.toHaveTextContent("18 turns");
+    expect(activeCard).not.toHaveTextContent("internal-debug-model");
+
+    const idleCard = within(screen.getByRole("region", { name: /^idle$/i }))
+      .getByRole("button", { name: /release notes/i });
+    expect(idleCard).toHaveTextContent("Ready for input");
+    expect(within(idleCard).getByLabelText("No recent activity")).toHaveTextContent("—");
+    expect(idleCard).not.toHaveTextContent("/tmp/project");
+    expect(idleCard).not.toHaveTextContent("idle");
+  });
+
+  it("gives completed session cards the success tone", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "done",
+            status: "completed",
+            taskName: "Release complete",
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const completedCard = within(screen.getByRole("region", { name: /stopped \/ cleared/i }))
+      .getByRole("button", { name: /release complete/i })
+      .closest(".act-card");
+    expect(completedCard).toHaveClass("act-card--completed");
+  });
+
+  it("removes generic activity echoes and labels paused work clearly", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "run",
+            status: "running",
+            taskName: "Live work",
+            lastActivity: "Working",
+          }),
+          session({
+            sessionKey: "paused",
+            status: "inactive",
+            taskName: "Paused work",
+            lastActivity: "Inactive",
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const runningCard = within(screen.getByRole("region", { name: /^active$/i }))
+      .getByRole("button", { name: /live work/i });
+    expect(runningCard.querySelector(".act-card-activity")).toBeNull();
+
+    const pausedCard = within(screen.getByRole("region", { name: /^idle$/i }))
+      .getByRole("button", { name: /paused work/i });
+    expect(pausedCard).toHaveTextContent("Paused");
+    expect(pausedCard.querySelector(".act-card-activity")).toBeNull();
+  });
+
+  it("does not repeat the session title as card activity", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "duplicate",
+            status: "running",
+            taskName: "Release checklist",
+            lastActivity: "  release CHECKLIST  ",
+          }),
+          session({
+            sessionKey: "distinct",
+            status: "running",
+            taskName: "Dependency audit",
+            lastActivity: "Checking production licenses",
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const active = screen.getByRole("region", { name: /^active$/i });
+    const duplicateCard = within(active)
+      .getByText("Release checklist", { selector: ".act-card-title" })
+      .closest(".act-card-main")!;
+    expect(duplicateCard.querySelector(".act-card-activity")).toBeNull();
+
+    const distinctCard = within(active)
+      .getByText("Dependency audit", { selector: ".act-card-title" })
+      .closest(".act-card-main")!;
+    expect(distinctCard.querySelector(".act-card-activity"))
+      .toHaveTextContent("Checking production licenses");
+  });
+
+  it("pins errors, waiting sessions, and reviewable changes in Needs you", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "run", status: "running", taskName: "Running normal" }),
+          session({ sessionKey: "err", status: "error", taskName: "Errored task", lastActivityAt: 30 }),
+          session({
+            sessionKey: "wait",
+            status: "waiting",
+            taskName: "Needs reply",
+            lastActivityAt: 20,
+          }),
+          session({
+            sessionKey: "changes",
+            status: "running",
+            taskName: "Changes ready",
+            lastActivityAt: 10,
+          }),
+          session({ sessionKey: "idle", status: "idle", taskName: "Idle normal" }),
+        ]}
+        nodes={[leaderNode("changes", [], { worktreeIsolation: true, worktreeStatus: "active" })]}
+        {...noop}
+      />,
+    );
+
+    expect(screen.getAllByRole("region").map((s) => s.getAttribute("aria-label"))).toEqual([
+      "Needs you",
+      "Active",
+      "Idle",
+    ]);
+
+    const needsYou = screen.getByRole("region", { name: /needs you/i });
+    expect(within(needsYou).getByRole("button", { name: /errored task/i })).toBeInTheDocument();
+    expect(within(needsYou).getByText("errored")).toBeInTheDocument();
+    expect(within(needsYou).getByRole("button", { name: /needs reply/i })).toBeInTheDocument();
+    expect(within(needsYou).getByText("waiting for you")).toBeInTheDocument();
+    expect(within(needsYou).getByRole("button", { name: /changes ready/i })).toBeInTheDocument();
+
+    const active = screen.getByRole("region", { name: /^active$/i });
+    expect(within(active).getByRole("button", { name: /running normal/i })).toBeInTheDocument();
+    expect(within(active).queryByRole("button", { name: /changes ready/i })).not.toBeInTheDocument();
+
+    fireEvent.click(within(needsYou).getByRole("button", { name: /^review$/i }));
+    expect(screen.getByRole("complementary", { name: /session details/i })).toHaveTextContent(
+      "Changes ready",
+    );
+  });
+
+  it("filters from the desktop summary counts and clears the filter on a second click", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "run", status: "running", taskName: "In progress" }),
+          session({ sessionKey: "wait", status: "waiting", taskName: "Needs reply" }),
+          session({ sessionKey: "idle", status: "idle", taskName: "Taking a break" }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const workingFilter = screen.getByRole("button", { name: /working: 1\. filter activity/i });
+    fireEvent.click(workingFilter);
+    expect(workingFilter).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Activity visibility" })).toHaveDisplayValue("Open · 3");
+    expect(within(activityList()).getByText("In progress")).toBeInTheDocument();
+    expect(within(activityList()).queryByText("Needs reply")).not.toBeInTheDocument();
+    expect(within(activityList()).queryByText("Taking a break")).not.toBeInTheDocument();
+
+    fireEvent.click(workingFilter);
+    expect(workingFilter).toHaveAttribute("aria-pressed", "false");
+    expect(within(activityList()).getByText("Needs reply")).toBeInTheDocument();
+    expect(within(activityList()).getByText("Taking a break")).toBeInTheDocument();
+  });
+
+  it("supports distinct needs-you and ready summary filters and keeps zero-result controls available", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "wait", status: "waiting", taskName: "Needs reply" }),
+          session({ sessionKey: "idle", status: "idle", taskName: "Taking a break" }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const reviewFilter = screen.getByRole("button", { name: /needs you: 1\. filter activity/i });
+    fireEvent.click(reviewFilter);
+    expect(within(activityList()).getByText("Needs reply")).toBeInTheDocument();
+    expect(within(activityList()).queryByText("Taking a break")).not.toBeInTheDocument();
+
+    const waitingFilter = screen.getByRole("button", { name: /ready: 1\. filter activity/i });
+    fireEvent.click(waitingFilter);
+    expect(waitingFilter).toHaveAttribute("aria-pressed", "true");
+    expect(within(activityList()).getByText("Taking a break")).toBeInTheDocument();
+
+    expect(within(activityList()).queryByText("Needs reply")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: "all" } });
+    expect(waitingFilter).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /working: 0\. clear filter/i })).toBeInTheDocument();
+  });
+
+  it("opens the inspector with metadata when a card is selected", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({ sessionKey: "run", status: "running", taskName: "Ship it", totalCost: 1.5, turns: 7, model: "claude-opus-4-8" }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /ship it/i }));
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    const metadata = within(inspector).getByText("Session information").closest("details")!;
+    expect(metadata.open).toBe(false);
+    fireEvent.click(within(inspector).getByText("Session information"));
+    expect(within(inspector).getByText("$1.50")).toBeVisible();
+    expect(within(inspector).getByText("7")).toBeInTheDocument();
+    expect(within(inspector).getByText("claude-opus-4-8")).toBeInTheDocument();
+  });
+
+  it("keeps conversation visible while switching the supporting context tabs", () => {
+    const messages: DisplayMessage[] = [
+      { id: "u1", role: "user", content: "Keep the migration safe.", timestamp: 1 },
+      { id: "a1", role: "assistant", content: "I am verifying each step.", timestamp: 2 },
+    ];
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "done",
+          status: "idle",
+          role: "leader",
+          taskName: "Review the release",
+          reviewLifecycle: completeLifecycle,
+          activeMinions: [{
+            taskId: "verify-release",
+            title: "Verify release",
+            status: "running",
+            sessionKey: "minion-1",
+          }],
+          renderState: {
+            layout: { title: "Release status", columns: 1 },
+            components: [{ id: "status", type: "text", content: "Dashboard online" }],
+          },
+        })]}
+        nodes={[leaderNode("done", messages)]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /review the release/i }));
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    const conversation = within(inspector).getByRole("main", { name: /^conversation$/i });
+    const tabs = within(inspector).getByRole("tablist", { name: /leader context views/i });
+    expect(within(inspector).queryByText("History and steering")).not.toBeInTheDocument();
+    expect(within(inspector).queryByText(/complete transcript stays in view/i))
+      .not.toBeInTheDocument();
+    expect(within(tabs).getByRole("tab", { name: /dashboard/i }))
+      .toHaveAttribute("aria-selected", "true");
+    expect(within(inspector).getByText("Dashboard online")).toBeInTheDocument();
+    expect(within(conversation).getByText("Keep the migration safe.")).toBeInTheDocument();
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: /minions/i }));
+    expect(within(inspector).getByText("Verify release")).toBeInTheDocument();
+    expect(within(conversation).getByText("I am verifying each step.")).toBeInTheDocument();
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: /session/i }));
+    expect(within(inspector).getByText(/implemented the migration/i)).toBeInTheDocument();
+    expect(within(conversation).getByRole("textbox", { name: /reply or steer/i }))
+      .toBeInTheDocument();
+  });
+
+  it("offers hydrated context without switching the reader away from their current tab", () => {
+    const { rerender } = render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "hydrating-leader",
+          status: "running",
+          role: "leader",
+          taskName: "Hydrating dashboard",
+        })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /hydrating dashboard/i }));
+    const inspector = screen.getByRole("complementary", { name: /session details/i });
+    expect(within(inspector).queryByRole("tab", { name: /dashboard|minions/i })).not.toBeInTheDocument();
+
+    rerender(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "hydrating-leader",
+          status: "running",
+          role: "leader",
+          taskName: "Hydrating dashboard",
+          renderState: {
+            layout: { title: "Live progress", columns: 1 },
+            components: [{ id: "status", type: "text", content: "Dashboard hydrated" }],
+          },
+        })]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const dashboardTab = within(inspector).getByRole("tab", { name: /dashboard/i });
+    expect(dashboardTab).toHaveAttribute("aria-selected", "false");
+    expect(within(inspector).getByRole("tab", { name: "Session details" })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(dashboardTab);
+    expect(within(inspector).getByText("Dashboard hydrated")).toBeInTheDocument();
+  });
+
+  it("enables node actions and fires them with the node id when a canvas node exists", () => {
+    const onOpenInCanvas = vi.fn();
+    const onExpandFullscreen = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Has node" })]}
+        nodes={[leaderNode("run")]}
+        onLaunchLeader={() => {}}
+        onCommitLaunchLeader={() => {}}
+        onCancelLaunchLeader={() => {}}
+        onOpenInCanvas={onOpenInCanvas}
+        onExpandFullscreen={onExpandFullscreen}
+        onStopSession={() => {}}
+        onAttachToCanvas={() => {}}
+        onUpdateNodeData={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /has node/i }));
+    const expandBtn = screen.getByRole("button", { name: /expand fullscreen/i });
+    const openBtn = screen.getByRole("button", { name: /open in canvas/i });
+    expect(expandBtn).toBeEnabled();
+    expect(openBtn).toBeEnabled();
+
+    fireEvent.click(expandBtn);
+    fireEvent.click(openBtn);
+    expect(onExpandFullscreen).toHaveBeenCalledWith("node-run", "session:run");
+    expect(onOpenInCanvas).toHaveBeenCalledWith("node-run");
+  });
+
+  it("offers optional canvas placement when the session has no canvas node", () => {
+    const onAttachToCanvas = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "mobile-run", status: "running", taskName: "From phone" })]}
+        nodes={[]}
+        {...noop}
+        onAttachToCanvas={onAttachToCanvas}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /from phone/i }));
+    // The canvas-node actions are absent; placement remains an optional action.
+    expect(screen.queryByRole("button", { name: /expand fullscreen/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open in canvas/i })).not.toBeInTheDocument();
+
+    const attachBtn = screen.getByRole("button", { name: /add to canvas/i });
+    expect(attachBtn).toBeEnabled();
+    fireEvent.click(attachBtn);
+    expect(onAttachToCanvas).toHaveBeenCalledWith("mobile-run");
+  });
+
+  it("loads and follows a node-less session transcript by session key", async () => {
+    const socketSend = vi.fn();
+    const listeners = new Set<(message: unknown) => void>();
+    const socketSubscribe = ((
+      topicOrListener: string | ((message: unknown) => void),
+      maybeListener?: (message: unknown) => void,
+    ) => {
+      const listener = typeof topicOrListener === "function"
+        ? topicOrListener
+        : maybeListener!;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }) as SocketSubscribe;
+    Object.defineProperty(socketSubscribe, "supportsTopics", { value: true });
+    socketSend.mockImplementation((command: { type?: string; sessionKey?: string }) => {
+      if (command.type !== "sync_session") return;
+      for (const listener of listeners) listener({
+        type: "sync_response", sessionKey: command.sessionKey, found: true, status: "running",
+        events: [{ type: "sdk_event", sessionKey: command.sessionKey, timestamp: 1,
+          event: { kind: "text", role: "assistant", text: "Loaded from the server." } }],
+      });
+    });
+
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "server-only",
+          status: "running",
+          taskName: "Server-owned session",
+        })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={socketSubscribe}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /server-owned session/i }));
+    expect(screen.getByText("Loaded from the server.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(socketSend).toHaveBeenCalledWith({
+        type: "sync_session",
+        sessionKey: "server-only",
+      });
+    });
+
+    act(() => {
+      for (const listener of listeners) {
+        listener({
+          type: "sync_response",
+          sessionKey: "server-only",
+          found: true,
+          status: "running",
+          events: [{
+            type: "sdk_event",
+            sessionKey: "server-only",
+            timestamp: 1,
+            event: { kind: "text", role: "assistant", text: "Loaded from the server." },
+          }],
+        });
+      }
+    });
+    expect(screen.getByText("Loaded from the server.")).toBeInTheDocument();
+
+    act(() => {
+      for (const listener of listeners) {
+        listener({
+          type: "sdk_event",
+          sessionKey: "server-only",
+          event: { kind: "text", role: "assistant", text: "Still updating live." },
+        });
+      }
+    });
+    expect(screen.getByText("Still updating live.")).toBeInTheDocument();
+    expect(screen.queryByText(/attach this session/i)).not.toBeInTheDocument();
+    socketSend.mockClear();
+    act(() => { for (const listener of listeners) listener({ type: "socket_reconnected" }); });
+    expect(socketSend).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "server-only" });
+  });
+
+  it("renders one ordered transcript across every run in a work item", async () => {
+    const socketSend = vi.fn();
+    const listeners = new Set<(message: unknown) => void>();
+    const socketSubscribe = ((
+      topicOrListener: string | ((message: unknown) => void),
+      maybeListener?: (message: unknown) => void,
+    ) => {
+      const listener = typeof topicOrListener === "function" ? topicOrListener : maybeListener!;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    }) as SocketSubscribe;
+    Object.defineProperty(socketSubscribe, "supportsTopics", { value: true });
+    const runs = [
+      { runKey: "run-2", workItemId: "work-1", runKind: "primary" as const,
+        parentRunKey: null, taskId: null, runNumber: 2, previousRunKey: "run-1",
+        providerSessionId: null, outcome: "none" as const, startedAt: 20,
+        endedAt: null, finalReport: null },
+      { runKey: "run-1", workItemId: "work-1", runKind: "primary" as const,
+        parentRunKey: null, taskId: null, runNumber: 1, previousRunKey: null,
+        providerSessionId: null, outcome: "completed" as const, startedAt: 10,
+        endedAt: 11, finalReport: "First complete\n[Earlier audit](docs/earlier.md)" },
+    ];
+
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run-2", workItemId: "work-1",
+          canonicalWorkItem: true, role: "leader", status: "running", taskName: "Unified work" })]}
+        nodes={[]}
+        {...noop}
+        socketSend={socketSend}
+        socketSubscribe={socketSubscribe}
+        workItemRuns={{ "work-1": runs }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /unified work/i }));
+    await waitFor(() => expect(socketSend).toHaveBeenCalledWith({
+      type: "sync_session", sessionKey: "run-1",
+    }));
+
+    act(() => {
+      for (const listener of listeners) {
+        listener({
+          type: "sync_response", sessionKey: "run-1", found: true, status: "completed",
+          events: [{ type: "sdk_event", sessionKey: "run-1", timestamp: 11,
+            event: { kind: "text", role: "assistant", text: "Earlier iteration output" } }],
+        });
+        listener({
+          type: "sync_response", sessionKey: "run-2", found: true, status: "running",
+          events: [{ type: "sdk_event", sessionKey: "run-2", timestamp: 21,
+            event: { kind: "text", role: "assistant", text: "Current iteration output" } }],
+        });
+      }
+    });
+
+    expect(screen.getByText("Iteration 1 · completed")).toBeInTheDocument();
+    expect(screen.getByText("Earlier iteration output")).toBeInTheDocument();
+    expect(screen.getByText("Iteration 2 · Active now")).toBeInTheDocument();
+    expect(screen.getByText("Current iteration output")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Session details" }));
+    fireEvent.click(screen.getByText("Run history"));
+    const history = screen.getByRole("list", { name: "Run history" });
+    expect(within(history).getByText("Iteration 1")).toBeInTheDocument();
+    expect(within(history).queryByText("Iteration 2")).not.toBeInTheDocument();
+
+    fireEvent.click(within(history).getByRole("button", { name: /iteration 1/i }));
+    const preview = screen.getByRole("region", { name: "Preview of iteration 1" });
+    expect(within(preview).getByText("Earlier iteration output")).toBeInTheDocument();
+    expect(within(preview).getByText("First complete")).toBeInTheDocument();
+    const reportLink = within(preview).getByRole("link", { name: "Earlier audit" });
+    const reportUrl = new URL(reportLink.getAttribute("href")!, "http://localhost");
+    expect(reportUrl.pathname).toBe("/file-view");
+    expect(reportUrl.searchParams.get("path")).toBe("/tmp/project/docs/earlier.md");
+    expect(within(preview).getByText("Read-only preview")).toBeInTheDocument();
+  });
+
+  it("loads iteration history once when a work-item session opens", async () => {
+    const onLoadRuns = vi.fn();
+    render(
+      <ActivityView
+        sessions={[session({
+          sessionKey: "run-2",
+          workItemId: "work-1",
+          canonicalWorkItem: true,
+          role: "leader",
+          status: "running",
+          taskName: "History loading",
+        })]}
+        nodes={[]}
+        {...noop}
+        onLoadRuns={onLoadRuns}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /history loading/i }));
+    await waitFor(() => expect(onLoadRuns).toHaveBeenCalledTimes(1));
+    expect(onLoadRuns).toHaveBeenLastCalledWith("work-1", undefined);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Session details" }));
+    expect(onLoadRuns).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Add to canvas once the session has a canvas node", () => {
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Has node" })]}
+        nodes={[leaderNode("run")]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /has node/i }));
+    expect(screen.queryByRole("button", { name: /add to canvas/i })).not.toBeInTheDocument();
+  });
+
+  it("only enables Stop for a running session and reports its session key", () => {
+    const onStopSession = vi.fn();
+    const { rerender } = render(
+      <ActivityView
+        sessions={[session({ sessionKey: "idle1", status: "idle", taskName: "Idle one" })]}
+        nodes={[]}
+        onLaunchLeader={() => {}}
+        onCommitLaunchLeader={() => {}}
+        onCancelLaunchLeader={() => {}}
+        onOpenInCanvas={() => {}}
+        onExpandFullscreen={() => {}}
+        onStopSession={onStopSession}
+        onAttachToCanvas={() => {}}
+        onUpdateNodeData={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /idle one/i }));
+    expect(screen.getByRole("button", { name: /^stop$/i })).toBeDisabled();
+
+    rerender(
+      <ActivityView
+        sessions={[session({ sessionKey: "run1", status: "running", taskName: "Running one" })]}
+        nodes={[]}
+        onLaunchLeader={() => {}}
+        onCommitLaunchLeader={() => {}}
+        onCancelLaunchLeader={() => {}}
+        onOpenInCanvas={() => {}}
+        onExpandFullscreen={() => {}}
+        onStopSession={onStopSession}
+        onAttachToCanvas={() => {}}
+        onUpdateNodeData={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /running one/i }));
+    const stop = screen.getByRole("button", { name: /^stop$/i });
+    expect(stop).toBeEnabled();
+    fireEvent.click(stop);
+    expect(onStopSession).toHaveBeenCalledWith("run1");
+  });
+
+  it("renders the live transcript for a session backed by a canvas node", () => {
+    const messages: DisplayMessage[] = [
+      { id: "u1", role: "user", content: "Do the thing", timestamp: 1 },
+      { id: "a1", role: "assistant", content: "On it.", timestamp: 2 },
+    ];
+    render(
+      <ActivityView
+        sessions={[session({ sessionKey: "run", status: "running", taskName: "Chatty" })]}
+        nodes={[leaderNode("run", messages)]}
+        {...noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /chatty/i }));
+    expect(screen.getByText("Do the thing")).toBeInTheDocument();
+    expect(screen.getByText("On it.")).toBeInTheDocument();
+  });
+});
+
+
+describe("Activity loading", () => {
+  it("does not show empty onboarding or auto-create a draft until loading finishes", () => {
+    const launch = vi.fn();
+    const props = { ...noop, onLaunchLeader: launch, nodes: [], sessions: [] };
+    const view = render(<ActivityView {...props} loading />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading activity");
+    expect(screen.queryByLabelText("Empty session list")).not.toBeInTheDocument();
+    expect(launch).not.toHaveBeenCalled();
+    view.rerender(<ActivityView {...props} />);
+    expect(screen.getByLabelText("Empty session list")).toBeInTheDocument();
+    expect(launch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps received activity visible while more loads and offers retry on failure", () => {
+    const retry = vi.fn();
+    const props = { ...noop, nodes: [], sessions: [session({ taskName: "Recent work" })] };
+    const view = render(<ActivityView {...props} loading />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading more activity");
+    expect(within(activityList()).getByText("Recent work")).toBeInTheDocument();
+    view.rerender(<ActivityView {...props} loadError="Unavailable" onRetryLoad={retry} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledOnce();
+  });
+});

@@ -1,0 +1,645 @@
+import { SkillIcon } from "../components/SkillIcon.tsx";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
+
+import {
+  getProjectSettings,
+  listProjects,
+  type ProjectSettings,
+  type ProjectSummary,
+} from "../api.ts";
+import { useHarnessList } from "../use-harness-list.tsx";
+import { DEFAULT_HARNESS_NAME, findHarness } from "../harness-list.ts";
+import { getModelCapability } from "../model-meta.ts";
+import { freezeLeaderSystemPrompt } from "../nodes/leader/frozen-prompt.ts";
+import { normalizeThinkingForCapability } from "../SettingsMenu.tsx";
+import { loadProjectSkills } from "../skills/user-skills.ts";
+import type { SkillTemplate } from "../skills/types.ts";
+import type { ThinkingConfig } from "../types.ts";
+import {
+  DEFAULT_SANDBOX_POLICY,
+  type SandboxPolicy,
+} from "../../shared/workspace-contracts.ts";
+import { LaunchSkillsPanel } from "./LaunchSkillsPanel.tsx";
+import { MobileLeaderRuntimeControls } from "./MobileLeaderRuntimeControls.tsx";
+import { MobileSandboxAccessControl } from "./MobileSandboxAccessControl.tsx";
+import {
+  TEXT_ATTACHMENT_ACCEPT,
+  appendTextAttachmentsToPrompt,
+  fileToImageAttachment,
+  fileToTextAttachment,
+  isAcceptedImageType,
+  isAcceptedTextFile,
+  type ImageAttachment,
+  type TextAttachment,
+} from "./attachments.ts";
+import { buildLaunchModelGroups, parseLaunchModelValue } from "./launch-models.ts";
+import type { WorkItemLaunchInput } from "../use-work-items.ts";
+import "./launch-screen.css";
+
+interface LaunchScreenProps {
+  onLaunched: (sessionKey: string) => void;
+  onLaunchError?: (error: string) => void;
+  canonicalLaunch: (input: WorkItemLaunchInput,
+    onStarted: (sessionKey: string) => void, onError: (error: string) => void) => void;
+  /**
+   * When provided, the launch screen is locked to a single project: the
+   * project picker is hidden and no project list is fetched. Used when the
+   * mobile app is already scoped to a selected project. The `id` (when known)
+   * lets the screen load that project's skill library.
+   */
+  lockedProject?: { id?: string; path: string; name: string };
+}
+
+export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, lockedProject }: LaunchScreenProps) {
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState("");
+  // Encoded `harness::modelId` from the dropdown; "" = the harness default.
+  const [modelValue, setModelValue] = useState("");
+  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
+  const [textAttachments, setTextAttachments] = useState<TextAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [worktreeIsolation, setWorktreeIsolation] = useState(false);
+  const [loading, setLoading] = useState(!lockedProject);
+  const [error, setError] = useState<string | null>(null);
+  const [availableSkills, setAvailableSkills] = useState<SkillTemplate[]>([]);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [skillValues, setSkillValues] = useState<Record<string, Record<string, string>>>({});
+  const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>({});
+  const [thinkingOverride, setThinkingOverride] = useState<ThinkingConfig | null>(null);
+  const [sandboxPolicyOverride, setSandboxPolicyOverride] = useState<SandboxPolicy | null>(null);
+  const [launching, setLaunching] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const launchingRef = useRef(false);
+
+  // Enumerated models for the launch dropdown, across every registered harness
+  // (Anthropic, OpenAI, …) so all providers are selectable. Empty until
+  // `list_harnesses` answers — the "Default" option always works meanwhile.
+  const { harnesses, loaded: harnessesLoaded } = useHarnessList();
+  const modelGroups = buildLaunchModelGroups(harnesses);
+
+  useEffect(() => {
+    if (lockedProject) return;
+
+    let cancelled = false;
+
+    setLoading(true);
+    setError(null);
+    void listProjects()
+      .then((result) => {
+        if (cancelled) return;
+        setProjects(result);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load projects");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [lockedProject]);
+
+  const selectedProject = useMemo(
+    () => projects.find((project) => project.id === selectedProjectId) ?? null,
+    [projects, selectedProjectId],
+  );
+  const targetProjectId = lockedProject?.id ?? selectedProject?.id ?? null;
+
+  // Match desktop leader creation: initialize each project's launch controls
+  // from its saved defaults. The controls remain editable for this launch.
+  useEffect(() => {
+    if (!targetProjectId) {
+      setProjectSettings({});
+      setModelValue("");
+      setThinkingOverride(null);
+      setSandboxPolicyOverride(null);
+      setWorktreeIsolation(false);
+      return;
+    }
+
+    let cancelled = false;
+    void getProjectSettings(targetProjectId)
+      .then((settings) => {
+        if (cancelled) return;
+        setProjectSettings(settings);
+        setThinkingOverride(null);
+        setSandboxPolicyOverride(null);
+        const harness = settings.defaultLeaderHarness;
+        const model = settings.defaultLeaderModel ?? settings.defaultModel;
+        setModelValue(harness && model ? `${harness}::${model}` : "");
+        setWorktreeIsolation(settings.defaultWorktreeIsolation === true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProjectSettings({});
+        setModelValue("");
+        setThinkingOverride(null);
+        setSandboxPolicyOverride(null);
+        setWorktreeIsolation(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetProjectId]);
+
+  // Load the target project's skill library into the shared registry (which
+  // `freezeLeaderSystemPrompt` reads at launch) and expose it for the panel.
+  // Best-effort: a failed fetch just leaves the skills section empty.
+  useEffect(() => {
+    if (!targetProjectId) {
+      setAvailableSkills([]);
+      return;
+    }
+
+    let cancelled = false;
+    void loadProjectSkills(targetProjectId)
+      .then((skills) => {
+        if (cancelled) return;
+        setAvailableSkills(skills);
+        // Drop any prior selections that no longer exist in this project.
+        setSelectedSkillIds((current) => current.filter((id) => skills.some((s) => s.id === id)));
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableSkills([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetProjectId]);
+
+  const targetPath = lockedProject?.path ?? selectedProject?.path ?? null;
+  const targetName = lockedProject?.name ?? selectedProject?.name ?? null;
+  const trimmedPrompt = prompt.trim();
+  const attachedFileCount = imageAttachments.length + textAttachments.length;
+  const canSubmit = targetPath !== null && (trimmedPrompt.length > 0 || attachedFileCount > 0);
+  const selectedModel = parseLaunchModelValue(modelValue);
+  const selectedModelGroup = selectedModel
+    ? modelGroups.find((group) => group.harness === selectedModel.harness)
+    : null;
+  const selectedModelOption = selectedModel
+    ? selectedModelGroup?.options.find((option) => option.id === selectedModel.model)
+    : null;
+  const modelLabel = selectedModelOption?.label ?? selectedModel?.model ?? "Project default";
+  const effectiveThinking = thinkingOverride ?? projectSettings.defaultLeaderThinkingConfig;
+  const selectedModelCapability = selectedModel
+    ? getModelCapability(
+        selectedModel.model,
+        findHarness(harnesses, selectedModel.harness),
+      )
+    : null;
+  const launchThinking = effectiveThinking && selectedModelCapability
+    ? normalizeThinkingForCapability(effectiveThinking, selectedModelCapability)
+    : effectiveThinking;
+  const reasoningLabel = thinkingOverride === null
+    ? projectSettings.defaultLeaderThinkingConfig
+      ? selectedModelCapability?.supportsAdaptiveThinking === false
+        ? "Unavailable"
+        : `Default · ${launchThinking?.enabled ? launchThinking.effort : "off"}`
+      : "Project default"
+    : thinkingOverride.enabled
+      ? `${thinkingOverride.effort} · ${thinkingOverride.display === "summarized" ? "summaries" : "hidden"}`
+      : "Off";
+  const launchSandboxPolicy = sandboxPolicyOverride
+    ?? projectSettings.defaultSandboxPolicy
+    ?? DEFAULT_SANDBOX_POLICY;
+  const explicitSandboxPolicy = sandboxPolicyOverride ?? projectSettings.defaultSandboxPolicy;
+  const activeHarnessName = selectedModel?.harness
+    ?? projectSettings.defaultLeaderHarness
+    ?? DEFAULT_HARNESS_NAME;
+  const activeHarness = findHarness(harnesses, activeHarnessName);
+  const sandboxSupport = harnessesLoaded
+    ? activeHarness?.capabilities.sandboxEnforcement ?? null
+    : undefined;
+  const requestedAccessLabel = launchSandboxPolicy.filesystemScope === "unrestricted"
+    ? "Full host"
+    : launchSandboxPolicy.filesystemScope === "workspace-write"
+      ? "Workspace"
+      : "Read only";
+  const sandboxScopeUnmanaged = sandboxSupport !== undefined
+    && (sandboxSupport === null
+      || !sandboxSupport.filesystem.includes(launchSandboxPolicy.filesystemScope));
+  const accessLabel = sandboxScopeUnmanaged
+    ? `${requestedAccessLabel} · unmanaged`
+    : requestedAccessLabel;
+  const selectedSkills = useMemo(
+    () =>
+      selectedSkillIds
+        .map((id) => availableSkills.find((skill) => skill.id === id))
+        .filter((skill): skill is SkillTemplate => skill !== undefined),
+    [selectedSkillIds, availableSkills],
+  );
+
+  function toggleSkill(id: string) {
+    setSelectedSkillIds((current) =>
+      current.includes(id) ? current.filter((s) => s !== id) : [...current, id],
+    );
+  }
+
+  function removeSkill(id: string) {
+    setSelectedSkillIds((current) => current.filter((s) => s !== id));
+    setSkillValues((current) => {
+      if (!(id in current)) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function changeSkillVar(skillId: string, varName: string, value: string) {
+    setSkillValues((current) => ({
+      ...current,
+      [skillId]: { ...(current[skillId] ?? {}), [varName]: value },
+    }));
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (launchingRef.current || !targetPath || (!trimmedPrompt && attachedFileCount === 0)) return;
+
+    launchingRef.current = true;
+    setLaunching(true);
+
+    if (!targetProjectId || !canonicalLaunch) {
+      launchingRef.current = false;
+      setLaunching(false);
+      setError("Select a project before starting a Leader.");
+      return;
+    }
+    // Only freeze a custom prompt when the user picked skills. Canonical runs
+    // still receive the server-owned default Leader prompt when none are armed.
+    const skillPayload =
+      selectedSkillIds.length > 0
+        ? {
+            systemPrompt: freezeLeaderSystemPrompt({
+              skillIds: selectedSkillIds,
+              skillValues,
+              orchestrationMode: "auto",
+            }).systemPrompt,
+            skillIds: selectedSkillIds,
+            skillValues,
+          }
+        : {};
+    const launchPrompt = appendTextAttachmentsToPrompt(trimmedPrompt, textAttachments);
+    const runtimeOptions = {
+      ...(selectedModel ? { model: selectedModel.model, harness: selectedModel.harness } : {}),
+      ...(projectSettings.defaultPermissionMode
+        ? { permissionMode: projectSettings.defaultPermissionMode }
+        : {}),
+      ...(explicitSandboxPolicy ? { sandboxPolicy: launchSandboxPolicy } : {}),
+      ...(launchThinking ? { thinkingConfig: launchThinking } : {}),
+      ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}),
+      ...skillPayload,
+    };
+    setError(null);
+    canonicalLaunch({
+      title: trimmedPrompt.split("\n")[0]!.slice(0, 120) || "Mobile Leader",
+      changeMode: worktreeIsolation ? "worktree" : "live",
+      prompt: launchPrompt,
+      options: { ...runtimeOptions, orchestrationMode: "auto" },
+    }, onLaunched, (message) => {
+      launchingRef.current = false;
+      setLaunching(false);
+      setError(message);
+      onLaunchError?.(message);
+    });
+
+  }
+
+  async function handleAttachChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    event.currentTarget.value = "";
+    if (files.length === 0) return;
+
+    const imageFiles = files.filter((file) => isAcceptedImageType(file.type));
+    const textFiles = files.filter((file) => !isAcceptedImageType(file.type) && isAcceptedTextFile(file));
+    const rejectedCount = files.length - imageFiles.length - textFiles.length;
+    const [imageSettled, textSettled] = await Promise.all([
+      Promise.allSettled(imageFiles.map((file) => fileToImageAttachment(file))),
+      Promise.allSettled(textFiles.map((file) => fileToTextAttachment(file))),
+    ]);
+    const acceptedImages = imageSettled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    const acceptedText = textSettled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+    const failedCount =
+      rejectedCount
+      + imageSettled.filter((result) => result.status === "rejected").length
+      + textSettled.filter((result) => result.status === "rejected").length;
+
+    if (acceptedImages.length > 0) {
+      setImageAttachments((current) => [...current, ...acceptedImages]);
+    }
+    if (acceptedText.length > 0) {
+      setTextAttachments((current) => [...current, ...acceptedText]);
+    }
+    setAttachmentError(
+      failedCount > 0
+        ? "Some files were not supported. Use images or text files such as TXT, Markdown, HTML, JSON, CSV, or code."
+        : null,
+    );
+  }
+
+  function removeImageAttachment(index: number) {
+    setImageAttachments((current) => current.filter((_, i) => i !== index));
+  }
+
+  function removeTextAttachment(index: number) {
+    setTextAttachments((current) => current.filter((_, i) => i !== index));
+  }
+
+  function handleModelChange(value: string) {
+    setModelValue(value);
+    const selection = parseLaunchModelValue(value);
+    if (!selection) return;
+    setThinkingOverride((current) =>
+      current
+        ? normalizeThinkingForCapability(
+            current,
+            getModelCapability(selection.model, findHarness(harnesses, selection.harness)),
+          )
+        : null,
+    );
+  }
+
+  return (
+    <main className="mob-screen mob-launch" aria-label="New leader">
+      <header className="mob-screen-header">
+        <div>
+          <h1>New Leader</h1>
+          <p className="mob-screen-intro">Describe the outcome, then tune this run.</p>
+        </div>
+      </header>
+
+      {loading ? <div className="mob-launch-status">Loading projects...</div> : null}
+      {error ? <div className="mob-launch-error" role="alert">{error}</div> : null}
+
+      <form className="mob-launch-form" onSubmit={handleSubmit}>
+        {lockedProject ? (
+          <div className="mob-launch-project" aria-label="Project">
+            <span>Project</span>
+            <strong>{lockedProject.name}</strong>
+            <small>{lockedProject.path}</small>
+          </div>
+        ) : (
+          <fieldset className="mob-project-picker" disabled={loading}>
+            <legend>Recent projects</legend>
+            {projects.length === 0 && !loading ? (
+              <p className="mob-muted">No recent projects found.</p>
+            ) : null}
+            {projects.map((project) => (
+              <label className="mob-project-row" key={project.id}>
+                <input
+                  type="radio"
+                  name="launch-project"
+                  value={project.id}
+                  checked={selectedProjectId === project.id}
+                  onChange={() => setSelectedProjectId(project.id)}
+                />
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{project.path}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        <div className="mob-launch-field mob-launch-prompt">
+          <div className="mob-launch-prompt-heading">
+            <label htmlFor="mob-launch-prompt">Prompt</label>
+            <span id="mob-launch-prompt-count">
+              {trimmedPrompt.length} characters
+            </span>
+          </div>
+          <div className="mob-launch-templates" aria-label="Prompt starters">
+            <button
+              type="button"
+              onClick={() => setPrompt("Review the recent changes, identify risks, and suggest the next safest action.")}
+            >
+              Review
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrompt("Investigate the failing workflow, isolate the cause, and make the smallest reliable fix.")}
+            >
+              Fix
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrompt("Implement the requested feature end to end, including focused verification.")}
+            >
+              Build
+            </button>
+          </div>
+          <textarea
+            id="mob-launch-prompt"
+            aria-describedby="mob-launch-prompt-count"
+            value={prompt}
+            onChange={(event) => setPrompt(event.currentTarget.value)}
+            rows={5}
+            placeholder="What should the leader do?"
+          />
+        </div>
+
+        <details className="mob-launch-options" data-testid="launch-run-setup">
+          <summary>
+            <span className="mob-launch-options-copy">
+              <strong>Run setup</strong>
+              <small>Model · {modelLabel}</small>
+              <small>Reasoning · {reasoningLabel}</small>
+              <small>
+                {accessLabel} · {worktreeIsolation ? "Worktree" : "Live"} · {attachedFileCount > 0
+                  ? `${attachedFileCount} ${attachedFileCount === 1 ? "file" : "files"}`
+                  : "No files"} · {selectedSkills.length > 0
+                    ? `${selectedSkills.length} ${selectedSkills.length === 1 ? "skill" : "skills"}`
+                    : "No skills"}
+              </small>
+            </span>
+            <span className="mob-launch-options-chevron" aria-hidden="true">⌄</span>
+          </summary>
+
+          <div className="mob-launch-options-body">
+          <MobileLeaderRuntimeControls
+          harnesses={harnesses}
+          modelGroups={modelGroups}
+          modelValue={modelValue}
+          projectThinkingConfig={projectSettings.defaultLeaderThinkingConfig}
+          thinkingOverride={thinkingOverride}
+          onModelChange={handleModelChange}
+          onThinkingOverrideChange={setThinkingOverride}
+        />
+
+        <MobileSandboxAccessControl
+          policy={launchSandboxPolicy}
+          support={sandboxSupport}
+          onChange={setSandboxPolicyOverride}
+        />
+
+        <label className="mob-launch-checkbox">
+          <input
+            type="checkbox"
+            aria-label="Worktree isolation"
+            checked={worktreeIsolation}
+            onChange={(event) => setWorktreeIsolation(event.currentTarget.checked)}
+          />
+          <span>
+            <strong>Worktree isolation</strong>
+            <small>Keep this run's changes separate until review.</small>
+          </span>
+        </label>
+
+        <section className="mob-launch-files" aria-label="Launch attachments">
+          <div className="mob-launch-files-head">
+            <span>Files</span>
+            <button
+              className="mob-launch-file-button"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Attach
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            className="mob-file-input"
+            type="file"
+            accept={`image/*,${TEXT_ATTACHMENT_ACCEPT}`}
+            multiple
+            onChange={handleAttachChange}
+            aria-label="Launch file attachments"
+          />
+          {attachedFileCount > 0 ? (
+            <div className="mob-composer-attachments" aria-label="Attached launch files">
+              {imageAttachments.map((attachment, index) => (
+                <span className="mob-attachment-chip mob-attachment-chip--image" key={`${attachment.filename ?? "image"}-${index}`}>
+                  <img
+                    src={`data:${attachment.mediaType};base64,${attachment.data}`}
+                    alt={attachment.filename ?? `Attachment ${index + 1}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImageAttachment(index)}
+                    aria-label={`Remove ${attachment.filename ?? `attachment ${index + 1}`}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {textAttachments.map((attachment, index) => (
+                <span className="mob-attachment-chip mob-attachment-chip--text" key={`${attachment.filename}-${index}`}>
+                  <span className="mob-attachment-file-icon" aria-hidden="true">TXT</span>
+                  <span className="mob-attachment-file-name">{attachment.filename}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeTextAttachment(index)}
+                    aria-label={`Remove ${attachment.filename}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mob-muted">Attach images or text files.</p>
+          )}
+          {attachmentError ? <div className="mob-launch-error" role="alert">{attachmentError}</div> : null}
+        </section>
+
+        <section className="mob-launch-skills" aria-label="Launch skills">
+          <div className="mob-launch-skills-head">
+            <span>Skills</span>
+            <button
+              className="mob-launch-file-button"
+              type="button"
+              onClick={() => setSkillsPanelOpen(true)}
+              disabled={availableSkills.length === 0}
+            >
+              {selectedSkills.length > 0 ? "Edit" : "Add"}
+            </button>
+          </div>
+          {availableSkills.length === 0 ? (
+            <p className="mob-muted">No skills in this project's library.</p>
+          ) : selectedSkills.length === 0 ? (
+            <p className="mob-muted">Arm the leader with project skills.</p>
+          ) : (
+            <div className="mob-launch-skill-chips" aria-label="Selected skills">
+              {selectedSkills.map((skill) => (
+                <span className="mob-skill-chip" key={skill.id}>
+                  <span className="mob-skill-icon" aria-hidden="true"><SkillIcon skill={skill} /></span>
+                  <span className="mob-skill-chip-name">{skill.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeSkill(skill.id)}
+                    aria-label={`Remove ${skill.name}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mob-launch-review" aria-label="Launch summary">
+          <div>
+            <span>Target</span>
+            <strong>{targetName ? "Selected project" : "Choose a project"}</strong>
+          </div>
+          <div>
+            <span>Model</span>
+            <strong>{modelLabel}</strong>
+          </div>
+          <div>
+            <span>Reasoning</span>
+            <strong>{reasoningLabel}</strong>
+          </div>
+          <div>
+            <span>Isolation</span>
+            <strong>{worktreeIsolation ? "Worktree" : "Live"}</strong>
+          </div>
+          <div>
+            <span>Access</span>
+            <strong>{accessLabel}</strong>
+          </div>
+          <div>
+            <span>Files</span>
+            <strong>{attachedFileCount > 0 ? `${attachedFileCount} attached` : "None"}</strong>
+          </div>
+          <div>
+            <span>Skills</span>
+            <strong>{selectedSkills.length > 0 ? `${selectedSkills.length} armed` : "None"}</strong>
+          </div>
+        </section>
+          </div>
+        </details>
+
+        <div className="mob-launch-action">
+          <button
+            className="mob-launch-submit"
+            type="submit"
+            disabled={!canSubmit || launching}
+            aria-busy={launching || undefined}
+          >
+            Launch leader
+          </button>
+        </div>
+      </form>
+
+      <LaunchSkillsPanel
+        open={skillsPanelOpen}
+        availableSkills={availableSkills}
+        selectedSkillIds={selectedSkillIds}
+        skillValues={skillValues}
+        onToggleSkill={toggleSkill}
+        onVarChange={changeSkillVar}
+        onClose={() => setSkillsPanelOpen(false)}
+      />
+    </main>
+  );
+}

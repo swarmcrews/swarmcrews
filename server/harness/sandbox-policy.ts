@@ -1,0 +1,68 @@
+import type {
+  HarnessSandboxResolution,
+  HarnessSandboxSupport,
+  NormalizedPermissionMode,
+} from "./types.ts";
+import type { ApprovalPolicy, SandboxPolicy } from "../../shared/workspace-contracts.ts";
+
+/** Explicit input accepted at the session boundary. */
+export type HarnessSandboxPolicyInput = SandboxPolicy;
+
+/** Only an explicit user opt-in extends full host access to child executions. */
+export function sandboxPolicyForMinion(
+  parent: SandboxPolicy | undefined,
+  child: SandboxPolicy | undefined,
+): SandboxPolicy | undefined {
+  if (parent?.filesystemScope !== "unrestricted"
+    || parent.fullHostScope !== "leader-and-minions") return child;
+  return {
+    filesystemScope: "unrestricted",
+    approvalPolicy: child?.approvalPolicy ?? parent.approvalPolicy,
+    fullHostScope: "leader-and-minions",
+  };
+}
+
+export function approvalPolicyForPermission(
+  mode: NormalizedPermissionMode | undefined,
+): ApprovalPolicy {
+  switch (mode) {
+    case "bypassPermissions": return "never";
+    case "default":
+    case "plan": return "on-request";
+    case "acceptEdits":
+    case "auto":
+    case undefined: return "on-failure";
+  }
+}
+
+/**
+ * Resolve a run policy without ever inferring full-host access. An explicit
+ * provider-neutral policy is authoritative; legacy permission mode is used
+ * only when no policy was supplied.
+ */
+export function resolveHarnessSandboxPolicy(input: {
+  requested?: HarnessSandboxPolicyInput | undefined;
+  permissionMode?: NormalizedPermissionMode | undefined;
+  worktreeScoped: boolean;
+  support?: HarnessSandboxSupport | undefined;
+}): HarnessSandboxResolution {
+  const filesystemScope = input.requested === undefined && input.permissionMode === "plan"
+    ? "read-only"
+    : input.requested?.filesystemScope ?? "workspace-write";
+  const requested: SandboxPolicy = {
+    filesystemScope,
+    approvalPolicy: input.requested?.approvalPolicy
+      ?? approvalPolicyForPermission(input.permissionMode),
+    ...(input.requested?.fullHostScope ? { fullHostScope: input.requested.fullHostScope } : {}),
+  };
+  const unsupported: string[] = [];
+  const support = input.support;
+  const effective: HarnessSandboxResolution["effective"] = {
+    filesystemScope: support?.filesystem.includes(requested.filesystemScope)
+      ? requested.filesystemScope : "unmanaged",
+    approvalPolicy: support?.approval === true ? requested.approvalPolicy : "unmanaged",
+  };
+  if (effective.filesystemScope === "unmanaged") unsupported.push(`filesystem:${requested.filesystemScope}`);
+  if (effective.approvalPolicy === "unmanaged") unsupported.push("approval");
+  return { requested, effective, unsupported };
+}

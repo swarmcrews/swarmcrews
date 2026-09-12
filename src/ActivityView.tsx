@@ -1,0 +1,2119 @@
+import { activeWorkspaceId, GLOBAL_WORKSPACE_ID, readWorkspaces } from "./canvas-zones.ts";
+import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
+import { ChatLinkScope } from "./components/ChatLink.tsx";
+import { AgentMessageText } from "./components/AgentMessageText.tsx";
+import { ActivityLoading, type ActivityLoadingProps } from "./ActivityLoading.tsx";
+import { findUnansweredForms } from "../shared/render-dsl.ts";
+import { CrewIcon } from "./components/CrewIcon.tsx";
+import { ActivityDismissReceipt, useActivityRemovalFocus } from "./ActivityDismissReceipt.tsx";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
+
+import type { CanvasNode, ContextItem } from "./types.ts";
+import type { ProjectSettings } from "./api.ts";
+import type { LeaderData } from "./nodes/leader/types.ts";
+import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
+import {
+  groupSessionsForTriage,
+  isVisibleInActivity,
+  isSessionTitleEcho,
+  compareActivityPriority,
+  type ActivityVisibility,
+  needsAttention,
+  attentionKind,
+  attentionReason,
+  attentionAction,
+  sessionDisplayTitle,
+  sessionRoleLabel,
+  sessionStatusLabel,
+} from "./mobile/mobile-selectors.ts";
+import {
+  canAcknowledge,
+  isDismissed,
+  type LifecycleAction,
+} from "./mobile/mobile-activity-actions.ts";
+import { timeAgo } from "./nodes/leader-message-helpers.ts";
+import { ActivityTranscript } from "./WorkItemTranscript.tsx";
+import { useChatFollow } from "./use-chat-follow.ts";
+import { JumpToLatest } from "./components/JumpToLatest.tsx";
+import {
+  Activity as ActivityIcon,
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  GitCompare,
+  LayoutDashboard,
+  ListX,
+  PanelLeft,
+  Maximize2,
+  MessageSquareText,
+  Monitor,
+  Paperclip,
+  Pause,
+  Plus,
+  RotateCcw,
+  Square,
+  UsersRound,
+  X,
+} from "lucide-react";
+import {
+  SessionChangesPanel,
+  leaderHasReviewableChanges,
+} from "./ChangesView.tsx";
+import { selectCanvasChangeMode } from "./nodes/leader/work-item.ts";
+import type { ActiveMinion, SocketSubscribe, SyncTaskRecord } from "./use-socket.ts";
+import type { WorkItemRunSnapshot, WorkItemSnapshot } from "../shared/work-item-contracts.ts";
+import { DashboardSurface } from "./nodes/render/DashboardSurface.tsx";
+import { FormSubmissionProvider } from "./nodes/render/FormSubmissionProvider.tsx";
+import { LeaderNodeRenderer } from "./nodes/LeaderNode.tsx";
+import { ActivityEmptyState } from "./ActivityEmptyState.tsx";
+import { ActivityOnboarding } from "./ActivityOnboarding.tsx";
+import { ActivitySessionHome } from "./ActivitySessionHome.tsx";
+import { selectRecentAgentWork } from "./activity-recent-work.ts";
+import { randomUuid } from "./random-id.ts";
+import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
+export { lifecycleActionError } from "./use-activity-lifecycle.ts";
+import { activityEntryId, type PromptFailure } from "./use-work-items.ts";
+import {
+  emptySessionStreamState,
+  preserveOptimisticUserMessages,
+} from "./session-stream.ts";
+import { useSessionStream } from "./use-session-stream.ts";
+import { useWorkItemHistory } from "./use-work-item-history.ts";
+import { SessionTranscript } from "./components/SessionTranscript.tsx";
+import { previousPrimaryRuns } from "./work-item-run-history.ts";
+import type { DisplayMessage } from "./sdk-messages.ts";
+import { LeaderTaskGraphBridge } from "./task-graph/LeaderTaskGraphBridge.tsx";
+import { useLeaderTaskGraphController } from "./task-graph/use-leader-task-graph-controller.ts";
+import { usePromptAttachments } from "./nodes/leader/prompt/use-prompt-attachments.ts";
+import { PromptAttachmentList, PromptAttachmentPicker } from "./nodes/leader/prompt/PromptAttachmentControls.tsx";
+import { buildContextUpdateBlock } from "./context-delivery.ts";
+import "./activity.css";
+
+/**
+ * Desktop Activity view — the default landing surface, mirroring the mobile
+ * Activity screen on a wider canvas.
+ *
+ * Left: the live session list, grouped Active → Idle → Stopped (the same
+ * `groupSessionsByActivity` selector mobile uses). Right: a structured
+ * inspector for the selected session showing its metadata, a live transcript,
+ * and the actions to reveal it on the canvas or expand it into the existing
+ * fullscreen cockpit.
+ *
+ * Sessions are matched to their canvas leader node by `sessionKey`; that
+ * mapping is what unlocks the transcript + fullscreen actions for sessions
+ * that live on the canvas. Sessions without a node (e.g. minions, or leaders
+ * not yet placed) still appear and show their activity stream.
+ */
+
+export interface ActivityViewProps extends ActivityLoadingProps {
+  active?: boolean;
+  homeRequest?: number;
+  onDraftPresenceChange?: (present: boolean) => void;
+  /** Initial destination when opening detached work from Canvas. */
+  initialSelectedKey?: string | null;
+  /** Project-owned request state survives switching to Canvas. */
+  lifecycleController?: ReturnType<typeof useActivityLifecycle>;
+  sessions: MobileSessionInfo[];
+  nodes: CanvasNode[];
+  /** Prepare a fresh Leader draft with the same defaults as Canvas. */
+  onLaunchLeader: () => CanvasNode | string | void;
+  /** Add an Activity draft to Canvas once its session has been initiated. */
+  onCommitLaunchLeader: (node: CanvasNode, workspaceId: string) => void;
+  /** Create a workspace and return its ID for the launch destination. */
+  onCreateWorkspace?: ((name: string) => string) | undefined;
+  /** Remove an Activity-created draft when launch is cancelled before start. */
+  onCancelLaunchLeader: (nodeId: string) => void;
+  /** Reveal + center the leader node on the canvas. */
+  onOpenInCanvas: (nodeId: string) => void;
+  /** Reveal on canvas AND open the fullscreen cockpit. */
+  onExpandFullscreen: (nodeId: string, selectedKey: string) => void;
+  /** Stop a running session. */
+  onStopSession: (sessionKey: string) => void;
+  /**
+   * Attach a session that has no canvas node yet (e.g. one launched from the
+   * mobile view) by creating a leader node bound to its sessionKey and
+   * revealing it on the canvas.
+   */
+  onAttachToCanvas: (sessionKey: string) => void;
+  /** Remove every canvas node attached to this session. */
+  onDetachFromCanvas?: (
+    session: Pick<MobileSessionInfo, "sessionKey" | "workItemId">,
+    workItem?: WorkItemSnapshot,
+  ) => void;
+  /** WS send — used by the inline worktree review panel. */
+  socketSend?: ((data: unknown) => void) | undefined;
+  /** WS subscribe — used by the inline worktree review panel. */
+  socketSubscribe?: SocketSubscribe | undefined;
+  /** Workspace identity and source root for the embedded Leader launch. */
+  projectId?: string | undefined; projectPath?: string | undefined;
+  projectSettings?: ProjectSettings | undefined;
+  /** Update a leader node's data (e.g. after a merge is requested). */
+  onUpdateNodeData: (nodeId: string, data: LeaderData) => void;
+  workItemRuns?: Record<string, WorkItemRunSnapshot[]>;
+  runNextCursor?: Record<string, string | null>;
+  onLoadRuns?: (workItemId: string, cursor?: string) => void;
+  /** Canonical prompt path; false preserves input while the item is loading. */
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
+  promptFailures?: Record<string, PromptFailure>;
+  onClearPromptFailure?: (workItemId: string) => void;
+}
+
+interface LeaderNodeRef {
+  nodeId: string;
+  data: LeaderData;
+}
+
+type ActivitySession = MobileSessionInfo & {
+  reviewableChanges?: boolean;
+  lifecyclePending?: boolean;
+};
+
+type ActivitySummaryFilter = "needs-you" | "working" | "ready";
+type InspectorActionRequest = { entryId: string; action: string };
+
+type InspectorSideTab = "dashboard" | "graph" | "minions" | "details";
+
+const ACTIVITY_OPTIMISTIC_USER_PREFIX = "activity-optimistic-user-";
+
+function isAgentResponse(message: DisplayMessage): boolean {
+  return message.role === "assistant" || message.role === "thinking"
+    || message.role === "tool" || message.role === "result";
+}
+
+/** Replace an Activity-local user bubble once its durable server echo arrives. */
+function collapseActivityOptimisticEchoes(messages: readonly DisplayMessage[]): DisplayMessage[] {
+  const matchedOptimistic = new Set<number>();
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i];
+    if (!message || message.role !== "user"
+      || message.id.startsWith(ACTIVITY_OPTIMISTIC_USER_PREFIX)) continue;
+    for (let j = i - 1; j >= 0; j -= 1) {
+      const candidate = messages[j];
+      if (!candidate || isAgentResponse(candidate)) break;
+      if (candidate.role === "user"
+        && candidate.id.startsWith(ACTIVITY_OPTIMISTIC_USER_PREFIX)
+        && candidate.content === message.content
+        && !matchedOptimistic.has(j)) {
+        matchedOptimistic.add(j);
+        break;
+      }
+    }
+  }
+  return matchedOptimistic.size === 0
+    ? [...messages]
+    : messages.filter((_, index) => !matchedOptimistic.has(index));
+}
+
+function matchesSummaryFilter(
+  session: ActivitySession,
+  filter: ActivitySummaryFilter,
+): boolean {
+  switch (filter) {
+    case "needs-you":
+      return needsAttention(session);
+    case "working":
+      return !needsAttention(session) && (session.status === "running" || session.status === "creating");
+    case "ready":
+      return !needsAttention(session) && (session.status === "idle" || session.status === "inactive");
+  }
+}
+
+function formatCost(cost: number | undefined): string {
+  if (cost == null || !Number.isFinite(cost)) return "Not reported";
+  if (cost > 0 && cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+/** Build a sessionKey → leader-node lookup so cards can offer node actions. */
+function buildLeaderNodeIndex(nodes: CanvasNode[]): Map<string, LeaderNodeRef> {
+  const index = new Map<string, LeaderNodeRef>();
+  for (const node of nodes) {
+    if (node.type !== "leader") continue;
+    const data = node.data as LeaderData;
+    if (data.sessionKey) {
+      index.set(data.sessionKey, { nodeId: node.id, data });
+    }
+  }
+  return index;
+}
+
+function StatusPill({ status }: { status: string }) {
+  return <span className={`act-pill act-pill--${status}`}>{sessionStatusLabel(status)}</span>;
+}
+
+function isRetainedInactive(session: MobileSessionInfo): boolean {
+  return session.status === "inactive"
+    && session.reviewLifecycle?.reviewState === "interrupted_to_review"
+    && session.reviewLifecycle.acknowledgedAt == null
+    && session.reviewLifecycle.dismissedAt == null;
+}
+
+/** A checkbox that toggles a session's membership in the bulk-selection set. */
+function SelectBox({
+  checked,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="act-select" onClick={(event) => event.stopPropagation()}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        aria-label={`Select ${label}`}
+      />
+    </label>
+  );
+}
+
+/**
+ * The immediate review/dismiss controls shared by every list row and card, so
+ * a session can be resolved without opening the inspector. Buttons are rendered
+ * only when the lifecycle transition applies to the session's current state.
+ */
+function LifecycleActions({
+  session,
+  onAction,
+  className,
+}: {
+  session: ActivitySession;
+  onAction: (action: LifecycleAction, session: ActivitySession) => void;
+  className?: string;
+}) {
+  const dismissed = isDismissed(session);
+  const retainedInactive = isRetainedInactive(session);
+  const act = (action: LifecycleAction) => (event: MouseEvent) => {
+    event.stopPropagation();
+    onAction(action, session);
+  };
+  return (
+    <span
+      className={className ?? "act-life-actions"}
+      role="group"
+      aria-label={`${sessionDisplayTitle(session)} actions`}
+    >
+      {canAcknowledge(session) && (
+        <button
+          className="act-icon-action act-icon-action--review"
+          type="button"
+          disabled={session.lifecyclePending}
+          onClick={act("acknowledge")}
+          aria-label={retainedInactive ? "Review" : "Mark reviewed"}
+          title={retainedInactive ? "Review and keep in Activity" : "Mark reviewed"}
+        >
+          <Check size={14} strokeWidth={2.5} aria-hidden />
+        </button>
+      )}
+      {dismissed ? (
+        <button
+          className="act-icon-action"
+          type="button"
+          disabled={session.lifecyclePending}
+          onClick={act("reopen")}
+          aria-label="Restore"
+          title="Restore"
+        >
+          <RotateCcw size={13} strokeWidth={2.25} aria-hidden />
+        </button>
+      ) : (
+        <button
+          className="act-icon-action act-icon-action--dismiss"
+          type="button"
+          disabled={session.lifecyclePending}
+          onClick={act("dismiss")}
+          aria-label={retainedInactive ? "Review and remove from Activity" : "Dismiss"}
+          title={retainedInactive
+            ? "Review, remove from Activity, and detach from Canvas"
+            : "Dismiss"}
+        >
+          {retainedInactive
+            ? <ListX size={14} strokeWidth={2.25} aria-hidden />
+            : <X size={14} strokeWidth={2.25} aria-hidden />}
+        </button>
+      )}
+    </span>
+  );
+}
+
+function SessionTriageRow({
+  session,
+  selected,
+  checked,
+  onSelect,
+  onOpenAction,
+  onToggleSelect,
+  onAction,
+}: {
+  session: ActivitySession;
+  selected: boolean;
+  checked: boolean;
+  onSelect: () => void;
+  onOpenAction: () => void;
+  onToggleSelect: () => void;
+  onAction: (action: LifecycleAction, session: ActivitySession) => void;
+}) {
+  const kind = attentionKind(session);
+  const retainedInactive = isRetainedInactive(session);
+  const classes = [
+    "act-triage-row",
+    `act-triage-row--${kind}`,
+    selected && "act-triage-row--selected",
+    checked && "act-triage-row--checked",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={classes}>
+      <SelectBox
+        checked={checked}
+        label={sessionDisplayTitle(session)}
+        onToggle={onToggleSelect}
+      />
+      <button
+        className="act-triage-main"
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+      >
+        <span className="act-triage-body">
+          <span className="act-triage-line">
+            <span className="act-triage-title" title={sessionDisplayTitle(session)}>{sessionDisplayTitle(session)}</span>
+            {session.lastActivityAt != null && <span className="act-card-time" title={`Updated ${timeAgo(session.lastActivityAt)}`}>{timeAgo(session.lastActivityAt)}</span>}
+          </span>
+          <span className="act-triage-sub">
+            <span className={`act-triage-reason act-triage-reason--${kind}`}>
+              {attentionReason(session)}
+            </span>
+            {session.lastActivity?.trim() && !isSessionTitleEcho(session, session.lastActivity) && (
+              <>
+                <span className="act-card-separator" aria-hidden>·</span>
+                <span className="act-card-activity" title={session.lastActivity}>{session.lastActivity}</span>
+              </>
+            )}
+          </span>
+        </span>
+      </button>
+      <span className="act-triage-actions">
+        {!retainedInactive && (
+          <button
+            className="act-mini-btn act-mini-btn--primary act-mini-btn--open"
+            type="button"
+            onClick={onOpenAction}
+          >
+            {attentionAction(session)}
+          </button>
+        )}
+        <LifecycleActions session={session} onAction={onAction} />
+      </span>
+    </div>
+  );
+}
+
+function SessionCard({
+  session,
+  selected,
+  checked,
+  hasChanges,
+  onSelect,
+  onToggleSelect,
+  onAction,
+}: {
+  session: ActivitySession;
+  selected: boolean;
+  checked: boolean;
+  hasChanges: boolean;
+  onSelect: () => void;
+  onToggleSelect: () => void;
+  onAction: (action: LifecycleAction, session: ActivitySession) => void;
+}) {
+  const tone = session.status === "running" || session.status === "creating"
+    ? "running"
+    : session.status === "completed"
+      ? "completed"
+    : session.status === "idle" || session.status === "inactive"
+      ? "idle"
+      : "other";
+  const stateLabel = sessionStatusLabel(session.status);
+  const reportedActivity = session.lastActivity?.trim();
+  const genericActivity = reportedActivity && new Set([
+    "active",
+    "idle",
+    "inactive",
+    "running",
+    "working",
+  ]).has(reportedActivity.toLocaleLowerCase());
+  const activitySummary = !genericActivity && reportedActivity
+    && !isSessionTitleEcho(session, reportedActivity)
+    ? reportedActivity
+    : null;
+  const activityTime = session.lastActivityAt
+    ? `${tone === "idle" ? "Last active" : "Updated"} ${timeAgo(session.lastActivityAt)}`
+    : tone === "running"
+      ? "Live now"
+      : tone === "idle"
+        ? "No recent activity"
+        : "No update time";
+  const classes = [
+    "act-card",
+    `act-card--${tone}`,
+    selected && "act-card--selected",
+    checked && "act-card--checked",
+    needsAttention(session) && "act-card--attention",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={classes}>
+      <SelectBox
+        checked={checked}
+        label={sessionDisplayTitle(session)}
+        onToggle={onToggleSelect}
+      />
+      <button className="act-card-main" type="button" onClick={onSelect} aria-pressed={selected}>
+        <span className="act-card-top">
+          <span className="act-card-title" title={sessionDisplayTitle(session)}>{sessionDisplayTitle(session)}</span>
+          <span className="act-card-time" title={activityTime} aria-label={activityTime}>
+            {session.lastActivityAt ? timeAgo(session.lastActivityAt) : "—"}
+          </span>
+        </span>
+        <span className="act-card-context">
+          <span className="act-card-state">
+            <span className="act-card-state-dot" aria-hidden />
+            <span>{stateLabel}</span>
+          </span>
+          {(activitySummary || hasChanges) && <>
+            <span className="act-card-separator" aria-hidden>·</span>
+            <span className="act-card-activity" title={activitySummary ?? "Changes ready to review"}>
+              {activitySummary ?? "Changes ready to review"}
+            </span>
+          </>}
+        </span>
+      </button>
+      <LifecycleActions session={session} onAction={onAction} className="act-card-actions" />
+    </div>
+  );
+}
+
+function initialInspectorSideTab(
+  session: MobileSessionInfo,
+  minionCount: number,
+): InspectorSideTab {
+  if (session.renderState && session.renderState.components.length > 0) return "dashboard";
+  if (session.role === "leader" && minionCount > 0) return "minions";
+  return "details";
+}
+
+function minionRosterFromPlan(tasks: ReadonlyArray<SyncTaskRecord>): ActiveMinion[] {
+  return tasks
+    .filter((task) => task.executor === "minion")
+    .map((task) => ({
+      taskId: task.taskId,
+      title: task.title,
+      status: task.status,
+      sessionKey: task.minionSessionKey,
+    }));
+}
+
+/**
+ * Keep Activity's roster identical to the minion list rendered by the matching
+ * canvas leader. Session snapshots remain the fallback for leaders that are
+ * not attached to this canvas.
+ */
+export function selectActivityMinions(
+  session: MobileSessionInfo,
+  canvasTaskPlan?: ReadonlyArray<SyncTaskRecord>,
+): ActiveMinion[] {
+  if (session.role !== "leader") return [];
+  if (canvasTaskPlan !== undefined) return minionRosterFromPlan(canvasTaskPlan);
+  if (session.taskPlan !== undefined) return minionRosterFromPlan(session.taskPlan);
+  return session.activeMinions ?? [];
+}
+
+function minionStatusTone(
+  status: string,
+): "running" | "blocked" | "planned" | "completed" | "idle" {
+  if (status === "running" || status === "starting") return "running";
+  if (status === "blocked") return "blocked";
+  if (status === "planned") return "planned";
+  if (status === "completed") return "completed";
+  return "idle";
+}
+
+function readableStatus(status: string): string {
+  return status.replace(/[-_]/g, " ");
+}
+
+function Inspector({
+  session,
+  actionRequest,
+  leader,
+  onClose,
+  activityCollapsed,
+  onToggleActivity,
+  onOpenInCanvas,
+  onExpandFullscreen,
+  onStopSession,
+  onAttachToCanvas,
+  socketSend,
+  socketSubscribe,
+  onUpdateNodeData,
+  onAcknowledge,
+  onDismiss,
+  onReopen,
+  onPromptWorkItem,
+  promptFailure,
+  onClearPromptFailure,
+  runs = [], runNextCursor, onLoadRuns,
+}: {
+  session: ActivitySession;
+  actionRequest: InspectorActionRequest | null;
+  leader: LeaderNodeRef | undefined;
+  onClose: () => void;
+  activityCollapsed: boolean;
+  onToggleActivity: () => void;
+  onOpenInCanvas: (nodeId: string) => void;
+  onExpandFullscreen: (nodeId: string) => void;
+  onStopSession: (sessionKey: string) => void;
+  onAttachToCanvas: (sessionKey: string) => void;
+  socketSend?: ((data: unknown) => void) | undefined;
+  socketSubscribe?: SocketSubscribe | undefined;
+  onUpdateNodeData: (nodeId: string, data: LeaderData) => void;
+  onAcknowledge: () => void;
+  onDismiss: () => void;
+  onReopen: () => void;
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
+  promptFailure?: PromptFailure;
+  onClearPromptFailure?: () => void;
+  runs?: WorkItemRunSnapshot[];
+  runNextCursor?: string | null;
+  onLoadRuns?: (cursor?: string) => void;
+}) {
+  const isRunning = session.status === "running" || session.status === "creating";
+  const showChanges = !!leader && !!leader.data.sessionKey
+    && (leaderHasReviewableChanges(leader.data) || selectCanvasChangeMode(leader.data) === "live");
+  const minions = selectActivityMinions(session, leader?.data.taskPlan);
+  const taskGraphController = useLeaderTaskGraphController({
+    workItemId: session.workItemId ?? null,
+    socketSend,
+    socketSubscribe,
+  });
+  const graphAvailable = Boolean(
+    taskGraphController.snapshot || taskGraphController.planSnapshot,
+  );
+  const [reply, setReply] = useState("");
+  const promptAttachments = usePromptAttachments();
+  const [compactPane, setCompactPane] = useState<"conversation" | "context">("conversation");
+  const conversationToggle = useRef<HTMLButtonElement>(null);
+  const [conversation, setConversation] = useState(
+    () => emptySessionStreamState(session.sessionKey),
+  );
+  const [awaitingResponse, setAwaitingResponse] = useState<{
+    baselineResponseIds: Set<string>;
+  } | null>(null);
+  const [activeSideTab, setActiveSideTab] = useState<InspectorSideTab>(
+    () => initialInspectorSideTab(session, minions.length),
+  );
+  const inspectorRef = useRef<HTMLElement>(null);
+  const pendingForms = findUnansweredForms(session.renderState?.components ?? []);
+  const [previewRunKey, setPreviewRunKey] = useState<string | null>(null);
+  useEffect(() => {
+    setActiveSideTab(initialInspectorSideTab(session, minions.length));
+    setPreviewRunKey(null);
+    setCompactPane("conversation");
+  }, [session.sessionKey]);
+  useEffect(() => {
+    setConversation(emptySessionStreamState(session.sessionKey));
+    setAwaitingResponse(null);
+  }, [session.sessionKey]);
+  useSessionStream({
+    socketSend: session.sessionKey.startsWith("work-item:") ? undefined : socketSend,
+    socketSubscribe,
+    state: conversation.sessionKey === session.sessionKey
+      ? conversation : emptySessionStreamState(session.sessionKey),
+    onChange: (next) => setConversation((current) => ({
+      ...next,
+      messages: preserveOptimisticUserMessages(current.messages, next.messages),
+    })),
+    // Match LeaderNode's event IDs so preserved canvas user turns can anchor
+    // to their preceding responses when the Activity feed is rebuilt.
+    prefix: "lm",
+  });
+  useEffect(() => {
+    if (promptFailure) {
+      setReply(promptFailure.prompt);
+      if (promptFailure.contextItems) promptAttachments.restore(promptFailure.contextItems);
+      setAwaitingResponse(null);
+    }
+  }, [promptFailure]);
+
+  const hasDashboard = Boolean(
+    session.renderState && session.renderState.components.length > 0,
+  );
+  // New context becomes available without moving the user's current reading position.
+  useEffect(() => {
+    if ((activeSideTab === "dashboard" && !hasDashboard)
+      || (activeSideTab === "graph" && !graphAvailable)
+      || (activeSideTab === "minions" && minions.length === 0)) {
+      setActiveSideTab("details");
+    }
+  }, [activeSideTab, hasDashboard, graphAvailable, minions.length]);
+
+  useEffect(() => {
+    if (!actionRequest || actionRequest.entryId !== activityEntryId(session)) return;
+    const action = actionRequest.action;
+    const target = action === "Reply"
+      ? (pendingForms.length ? "decision" : "reply")
+      : action === "Read" && session.reviewLifecycle?.finalReport ? "report"
+      : action === "Review" && showChanges ? "changes" : "conversation";
+    setCompactPane(target === "reply" || target === "conversation" ? "conversation" : "context");
+    if (target !== "reply" && target !== "conversation") setActiveSideTab("details");
+    const frame = requestAnimationFrame(() => {
+      const section = inspectorRef.current?.querySelector<HTMLElement>(`[data-activity-target="${target}"]`);
+      if (target !== "conversation") section?.scrollIntoView?.({ block: "start" });
+      const control = target === "decision"
+        ? section?.querySelector('.dashboard-questions')?.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])')
+        : null;
+      (control ?? section)?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+    // A request is an explicit click, including repeated clicks on the same action.
+    // Live session updates must not steal focus or scroll the user's reading position.
+  }, [actionRequest]);
+  const conversationMatches = conversation.sessionKey === session.sessionKey;
+  const rawTranscriptMessages = conversationMatches && conversation.messages.length > 0
+    ? preserveOptimisticUserMessages(leader?.data.messages ?? [], conversation.messages)
+    : leader?.data.messages ?? [];
+  const transcriptMessages = collapseActivityOptimisticEchoes(rawTranscriptMessages);
+  const streamingText = conversationMatches && conversation.streamingText
+    ? conversation.streamingText
+    : leader?.data.streamingText ?? "";
+  const chatFollow = useChatFollow(session.sessionKey, streamingText || transcriptMessages.at(-1));
+  useEffect(() => {
+    if (!awaitingResponse) return;
+    const hasNewResponse = transcriptMessages.some((message) =>
+      isAgentResponse(message) && !awaitingResponse.baselineResponseIds.has(message.id));
+    const responseFailed = conversationMatches && conversation.status === "error";
+    if (streamingText || hasNewResponse || responseFailed) {
+      setAwaitingResponse(null);
+    }
+  }, [awaitingResponse, conversation.status, conversationMatches, streamingText, transcriptMessages]);
+
+  const markPromptSubmitted = (prompt: string) => {
+    const optimisticMessage: DisplayMessage = {
+      id: `activity-optimistic-user-${randomUuid()}`,
+      role: "user",
+      content: prompt,
+      timestamp: Date.now(),
+    };
+    setAwaitingResponse({
+      baselineResponseIds: new Set(
+        transcriptMessages.filter(isAgentResponse).map((message) => message.id),
+      ),
+    });
+    setConversation((current) => ({
+      ...current,
+      sessionKey: session.sessionKey,
+      status: "running",
+      messages: [...transcriptMessages, optimisticMessage],
+    }));
+    setReply("");
+    promptAttachments.remove(promptAttachments.drafts.map(draft => draft.id));
+  };
+
+  const submitReply = () => {
+    const displayPrompt = reply.trim() || (promptAttachments.items.length ? "Use the attached context." : "");
+    const contextItems = promptAttachments.items;
+    // Only canonical entries carry the work item's revision counter; a session
+    // that merely references a work item must use the session envelope or the
+    // server rejects the mutation as a stale work-item lifecycle.
+    const canonical = Boolean(session.workItemId && session.canonicalWorkItem);
+    const blockedCanonicalWait = Boolean(canonical && session.status === "waiting"
+      && session.reviewLifecycle?.reviewState !== "decision_needed");
+    if (!displayPrompt || !socketSend || blockedCanonicalWait || !promptAttachments.canSubmit()) return;
+    if (canonical && session.workItemId && onPromptWorkItem) {
+      const accepted = contextItems.length
+        ? onPromptWorkItem(session.workItemId, displayPrompt, contextItems)
+        : onPromptWorkItem(session.workItemId, displayPrompt);
+      if (accepted !== false) markPromptSubmitted(displayPrompt);
+      return;
+    }
+    const prompt = [buildContextUpdateBlock(contextItems.map(item => ({ ...item, kind: "add" as const }))),
+      displayPrompt].filter(Boolean).join("\n\n");
+    const attachments = contextItems.flatMap(item => item.attachments ?? []);
+    socketSend(canonical ? {
+      type: "continue_work_item",
+      requestId: randomUuid(), workItemId: session.workItemId, prompt, displayPrompt,
+      ...(attachments.length ? { attachments } : {}),
+      expectedLifecycleRevision: session.reviewLifecycle?.lifecycleRevision ?? 0,
+      expectedCurrentRunKey: session.sessionKey.startsWith("work-item:") ? null : session.sessionKey,
+    } : { type: "send_message", sessionKey: session.sessionKey, prompt, displayPrompt,
+      ...(attachments.length ? { attachments } : {}) });
+    markPromptSubmitted(displayPrompt);
+  };
+  const workItemHistory = useWorkItemHistory({
+    workItemId: session.workItemId,
+    runs,
+    runNextCursor,
+    ...(onLoadRuns ? { onLoadRuns } : {}),
+    ...(socketSend ? { socketSend } : {}), ...(socketSubscribe ? { socketSubscribe } : {}),
+  });
+  const historicalRuns = useMemo(
+    () => previousPrimaryRuns(workItemHistory.orderedRuns, session.sessionKey),
+    [session.sessionKey, workItemHistory.orderedRuns],
+  );
+  const previewRun = historicalRuns.find((run) => run.runKey === previewRunKey) ?? null;
+  const previewStream = previewRun ? workItemHistory.streams[previewRun.runKey] : undefined;
+  useEffect(() => {
+    if (previewRunKey && !historicalRuns.some((run) => run.runKey === previewRunKey)) {
+      setPreviewRunKey(null);
+    }
+  }, [historicalRuns, previewRunKey]);
+  const isSyntheticWorkItem = session.sessionKey.startsWith("work-item:");
+  const sideTabs: Array<{
+    id: InspectorSideTab;
+    label: string;
+    icon: typeof ActivityIcon;
+  }> = [
+    ...(hasDashboard ? [{
+      id: "dashboard" as const,
+      label: "Dashboard",
+      icon: LayoutDashboard,
+    }] : []),
+    ...(graphAvailable ? [{
+      id: "graph" as const,
+      label: "Graph",
+      icon: CrewIcon,
+    }] : []),
+    ...(minions.length > 0 ? [{
+      id: "minions" as const,
+      label: "Minions",
+      icon: UsersRound,
+    }] : []),
+    {
+      id: "details",
+      label: "Session details",
+      icon: ActivityIcon,
+    },
+  ];
+  const chooseSideTab = (tab: InspectorSideTab) => {
+    setActiveSideTab(tab);
+  };
+  const handleSideTabKeyDown = (
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentTab: InspectorSideTab,
+  ) => {
+    const currentIndex = sideTabs.findIndex((tab) => tab.id === currentTab);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % sideTabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + sideTabs.length) % sideTabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = sideTabs.length - 1;
+    if (nextIndex == null) return;
+    event.preventDefault();
+    const nextTab = sideTabs[nextIndex]!.id;
+    chooseSideTab(nextTab);
+    requestAnimationFrame(() => {
+      document.getElementById(`act-context-tab-${nextTab}`)?.focus();
+    });
+  };
+
+  return (
+    <ChatLinkScope project={session.projectId} cwd={session.cwd}>
+    <aside ref={inspectorRef} className="act-inspector" aria-label="Session details" data-compact-pane={compactPane}>
+      <header className="act-inspector-topbar">
+        <div className="act-inspector-identity">
+          <button
+            className="act-inspector-back"
+            type="button"
+            onClick={onClose}
+            aria-label="Back to activity"
+          >
+            <ArrowLeft size={17} aria-hidden />
+          </button>
+          <span className="act-inspector-avatar" aria-hidden>
+            <ActivityIcon size={16} strokeWidth={2.2} />
+          </span>
+          <div>
+            <div className="act-inspector-meta">
+              <span className="act-inspector-kicker">{sessionRoleLabel(session)} session</span>
+              <StatusPill status={session.status} />
+            </div>
+            <h2 tabIndex={-1}>{sessionDisplayTitle(session)}</h2>
+          </div>
+        </div>
+        <div className="act-inspector-topactions">
+          {activityCollapsed && <button
+            className="act-toolbar-btn act-activity-toggle"
+            type="button"
+            aria-label={activityCollapsed ? "Show activity list" : "Hide activity list"}
+            aria-expanded={!activityCollapsed}
+            aria-controls="activity-session-list"
+            onClick={onToggleActivity}
+            title={activityCollapsed ? "Show activity list" : "Hide activity list"}
+          >
+            <PanelLeft size={14} aria-hidden />
+            <span>Activity</span>
+          </button>}
+          {leader ? (
+            <>
+              <button
+                className="act-toolbar-btn"
+                type="button"
+                onClick={() => onOpenInCanvas(leader.nodeId)}
+                aria-label="Open in Canvas"
+              >
+                <Monitor size={14} aria-hidden />
+                <span>Open in Canvas</span>
+              </button>
+              <button
+                className="act-toolbar-btn"
+                type="button"
+                onClick={() => onExpandFullscreen(leader.nodeId)}
+                aria-label="Expand fullscreen"
+              >
+                <Maximize2 size={14} aria-hidden />
+                <span>Expand fullscreen</span>
+              </button>
+            </>
+          ) : (
+            <button
+              className="act-toolbar-btn"
+              type="button"
+              onClick={() => onAttachToCanvas(session.sessionKey)}
+              aria-label="Add to canvas"
+            >
+              <Paperclip size={14} aria-hidden />
+              <span>Add to canvas</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div className="act-compact-navigation" role="group" aria-label="Session view">
+        <button ref={conversationToggle} type="button" aria-pressed={compactPane === "conversation"}
+          onClick={() => setCompactPane("conversation")}>Conversation</button>
+        <button type="button" aria-pressed={compactPane === "context"}
+          onClick={() => setCompactPane("context")}>
+          Context{needsAttention(session) && <span className="act-compact-attention">Needs you</span>}
+        </button>
+      </div>
+
+      <div className="act-inspector-layout">
+        <main className="act-conversation-pane" aria-label="Conversation">
+          {session.reviewLifecycle && session.reviewLifecycle.reviewState !== "none" &&
+            session.reviewLifecycle.acknowledgedAt == null && (
+              <div className={`act-review-banner act-review-banner--${attentionKind(session)}`}>
+                <span className="act-review-banner-icon" aria-hidden>
+                  {attentionKind(session) === "inactive"
+                    ? <Pause size={15} />
+                    : attentionKind(session) === "error"
+                      ? "!"
+                      : attentionKind(session) === "waiting"
+                        ? "?"
+                        : <GitCompare size={15} />}
+                </span>
+                <span>
+                  <strong>{attentionReason(session)}</strong>
+                  <small>
+                    {isRetainedInactive(session)
+                      ? "Review keeps this work in Activity. Review & remove clears it from Activity and detaches it from Canvas."
+                      : session.reviewLifecycle.reviewReason}
+                  </small>
+                </span>
+              </div>
+            )}
+          <div className="act-conversation-scroll" ref={chatFollow.feedRef} onScroll={chatFollow.onScroll}
+            tabIndex={0} role="region" aria-label="Conversation messages">
+            <section ref={chatFollow.contentRef} className="act-conversation" aria-label="Conversation history" data-activity-target="conversation" tabIndex={-1}>
+              {transcriptMessages.length > 0 || streamingText || workItemHistory.orderedRuns.length > 0 ? (
+                <ActivityTranscript unified={Boolean(session.workItemId)} history={workItemHistory}
+                  graphNodes={taskGraphController.snapshot?.nodes}
+                  taskPlan={leader?.data.taskPlan}
+                  onInspectNode={(nodeId) => {
+                    setActiveSideTab("graph");
+                    setCompactPane("context");
+                    taskGraphController.inspectNode(nodeId);
+                  }}
+                  currentRunKey={session.sessionKey} currentMessages={transcriptMessages}
+                  currentStreamingText={streamingText} thinking={Boolean(awaitingResponse)} />
+              ) : (
+                <div className="act-inspector-fallback">
+                  <span className="act-fallback-icon" aria-hidden>
+                    <MessageSquareText size={18} />
+                  </span>
+                  <h4>{isSyntheticWorkItem ? "No session run yet" : "No conversation yet"}</h4>
+                  <p>
+                    {isSyntheticWorkItem
+                      ? "Send a message below to start this work item’s first session."
+                      : "Messages from this session will appear here as soon as they are available."}
+                  </p>
+                  {session.lastActivity && (
+                    <p className="act-inspector-lastactivity">{session.lastActivity}</p>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+          {!chatFollow.isFollowing && <JumpToLatest onClick={chatFollow.resume} hasNewActivity={chatFollow.hasNewActivity} />}
+          {promptFailure && (
+            <div className="act-action-error" role="alert">
+              <span>{promptFailure.error}</span>
+              <button className="act-icon-btn" type="button" onClick={onClearPromptFailure}
+                aria-label="Dismiss prompt error">×</button>
+            </div>
+          )}
+          <div className="act-composer">
+            <div className="act-composer-inner">
+              <PromptAttachmentList attachments={promptAttachments} />
+              <textarea
+                rows={3}
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                onPaste={promptAttachments.onPaste}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    submitReply();
+                  }
+                }}
+                data-activity-target="reply"
+                placeholder="Reply or steer this agent…"
+                aria-label="Reply or steer this agent"
+              />
+              <div className="act-composer-actions">
+                <PromptAttachmentPicker attachments={promptAttachments} />
+                <button type="button" onClick={submitReply}
+                  disabled={(!reply.trim() && !promptAttachments.items.length) || promptAttachments.blocked || !socketSend
+                    || Boolean(session.workItemId && session.status === "waiting"
+                      && session.reviewLifecycle?.reviewState !== "decision_needed")}>
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <section className="act-context-panel" aria-label="Leader context"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.defaultPrevented && conversationToggle.current?.offsetParent) {
+              event.stopPropagation();
+              setCompactPane("conversation");
+              conversationToggle.current.focus();
+            }
+          }}>
+          <div className="act-context-tabs" role="tablist" aria-label="Leader context views">
+            {sideTabs.map((tab) => {
+              const Icon = tab.icon;
+              const selected = activeSideTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  id={`act-context-tab-${tab.id}`}
+                  className="act-context-tab"
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  aria-controls="act-context-tabpanel"
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => chooseSideTab(tab.id)}
+                  onKeyDown={(event) => handleSideTabKeyDown(event, tab.id)}
+                >
+                  <Icon size={14} aria-hidden />
+                  <span>{tab.label}</span>
+                  {tab.id === "minions" && minions.length > 0 && (
+                    <small>{minions.length}</small>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            id="act-context-tabpanel"
+            className="act-context-scroll"
+            role="tabpanel"
+            aria-labelledby={`act-context-tab-${activeSideTab}`}
+          >
+            {activeSideTab === "dashboard" && (
+              <section className="act-side-stack" aria-label="Leader dashboard">
+                {hasDashboard && session.renderState ? (
+                  <div className="act-dashboard-frame">
+                    <FormSubmissionProvider key={session.sessionKey} sessionKey={session.sessionKey}
+                      socketSend={socketSend} socketSubscribe={socketSubscribe}>
+                    <DashboardSurface
+                      scrollWithin={false}
+                      renderState={session.renderState}
+                      onSubmitForm={(formComponentId, formAnswers) => socketSend?.({
+                        type: "submit_form",
+                        sessionKey: session.sessionKey,
+                        formComponentId,
+                        formAnswers,
+                      })}
+                    />
+                    </FormSubmissionProvider>
+                  </div>
+                ) : (
+                  <div className="act-side-empty">
+                    <LayoutDashboard size={19} aria-hidden />
+                    <strong>No dashboard published</strong>
+                    <p>Structured progress updates will appear here without hiding the conversation.</p>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeSideTab === "graph" && graphAvailable && (
+              <section className="act-side-stack" aria-label="Leader task graph">
+                <header className="act-side-heading">
+                  <span>Execution graph</span>
+                  <h3>Plan and progress</h3>
+                  <p>Inspect the server-authoritative graph this leader constructed.</p>
+                </header>
+                <LeaderTaskGraphBridge
+                  controller={taskGraphController}
+                  goal={session.taskName ?? leader?.data.taskName ?? null}
+                  plan={leader?.data.taskPlan ?? []}
+                />
+              </section>
+            )}
+
+            {activeSideTab === "minions" && (
+              <section className="act-side-stack" aria-label="Minion roster">
+                <header className="act-side-heading">
+                  <span>Delegated work</span>
+                  <h3>Minions</h3>
+                  <p>Follow the supporting agents this leader is coordinating.</p>
+                </header>
+                {minions.length > 0 ? (
+                  <div className="act-minion-list">
+                    {minions.map((minion) => {
+                      const tone = minionStatusTone(minion.status);
+                      return (
+                        <article
+                          className="act-minion-row"
+                          data-tone={tone}
+                          key={minion.sessionKey ?? minion.taskId}
+                        >
+                          <span className="act-minion-dot" aria-hidden />
+                          <div>
+                            <strong>{minion.title || minion.taskId}</strong>
+                            <small>{minion.taskId}</small>
+                          </div>
+                          <span className="act-minion-status">{readableStatus(minion.status)}</span>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="act-side-empty">
+                    <UsersRound size={19} aria-hidden />
+                    <strong>No minions yet</strong>
+                    <p>Delegated tasks will appear here as soon as this leader assigns them.</p>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeSideTab === "details" && (
+              <section className="act-side-stack" aria-label="Session details panel">
+                <header className="act-side-heading">
+                  <span>Session details</span>
+                  <h3>Context and output</h3>
+                  <p>Decisions, results, and work ready to review.</p>
+                </header>
+                {pendingForms.length > 0 && (
+                  <section className="act-content-card act-decision-card" data-activity-target="decision" tabIndex={-1} aria-label="Decision needed">
+                    <FormSubmissionProvider key={session.sessionKey} sessionKey={session.sessionKey}
+                      socketSend={socketSend} socketSubscribe={socketSubscribe}>
+                      <DashboardSurface hideHeader scrollWithin={false} renderState={{
+                        layout: { columns: 1 }, components: pendingForms,
+                      }} />
+                    </FormSubmissionProvider>
+                  </section>
+                )}
+                {showChanges && leader && (
+                  <article className="act-content-card" data-activity-target="changes" tabIndex={-1} aria-label={selectCanvasChangeMode(leader.data) === "live" ? "Workspace changes" : "Changes"}>
+                    <header className="act-content-card__head">
+                      <GitCompare size={16} aria-hidden />
+                      <div>
+                        <h4>{selectCanvasChangeMode(leader.data) === "live" ? "Workspace changes" : "Changes"}</h4>
+                        <p>{selectCanvasChangeMode(leader.data) === "live"
+                          ? "Current edits in the shared workspace."
+                          : "Review the leader’s working tree and integration options."}</p>
+                      </div>
+                    </header>
+                    <div className="act-content-card__body">
+                      <SessionChangesPanel
+                        nodeId={leader.nodeId}
+                        sessionKey={session.sessionKey}
+                        data={leader.data}
+                        socketSend={socketSend}
+                        socketSubscribe={socketSubscribe}
+                        onUpdateNodeData={onUpdateNodeData}
+                        onOpenInCanvas={onOpenInCanvas}
+                      />
+                    </div>
+                  </article>
+                )}
+                {session.reviewLifecycle?.finalReport && (
+                  <article className="act-content-card act-content-card--report" data-activity-target="report" tabIndex={-1} aria-label="Final report">
+                    <header className="act-content-card__head">
+                      <FileText size={16} aria-hidden />
+                      <div>
+                        <h4>Final report</h4>
+                        <p>The leader’s completed handoff and verification summary.</p>
+                      </div>
+                    </header>
+                    <div className="act-final-report"><AgentMessageText text={session.reviewLifecycle.finalReport} /></div>
+                  </article>
+                )}
+
+                {session.lastActivity && !isSessionTitleEcho(session, session.lastActivity) && <article className="act-content-card">
+                  <header className="act-content-card__head">
+                    <div>
+                      <h4>Latest activity</h4>
+                      <p>{session.lastActivityAt
+                        ? `Updated ${timeAgo(session.lastActivityAt)}`
+                        : "No timestamp was reported for this session."}</p>
+                    </div>
+                  </header>
+                  <div className="act-latest-activity">
+                    {session.lastActivity || "This leader has not published an activity summary yet."}
+                  </div>
+                </article>}
+                <details className="act-content-card act-session-metadata">
+                  <summary className="act-content-card__head">Session information<ChevronRight size={15} aria-hidden /></summary>
+                  <dl className="act-detail-list">
+                    <div><dt>Status</dt><dd><StatusPill status={session.status} /></dd></div>
+                    <div><dt>Role</dt><dd>{sessionRoleLabel(session)}</dd></div>
+                    <div><dt>Model</dt><dd>{session.model ?? "Not reported"}</dd></div>
+                    <div><dt>Harness</dt><dd>{session.harness ?? "Not reported"}</dd></div>
+                    <div><dt>Turns</dt><dd>{session.turns ?? "Not reported"}</dd></div>
+                    <div><dt>Total cost</dt><dd>{formatCost(session.totalCost)}</dd></div>
+                  </dl>
+                </details>
+                {session.workItemId && (
+                  <details className="act-content-card act-run-history">
+                    <summary className="act-content-card__head">
+                      <div>
+                        <h4>Run history</h4>
+                        <p>Review and preview every previous iteration for this work item.</p>
+                      </div>
+                      <ChevronRight size={15} aria-hidden />
+                    </summary>
+                    <div className="act-content-card__body">
+                      {historicalRuns.length === 0 ? (
+                        <p className="act-empty-copy">
+                          {workItemHistory.loading ? "Loading previous iterations…" : "No previous iterations."}
+                        </p>
+                      ) : (
+                        <ol aria-label="Run history">
+                          {historicalRuns.map((run) => {
+                            const selected = run.runKey === previewRunKey;
+                            return (
+                              <li key={run.runKey}>
+                                <button
+                                  className="act-run-history-item"
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => setPreviewRunKey(selected ? null : run.runKey)}
+                                >
+                                  <strong>Iteration {run.runNumber}</strong>
+                                  <span>{run.outcome}</span>
+                                  <small>{run.endedAt
+                                    ? new Date(run.endedAt).toLocaleString()
+                                    : "Active now"}</small>
+                                  <em>{selected ? "Hide preview" : "Preview"}</em>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      )}
+                      {onLoadRuns && workItemHistory.loading && historicalRuns.length > 0 ? (
+                        <p className="act-run-history-loading" role="status">
+                          Loading earlier iterations…
+                        </p>
+                      ) : null}
+                      {previewRun ? (
+                        <section
+                          className="act-run-preview"
+                          aria-label={`Preview of iteration ${previewRun.runNumber}`}
+                        >
+                          <header>
+                            <div>
+                              <strong>Iteration {previewRun.runNumber}</strong>
+                              <span>Read-only preview</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewRunKey(null)}
+                              aria-label="Close iteration preview"
+                            >
+                              <X size={13} aria-hidden />
+                            </button>
+                          </header>
+                          {previewStream ? (
+                            <SessionTranscript messages={previewStream.messages} streamingText="" />
+                          ) : (
+                            <p className="act-empty-copy" role="status">Loading iteration preview…</p>
+                          )}
+                          {previewRun.finalReport ? (
+                            <div className="act-run-preview-report">
+                              <strong>Final report</strong>
+                              <div><AgentMessageText text={previewRun.finalReport} /></div>
+                            </div>
+                          ) : null}
+                        </section>
+                      ) : null}
+                    </div>
+                  </details>
+                )}
+              </section>
+            )}
+          </div>
+
+          <div className="act-context-controls" aria-label="Session controls">
+            {canAcknowledge(session) && (
+                <button
+                  className="act-icon-action act-icon-action--review"
+                  type="button"
+                  disabled={session.lifecyclePending}
+                  onClick={onAcknowledge}
+                  aria-label={isRetainedInactive(session) ? "Review" : "Mark reviewed"}
+                  title={isRetainedInactive(session)
+                    ? "Review and keep in Activity"
+                    : "Mark reviewed"}
+                >
+                  <Check size={15} strokeWidth={2.5} aria-hidden />
+                </button>
+              )}
+            {session.reviewLifecycle?.dismissedAt == null ? (
+              <button
+                className="act-icon-action act-icon-action--dismiss"
+                type="button"
+                disabled={session.lifecyclePending}
+                onClick={onDismiss}
+                aria-label={isRetainedInactive(session)
+                  ? "Review and remove from Activity"
+                  : "Dismiss"}
+                title={isRetainedInactive(session)
+                  ? "Review, remove from Activity, and detach from Canvas"
+                  : "Dismiss"}
+              >
+                {isRetainedInactive(session)
+                  ? <ListX size={15} strokeWidth={2.25} aria-hidden />
+                  : <X size={15} strokeWidth={2.25} aria-hidden />}
+              </button>
+            ) : (
+              <button
+                className="act-icon-action"
+                type="button"
+                disabled={session.lifecyclePending}
+                onClick={onReopen}
+                aria-label="Restore"
+                title="Restore"
+              >
+                <RotateCcw size={14} strokeWidth={2.25} aria-hidden />
+              </button>
+            )}
+            <button
+              className="act-icon-action act-icon-action--danger"
+              type="button"
+              disabled={!isRunning}
+              onClick={() => onStopSession(session.sessionKey)}
+              aria-label="Stop"
+              title="Stop"
+            >
+              <Square size={12} fill="currentColor" aria-hidden />
+            </button>
+          </div>
+        </section>
+      </div>
+    </aside>
+    </ChatLinkScope>
+  );
+}
+
+export function ActivityView({
+  active = true, homeRequest = 0, onDraftPresenceChange,
+  loading = false, loadError = null, onRetryLoad, connected = true,
+  initialSelectedKey = null,
+  lifecycleController,
+  sessions,
+  nodes,
+  onLaunchLeader,
+  onCommitLaunchLeader,
+  onCreateWorkspace,
+  onCancelLaunchLeader,
+  onOpenInCanvas,
+  onExpandFullscreen,
+  onStopSession,
+  onAttachToCanvas,
+  onDetachFromCanvas,
+  socketSend,
+  socketSubscribe,
+  projectId, projectPath,
+  projectSettings,
+  onUpdateNodeData,
+  workItemRuns = {}, runNextCursor = {}, onLoadRuns, onPromptWorkItem,
+  promptFailures = {}, onClearPromptFailure,
+}: ActivityViewProps) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(initialSelectedKey);
+  const [actionRequest, setActionRequest] = useState<InspectorActionRequest | null>(null);
+  const openSessionAction = (session: ActivitySession) => {
+    const entryId = activityEntryId(session);
+    setLaunchVisible(false);
+    setSelectedKey(entryId);
+    setActionRequest({ entryId, action: attentionAction(session) });
+  };
+  const [activityCollapsed, setActivityCollapsed] = useState(false);
+  const [startedEntry, setStartedEntry] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<ActivityVisibility>("open");
+  const [summaryFilter, setSummaryFilter] = useState<ActivitySummaryFilter | null>(null);
+  const [launchVisible, setLaunchVisible] = useState(false);
+  const [launchNodeId, setLaunchNodeId] = useState<string | null>(null);
+  const workspaces = useMemo(() => readWorkspaces(nodes), [nodes]);
+  const activeCanvasWorkspace = activeWorkspaceId(nodes);
+  const [launchWorkspaceId, setLaunchWorkspaceId] = useState(activeCanvasWorkspace);
+  const selectedWorkspaceId = workspaces.some(workspace => workspace.id === launchWorkspaceId)
+    ? launchWorkspaceId : GLOBAL_WORKSPACE_ID;
+  const [launchDraft, setLaunchDraft] = useState<CanvasNode | null>(null);
+  // Keep the request owner in the same React subtree as the roster changes.
+  const [launchInEmptyWorkspace, setLaunchInEmptyWorkspace] = useState(true);
+  const launchCommittedRef = useRef(false);
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(() => new Set());
+  const removalFocus = useActivityRemovalFocus();
+  const localLifecycle = useActivityLifecycle({
+    socketSend: lifecycleController ? undefined : socketSend,
+    socketSubscribe: lifecycleController ? undefined : socketSubscribe,
+    onDetachFromCanvas,
+  });
+  const { sendLifecycle, pendingKeys, actionError, clearActionError } = lifecycleController ?? localLifecycle;
+
+  const toggleChecked = (entryId: string) =>
+    setCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+
+  // Top-level surface only — minions are managed by their leader (mirrors mobile).
+  const visibleSessions = useMemo(
+    () => sessions.filter((session) => session.role !== "minion"),
+    [sessions],
+  );
+  const leaderIndex = useMemo(() => buildLeaderNodeIndex(nodes), [nodes]);
+  const canvasLaunchNode = launchNodeId
+    ? nodes.find((node) => node.id === launchNodeId && node.type === "leader")
+    : undefined;
+  const launchNode = canvasLaunchNode ?? (launchDraft?.id === launchNodeId ? launchDraft : undefined);
+
+  const launchData = launchNode?.data as LeaderData | undefined;
+  const launchPending = launchData?.status === "creating" || !!launchData?.sessionKey;
+  const hasLaunchDraft = Boolean(launchNode);
+  useEffect(() => { onDraftPresenceChange?.(hasLaunchDraft); }, [hasLaunchDraft, onDraftPresenceChange]);
+  useEffect(() => { if (!active) setLaunchVisible(false); }, [active]);
+  const lastHomeRequest = useRef(homeRequest);
+  useEffect(() => {
+    if (lastHomeRequest.current === homeRequest) return;
+    lastHomeRequest.current = homeRequest;
+    setLaunchVisible(false);
+    setSelectedKey(null);
+    setActivityCollapsed(false);
+  }, [homeRequest]);
+
+  function resumeDraft() {
+    setSelectedKey(null);
+    setActionRequest(null);
+    setLaunchVisible(true);
+  }
+  function backToActivity() {
+    setLaunchVisible(false);
+    setSelectedKey(null);
+    setActivityCollapsed(false);
+  }
+
+  const launchWorkspaceControl = (
+    <WorkspacePicker workspaces={workspaces} nodes={nodes} value={selectedWorkspaceId}
+      currentId={activeCanvasWorkspace} onChange={setLaunchWorkspaceId} onCreate={onCreateWorkspace}
+      disabled={launchPending} active={active && launchVisible} />
+  );
+
+  function openLaunchExperience() {
+    if (launchNodeId) { resumeDraft(); return; }
+    setLaunchVisible(true);
+    setLaunchInEmptyWorkspace(activitySessions.length === 0);
+    setVisibility("open");
+    setSummaryFilter(null);
+    setLaunchWorkspaceId(activeCanvasWorkspace);
+    const draft = onLaunchLeader();
+    if (typeof draft === "string") {
+      setSelectedKey(null);
+      setLaunchNodeId(draft);
+    } else if (draft) {
+      launchCommittedRef.current = false;
+      setSelectedKey(null);
+      setLaunchDraft(draft);
+      setLaunchNodeId(draft.id);
+    }
+  }
+
+  function closeLaunchExperience() {
+    if (!launchNode || launchPending) return;
+    setLaunchVisible(false);
+    autoLaunchTriedRef.current = true;
+    if (canvasLaunchNode && !(launchNode.data as LeaderData).sessionKey) {
+      onCancelLaunchLeader(launchNode.id);
+    }
+    setLaunchDraft(null);
+    setLaunchNodeId(null);
+  }
+
+  function updateLaunchNodeData(nodeId: string, data: LeaderData) {
+    const current = launchNode?.id === nodeId ? launchNode : undefined;
+    if (!current) return;
+    const next = { ...current, data };
+    setLaunchDraft(next);
+
+    if (!launchCommittedRef.current && !canvasLaunchNode && data.sessionKey) {
+      launchCommittedRef.current = true;
+      onCommitLaunchLeader(next, selectedWorkspaceId);
+      return;
+    }
+    if (canvasLaunchNode || launchCommittedRef.current) {
+      onUpdateNodeData(nodeId, data);
+    }
+  }
+  const allActivitySessions = useMemo<ActivitySession[]>(
+    () =>
+      visibleSessions.map((session) => {
+        const leader = leaderIndex.get(session.sessionKey);
+        const reviewableChanges = !!leader && leaderHasReviewableChanges(leader.data);
+        return { ...session, reviewableChanges, lifecyclePending: pendingKeys.has(activityEntryId(session)) };
+      }),
+    [leaderIndex, visibleSessions, pendingKeys],
+  );
+  const visibilitySessions = useMemo(
+    () => allActivitySessions
+      .filter((session) => isVisibleInActivity(session, visibility))
+      .sort(compareActivityPriority),
+    [allActivitySessions, visibility],
+  );
+  const activitySessions = useMemo(
+    () => summaryFilter
+      ? visibilitySessions.filter((session) => matchesSummaryFilter(session, summaryFilter))
+      : visibilitySessions,
+    [summaryFilter, visibilitySessions],
+  );
+  const emptyStateTitle = visibilitySessions.length === 0
+    ? visibility === "dismissed" ? "No dismissed sessions" : "No sessions in this view"
+    : "No sessions match this activity filter";
+  const triage = useMemo(() => groupSessionsForTriage(activitySessions), [activitySessions]);
+  const summaryItems: Array<{
+    id: ActivitySummaryFilter;
+    label: string;
+    count: number;
+    attention?: boolean;
+  }> = [
+    {
+      id: "needs-you",
+      label: "Needs you",
+      count: visibilitySessions.filter((session) => needsAttention(session)).length,
+      attention: true,
+    },
+    {
+      id: "working",
+      label: "Working",
+      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "working")).length,
+    },
+    {
+      id: "ready",
+      label: "Ready",
+      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "ready")).length,
+    },
+  ];
+
+  const selectedSession = useMemo(
+    () => activitySessions.find((s) => activityEntryId(s) === selectedKey) ?? null,
+    [activitySessions, selectedKey],
+  );
+
+  const selectBySessionKey = (sessionKey: string) => {
+    setLaunchVisible(false);
+    setActionRequest(null);
+    const entry = activitySessions.find((session) => session.sessionKey === sessionKey)
+      ?? sessions.find((session) => session.sessionKey === sessionKey);
+    setSelectedKey(entry ? activityEntryId(entry) : `session:${sessionKey}`);
+  };
+
+  // ── Empty-state launchpad ────────────────────────────────────────────────
+  // An empty Open view embeds the launch composer and recent work. Filtering
+  // never creates a draft. A draft is committed to Canvas only after launch
+  // assigns a session key.
+  const loadPending = loading || Boolean(loadError);
+  const emptyStateActive = activitySessions.length === 0 && !loadPending;
+  const autoLaunchActive = active && emptyStateActive && visibility === "open" && !summaryFilter;
+  const recentWork = useMemo(
+    () => selectRecentAgentWork(sessions, nodes.filter((node) => node.id !== launchNodeId)),
+    [sessions, nodes, launchNodeId],
+  );
+  const autoLaunchNodeRef = useRef<string | null>(null);
+  const autoLaunchTriedRef = useRef(false);
+  useEffect(() => {
+    if (!autoLaunchActive) {
+      autoLaunchTriedRef.current = false;
+      return;
+    }
+    if (launchNodeId || autoLaunchTriedRef.current) return;
+    autoLaunchTriedRef.current = true;
+    setLaunchVisible(true);
+    setLaunchInEmptyWorkspace(true);
+    setLaunchWorkspaceId(activeCanvasWorkspace);
+    const draft = onLaunchLeader();
+    if (typeof draft === "string") {
+      autoLaunchNodeRef.current = draft;
+      setLaunchNodeId(draft);
+    } else if (draft) {
+      launchCommittedRef.current = false;
+      autoLaunchNodeRef.current = draft.id;
+      setLaunchDraft(draft);
+      setLaunchNodeId(draft.id);
+    }
+  }, [autoLaunchActive, launchNodeId, onLaunchLeader, activeCanvasWorkspace]);
+
+  useEffect(() => {
+    if (autoLaunchActive || !active || !launchVisible || launchDraft) return;
+    const autoNodeId = autoLaunchNodeRef.current;
+    if (!autoNodeId || autoNodeId !== launchNodeId) return;
+    const node = nodes.find((candidate) => candidate.id === autoNodeId);
+    // create_work_item is broadcast before its receipt reaches the composer.
+    // A populated roster does not mean this pending launch was abandoned.
+    if (node && ((node.data as LeaderData).status === "creating"
+      || (node.data as LeaderData).workItemId)) return;
+    if (node && !(node.data as LeaderData).sessionKey) {
+      if (nodes.some((candidate) => candidate.id === autoNodeId)) {
+        onCancelLaunchLeader(autoNodeId);
+      }
+      setLaunchDraft(null);
+      setLaunchNodeId(null);
+    }
+    autoLaunchNodeRef.current = null;
+  }, [autoLaunchActive, active, launchVisible, launchDraft, launchNodeId, nodes, onCancelLaunchLeader]);
+
+  // Unmount: drop an auto-created draft that never launched (latest state via ref).
+  const unmountCleanupRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    unmountCleanupRef.current = () => {
+      const autoNodeId = autoLaunchNodeRef.current;
+      if (!autoNodeId) return;
+      const node = nodes.find((candidate) => candidate.id === autoNodeId);
+      if (node && !(node.data as LeaderData).sessionKey) onCancelLaunchLeader(autoNodeId);
+    };
+  });
+  useEffect(() => () => unmountCleanupRef.current(), []);
+
+  // The concrete sessions currently checked for a bulk action, in list order.
+  const checkedSessions = useMemo(
+    () => activitySessions.filter((session) => checkedKeys.has(activityEntryId(session)) && !session.lifecyclePending),
+    [activitySessions, checkedKeys],
+  );
+  const bulkCounts = useMemo(
+    () => ({
+      reviewable: checkedSessions.filter((s) => canAcknowledge(s) && !isRetainedInactive(s)).length,
+      retainedReviewable: checkedSessions.filter(
+        (s) => canAcknowledge(s) && isRetainedInactive(s),
+      ).length,
+      dismissible: checkedSessions.filter(
+        (s) => !isDismissed(s) && !isRetainedInactive(s),
+      ).length,
+      removable: checkedSessions.filter((s) => isRetainedInactive(s)).length,
+      dismissed: checkedSessions.filter((s) => isDismissed(s)).length,
+    }),
+    [checkedSessions],
+  );
+
+  const clearSelection = () => setCheckedKeys(new Set());
+  const selectAllVisible = () =>
+    setCheckedKeys(new Set(activitySessions.map(activityEntryId)));
+  const applyBulk = (
+    action: LifecycleAction,
+    isEligible: (session: ActivitySession) => boolean,
+  ) => checkedSessions.filter(isEligible).forEach((session) => sendLifecycle(action, session));
+
+  // The launch-only renderer owns the existing, well-tested session creation
+  // path. Once that new session reaches Activity, replace the form with its
+  // inspector instead of sending the user over to the canvas.
+  useEffect(() => {
+    if (!launchNode) return;
+    const sessionKey = (launchNode.data as LeaderData).sessionKey;
+    if (!sessionKey || !activitySessions.some((session) => session.sessionKey === sessionKey)) return;
+    const launched = activitySessions.find((session) => session.sessionKey === sessionKey);
+    const entry = launched ? activityEntryId(launched) : `session:${sessionKey}`;
+    if (launchVisible && active) {
+      setSelectedKey(entry);
+      setStartedEntry(entry);
+    }
+    setLaunchVisible(false);
+    setLaunchDraft(null);
+    setLaunchNodeId(null);
+  }, [activitySessions, launchNode, launchVisible, active]);
+
+  useEffect(() => {
+    if ((startedEntry && startedEntry === selectedKey) || (initialSelectedKey && initialSelectedKey === selectedKey)) {
+      removalFocus.ref.current?.querySelector<HTMLElement>(".act-inspector h2")?.focus({ preventScroll: true });
+    }
+  }, [startedEntry, selectedKey, initialSelectedKey, removalFocus.ref]);
+
+  // Durable selection survives a work item's active-run replacement.
+  useEffect(() => {
+    if (selectedKey && !activitySessions.some((s) => activityEntryId(s) === selectedKey)) {
+      setSelectedKey(null);
+    }
+  }, [activitySessions, selectedKey]);
+
+  // Drop checked keys whose sessions have left the current view (e.g. after a
+  // bulk dismiss moves them out of Open) so the bulk bar count stays honest.
+  useEffect(() => {
+    setCheckedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(activitySessions.map(activityEntryId));
+      let changed = false;
+      const next = new Set<string>();
+      for (const key of prev) {
+        if (visible.has(key)) next.add(key);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [activitySessions]);
+
+  return (
+    <div className={`act-root${launchNode && launchVisible ? " act-root--composing" : ""}${activityCollapsed && selectedSession ? " act-root--list-collapsed" : ""}`} {...removalFocus}>
+      <div className="act-main" id="activity-session-list">
+        <div className="act-list-toolbar">
+          <header className="act-header">
+            <div className="act-header-main">
+              <h1 className="act-header-title">Activity</h1>
+              <div className="act-scope">
+                <select
+                  className="act-scope-select"
+                  aria-label="Activity visibility"
+                  value={visibility}
+                  onChange={(event) => {
+                    setVisibility(event.target.value as ActivityVisibility);
+                    setSummaryFilter(null);
+                  }}
+                >
+                  {(["open", "all", "dismissed"] as const).map((id) => (
+                    <option key={id} value={id}>
+                      {id === "open" ? "Open" : id === "all" ? "All" : "Dismissed"}
+                      {!loadPending && <> · {allActivitySessions.filter((session) => isVisibleInActivity(session, id)).length}</>}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={12} aria-hidden="true" />
+              </div>
+            </div>
+            <button
+              className="act-launch-btn"
+              type="button"
+              onClick={openLaunchExperience}
+              aria-label={launchNode ? launchVisible ? "New leader form open" : "Resume draft" : "New"}
+              disabled={Boolean(launchNode) && launchVisible}
+            >
+              <Plus size={14} aria-hidden="true" />
+              <span>{launchNode && !launchVisible ? "Resume draft" : "New"}</span>
+            </button>
+          </header>
+          {launchNode && !launchVisible && (
+            <section className="act-draft-notice" aria-label="Leader draft">
+              <div className="act-draft-notice-copy" role="status">
+                <span className="act-draft-notice-label">{launchPending ? "Starting leader" : "Unfinished draft"}</span>
+                <strong>{launchData?.taskName?.trim() || "New leader"}</strong>
+                <p>{launchPending ? "Your leader is starting. You can keep browsing Activity."
+                  : "Your prompt and settings are kept here. Pick up where you left off."}</p>
+              </div>
+              <div className="act-draft-notice-actions">
+                <button className="act-btn act-btn--primary" type="button" onClick={resumeDraft}>
+                  {launchPending ? "View launch" : "Resume draft"}
+                </button>
+                {!launchPending && <button className="act-btn" type="button" onClick={closeLaunchExperience}>Discard draft</button>}
+              </div>
+            </section>
+          )}
+          <div className="act-category-toolbar">
+            {selectedSession && (
+              <button
+                className="act-icon-btn act-activity-toggle"
+                type="button"
+                aria-label="Hide activity list"
+                aria-expanded={!activityCollapsed}
+                aria-controls="activity-session-list"
+                onClick={() => setActivityCollapsed(true)}
+                title="Hide activity list"
+              >
+                <PanelLeft size={14} aria-hidden />
+              </button>
+            )}
+            <div className="act-summary" aria-label="Filter activity by status">
+            {summaryItems.map((item) => {
+              const selected = summaryFilter === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`act-summary-item${item.attention && item.count > 0 ? " act-summary-item--attention" : ""}${item.count === 0 ? " act-summary-item--empty" : ""}${
+                    selected ? " act-summary-item--active" : ""
+                  }`}
+                  aria-pressed={selected}
+                  aria-label={`${item.label}: ${item.count}. ${selected ? "Clear filter" : "Filter activity"}`}
+                  onClick={() => setSummaryFilter(selected ? null : item.id)}
+                >
+                  <span>{item.label}</span><strong>{item.count}</strong>
+                </button>
+              );
+            })}
+            </div>
+          </div>
+        </div>
+
+        {startedEntry && startedEntry === selectedKey && (
+          <p className="act-action-pending" role="status">Leader started</p>
+        )}
+        {actionError && (
+          <div className="act-action-error" role="alert">
+            <span>{actionError}</span>
+            <button
+              className="act-icon-btn"
+              type="button"
+              onClick={clearActionError}
+              aria-label="Dismiss error"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {pendingKeys.size > 0 && (
+          <p className="act-action-pending" role="status">Updating {pendingKeys.size} {pendingKeys.size === 1 ? "activity" : "activities"}…</p>
+        )}
+
+        {checkedSessions.length > 0 && (
+          <div className="act-bulk" role="toolbar" aria-label="Bulk actions">
+            <div className="act-bulk-head">
+              <span className="act-bulk-count">{checkedSessions.length} selected</span>
+              <div className="act-bulk-selection-actions">
+                {checkedSessions.length < activitySessions.length && (
+                  <button
+                    className="act-bulk-select-all"
+                    type="button"
+                    onClick={selectAllVisible}
+                  >
+                    Select all {activitySessions.length}
+                  </button>
+                )}
+                <button
+                  className="act-bulk-clear"
+                  type="button"
+                  onClick={clearSelection}
+                  aria-label="Clear selection"
+                  title="Clear selection"
+                >
+                  <X size={14} strokeWidth={2.25} aria-hidden />
+                </button>
+              </div>
+            </div>
+            <div className="act-bulk-actions" role="group" aria-label="Selected activity actions">
+              {bulkCounts.reviewable > 0 && (
+                <button
+                  className="act-bulk-action act-bulk-action--review"
+                  type="button"
+                  onClick={() => applyBulk(
+                    "acknowledge",
+                    (session) => canAcknowledge(session) && !isRetainedInactive(session),
+                  )}
+                  aria-label={`Mark ${bulkCounts.reviewable} reviewed`}
+                >
+                  <Check size={14} strokeWidth={2.5} aria-hidden />
+                  <span>Mark reviewed</span>
+                </button>
+              )}
+              {bulkCounts.retainedReviewable > 0 && (
+                <button
+                  className="act-bulk-action act-bulk-action--review"
+                  type="button"
+                  onClick={() => applyBulk(
+                    "acknowledge",
+                    (session) => canAcknowledge(session) && isRetainedInactive(session),
+                  )}
+                  aria-label={`Review ${bulkCounts.retainedReviewable}`}
+                >
+                  <Check size={14} strokeWidth={2.5} aria-hidden />
+                  <span>Review and keep in Activity</span>
+                </button>
+              )}
+              {bulkCounts.removable > 0 && (
+                <button
+                  className="act-bulk-action act-bulk-action--dismiss"
+                  type="button"
+                  onClick={() => applyBulk(
+                    "dismiss",
+                    (session) => isRetainedInactive(session),
+                  )}
+                  aria-label={`Review and remove ${bulkCounts.removable} from Activity`}
+                >
+                  <ListX size={14} strokeWidth={2.25} aria-hidden />
+                  <span>Review and remove</span>
+                </button>
+              )}
+              {bulkCounts.dismissible > 0 && (
+                <button
+                  className="act-bulk-action act-bulk-action--dismiss"
+                  type="button"
+                  onClick={() => applyBulk(
+                    "dismiss",
+                    (session) => !isDismissed(session) && !isRetainedInactive(session),
+                  )}
+                  aria-label={`Dismiss ${bulkCounts.dismissible}`}
+                >
+                  <X size={14} strokeWidth={2.25} aria-hidden />
+                  <span>Dismiss</span>
+                </button>
+              )}
+              {bulkCounts.dismissed > 0 && (
+                <button
+                  className="act-bulk-action"
+                  type="button"
+                  onClick={() => applyBulk("reopen", (session) => isDismissed(session))}
+                  aria-label={`Restore ${bulkCounts.dismissed}`}
+                >
+                  <RotateCcw size={13} strokeWidth={2.25} aria-hidden />
+                  <span>Restore</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {loadPending && <ActivityLoading loadError={loadError} onRetryLoad={onRetryLoad}
+          connected={connected} skeleton={activitySessions.length === 0} />}
+        {activitySessions.length === 0 ? (loadPending ? null :
+          <div className="act-list-empty" aria-label="Empty session list">
+            <strong>{visibleSessions.length === 0 ? "Session list is empty" : "Nothing in this list"}</strong>
+            <span>
+              {visibleSessions.length === 0
+                ? "Your leader sessions will appear here."
+                : "Use the workspace to adjust this view or start something new."}
+            </span>
+          </div>
+        ) : (
+          <>
+            {triage.needsYou.length > 0 && (
+              <section className="act-section act-section--triage" aria-label="Needs you">
+                <h2 className="act-section-head">
+                  <span>Needs you</span>
+                  <span className="act-section-count">{triage.needsYou.length}</span>
+                </h2>
+                <div className="act-triage-list">
+                  {triage.needsYou.map((session) => (
+                    <SessionTriageRow
+                      key={activityEntryId(session)}
+                      session={session}
+                      selected={activityEntryId(session) === selectedKey}
+                      checked={checkedKeys.has(activityEntryId(session))}
+                      onOpenAction={() => openSessionAction(session)}
+                      onSelect={() => { setLaunchVisible(false); setActionRequest(null); setSelectedKey(activityEntryId(session)); }}
+                      onToggleSelect={() => toggleChecked(activityEntryId(session))}
+                      onAction={sendLifecycle}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {triage.sections.map((section) => (
+              <section className="act-section" key={section.id} aria-label={section.title}>
+                <h2 className="act-section-head">
+                  <span>{section.title}</span>
+                  <span className="act-section-count">{section.sessions.length}</span>
+                </h2>
+                <div className="act-grid">
+                  {section.sessions.map((session) => (
+                    <SessionCard
+                      key={activityEntryId(session)}
+                      session={session}
+                      selected={activityEntryId(session) === selectedKey}
+                      checked={checkedKeys.has(activityEntryId(session))}
+                      hasChanges={session.reviewableChanges === true}
+                      onSelect={() => { setLaunchVisible(false); setActionRequest(null); setSelectedKey(activityEntryId(session)); }}
+                      onToggleSelect={() => toggleChecked(activityEntryId(session))}
+                      onAction={sendLifecycle}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </>
+        )}
+      </div>
+
+      {loadPending && activitySessions.length === 0 && !launchNode && (
+        <main className="act-empty-workspace act-loading-workspace" aria-label="Activity workspace">
+          <p className="act-empty-sub">{loadError ? "Activity could not finish loading."
+            : "Your activity will appear as it arrives."}</p>
+        </main>
+      )}
+      {!loadPending && activitySessions.length === 0 && !autoLaunchActive && !launchNode && (
+        <main className="act-empty-workspace act-filter-workspace" aria-label="Activity workspace">
+          <div className="act-empty-headline">
+            <ActivityIcon size={28} aria-hidden />
+            <h2 className="act-empty-title">{emptyStateTitle}</h2>
+            <p className="act-empty-sub">{visibility === "dismissed"
+              ? "Dismissed activities stay available here to restore later."
+              : "Try another filter to find your activities."}</p>
+            <button className="act-btn" type="button" onClick={() => {
+              if (summaryFilter) setSummaryFilter(null);
+              else setVisibility("open");
+            }}>{summaryFilter ? "Clear filter" : "View open activities"}</button>
+          </div>
+        </main>
+      )}
+
+      {(launchNode ? launchInEmptyWorkspace : activitySessions.length === 0 && autoLaunchActive) && (
+        <main
+          className={`act-empty-workspace${visibleSessions.length === 0 ? " act-launch-panel" : ""}`}
+          aria-label="Activity workspace"
+          hidden={Boolean(launchNode) && !launchVisible}
+        >
+          {launchNode && <button className="act-draft-back act-btn" type="button" onClick={backToActivity}><ArrowLeft size={15} aria-hidden /> Back to activity</button>}
+          {visibleSessions.length === 0 ? <ActivityOnboarding /> : null}
+          <div className={visibleSessions.length === 0
+            ? "act-launch-inputs"
+            : "act-empty-workspace__content"}
+          >
+            <ActivityEmptyState
+              title={visibleSessions.length === 0 ? undefined : emptyStateTitle}
+              launchLayout={visibleSessions.length === 0}
+              onClearFilter={summaryFilter ? () => setSummaryFilter(null) : undefined}
+              recent={recentWork}
+              onOpenInCanvas={onOpenInCanvas}
+              onOpenSession={(sessionKey) => {
+                setVisibility("open");
+                setSummaryFilter(null);
+                selectBySessionKey(sessionKey);
+              }}
+              launchWorkspaceControl={launchWorkspaceControl}
+              launchNode={launchNode}
+              onLaunch={openLaunchExperience}
+              onUpdateNodeData={updateLaunchNodeData}
+              socketSend={socketSend}
+              socketSubscribe={socketSubscribe}
+              projectId={projectId} projectPath={projectPath}
+              projectSettings={projectSettings}
+            />
+          </div>
+        </main>
+      )}
+
+      {!selectedSession && (!launchNode || !launchVisible) && activitySessions.length > 0 && (
+        <ActivitySessionHome
+          sessions={activitySessions}
+          onOpenSession={(sessionKey) => {
+            const session = activitySessions.find((item) => item.sessionKey === sessionKey);
+            if (session) openSessionAction(session);
+          }}
+          onLaunch={openLaunchExperience}
+        />
+      )}
+
+      {selectedSession && (
+        <Inspector
+          key={activityEntryId(selectedSession)}
+          session={selectedSession}
+          actionRequest={actionRequest}
+          leader={leaderIndex.get(selectedSession.sessionKey)}
+          onClose={() => setSelectedKey(null)}
+          activityCollapsed={activityCollapsed}
+          onToggleActivity={() => setActivityCollapsed((collapsed) => !collapsed)}
+          onOpenInCanvas={onOpenInCanvas}
+          onExpandFullscreen={(nodeId) => onExpandFullscreen(nodeId, activityEntryId(selectedSession))}
+          onStopSession={onStopSession}
+          onAttachToCanvas={onAttachToCanvas}
+          socketSend={socketSend}
+          socketSubscribe={socketSubscribe}
+          onUpdateNodeData={onUpdateNodeData}
+          onAcknowledge={() => sendLifecycle("acknowledge", selectedSession)}
+          onDismiss={() => sendLifecycle("dismiss", selectedSession)}
+          onReopen={() => sendLifecycle("reopen", selectedSession)}
+          {...(onPromptWorkItem ? { onPromptWorkItem } : {})}
+          {...(selectedSession.workItemId && promptFailures[selectedSession.workItemId]
+            ? { promptFailure: promptFailures[selectedSession.workItemId] }
+            : {})}
+          {...(selectedSession.workItemId && onClearPromptFailure
+            ? { onClearPromptFailure: () => onClearPromptFailure(selectedSession.workItemId!) }
+            : {})}
+          runs={selectedSession.workItemId ? workItemRuns[selectedSession.workItemId] ?? [] : []}
+          {...(selectedSession.workItemId && selectedSession.workItemId in runNextCursor
+            ? { runNextCursor: runNextCursor[selectedSession.workItemId] ?? null }
+            : {})}
+          {...(selectedSession.workItemId && onLoadRuns
+            ? { onLoadRuns: (cursor?: string) => onLoadRuns(selectedSession.workItemId!, cursor) }
+            : {})}
+        />
+      )}
+
+      {launchNode && !launchInEmptyWorkspace && (
+        <section className="act-launch-panel" aria-label="New leader" hidden={!launchVisible}>
+          <header className="act-launch-head">
+            <button className="act-draft-back act-btn" type="button" onClick={backToActivity}><ArrowLeft size={15} aria-hidden /> Back to activity</button>
+            <div>
+              <span className="act-launch-eyebrow">New leader</span>
+              <h2>What should it do?</h2>
+              <p>The new leader will open here as soon as it starts.</p>
+            </div>
+            <button
+              className="act-launch-close"
+              type="button"
+              onClick={closeLaunchExperience}
+              disabled={launchPending}
+              aria-label={(launchNode.data as LeaderData).sessionKey ? "Close launch" : "Cancel new leader"}
+            >
+              <span aria-hidden>×</span>
+            </button>
+          </header>
+          <div className="act-launch-inputs">
+            <LeaderNodeRenderer
+              node={launchNode}
+              launchMode
+              launchWorkspaceControl={launchWorkspaceControl}
+              isSelected
+              onUpdateData={(data) => updateLaunchNodeData(launchNode.id, data as LeaderData)}
+              socketSend={socketSend}
+              socketSubscribe={socketSubscribe}
+              projectId={projectId} projectPath={projectPath}
+              projectSettings={projectSettings}
+            />
+          </div>
+        </section>
+      )}
+      <ActivityDismissReceipt controller={lifecycleController ?? localLifecycle} sessions={visibleSessions} />
+    </div>
+  );
+}

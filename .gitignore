@@ -1,0 +1,118 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Local design and prototype artifacts
+/designs/
+/prototypes/
+/mockups/
+/wireframes/
+/artifacts/
+/evaluations/
+
+# Local agent work: notes, handoffs, reproductions, evidence and patch backups.
+# Prefer .scratch/<task>/; never force-add its contents. See CONTRIBUTING.md.
+.scratch/
+/scratch/
+/tmp/
+/temp/
+*.tmp
+*.temp
+
+# Local documentation work, except published guides and feature documentation
+/docs/*
+!/docs/getting-started.md
+!/docs/rebrand-compatibility.md
+!/docs/progressive-system-model-retrieval.md
+!/docs/testing-strategy.md
+# Session audit records stay local; publish only sanitized, portable guidance.
+/docs/audits/
+!/docs/features/
+/docs/features/*
+!/docs/features/canvas-zones.md
+!/docs/features/activity-surface-assessment.md
+!/docs/features/selection-controls-audit.md
+!/docs/images/
+/docs/images/*
+!/docs/images/getting-started-*.png
+!/docs/screenshots/
+/docs/screenshots/*
+!/docs/screenshots/README.md
+!/docs/screenshots/capture.mjs
+!/docs/screenshots/index.html
+!/docs/screenshots/scenes.tsx
+!/docs/screenshots/style.css
+
+# Vite
+.vite/
+
+# Local env files
+*.local
+.env
+.env.*
+!.env.example
+
+# SQLite databases (per-project data, not portable)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Legacy runtime data
+.canvas-worktrees/
+.minions/
+.run/
+/.minions-mcp-launch-*/
+/__dag_verify__/
+
+# Claude Code local settings (user-specific)
+.claude/settings.local.json
+.claude/worktrees/
+
+# Local working notes / context (per-machine, not portable)
+context.md
+.context/
+
+# Smoke-test / dev-server scratch logs
+*.log
+vite-smoke.log
+vite-smoke.err.log
+vite-*.log
+*.smoke.log
+
+# Agent recovery scratch
+.recovery/
+*.rej
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Stryker mutation testing sandbox + reports
+.stryker-tmp/
+reports/
+
+# Test coverage output
+coverage/
+playwright-report/
+test-results/
+
+# Swarmcrews runtime state (legacy .minions exclusions remain above)
+.swarmcrews/
+.swarmcrews-*/

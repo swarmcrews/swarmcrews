@@ -1,0 +1,186 @@
+risks:
+  - id: risk.dialectic_correlated_reasoning
+    type: risk
+    summary: A dialectic can create expensive agreement theater when participants share the same assumptions, runtime profile, or context framing, or can corrupt cache continuity when provider threads cross participant boundaries.
+    severity: high
+    applies_to:
+      capabilities: []
+      flows:
+        - flow.conduct_dialectic
+      surfaces:
+        - surface.agent_tools
+        - surface.graph_inspector
+      files:
+        - server/dialectic/graph-plan.ts
+        - server/task-graph/patterns.ts
+        - server/task-graph/validation.ts
+        - server/task-graph/dispatch-context.ts
+        - server/task-graph/planning-runtime.ts
+    mitigation: Require materially distinct epistemic roles, differentiate compatible executor tiers, models, or harnesses where available, lint correlated runtime profiles, prohibit cross-participant affinity, and use bounded synthesis plus Leader goal-distance review to stop unproductive convergence.
+    domain: domain.delegation
+  - id: risk.dual_ingress_divergence
+    type: risk
+    summary: New Leader entry points could bypass work-item allocation or drop identity during resume, breaking durable orchestration.
+    severity: high
+    applies_to:
+      capabilities:
+        - capability.leader_creation
+        - capability.durable_work_items
+      flows:
+        - flow.launch_leader
+      surfaces:
+        - surface.canvas
+        - surface.mobile
+        - surface.activity
+        - surface.ws_api
+      files:
+        - src/mobile/LaunchScreen.tsx
+        - server/commands/create-session.ts
+        - server/commands/work-items.ts
+    mitigation: Require work-item identity at Leader ingress and runtime start, keep all Leader surfaces on work-item commands, migrate historical Leaders before hydration, and test rejection plus resume identity retention.
+    domain: domain.execution_lifecycle
+  - id: risk.legacy_canonical_review_split
+    type: risk
+    summary: Legacy approval and canonical lineage integration coexist with different commands, gates, conflict recovery, and cleanup.
+    severity: critical
+    applies_to:
+      capabilities:
+        - capability.approval_and_legacy_integration
+        - capability.canonical_lineage_integration
+      flows:
+        - flow.review_legacy_changes
+        - flow.promote_lineage
+        - flow.recover_integration_conflict
+      surfaces:
+        - surface.canvas
+        - surface.activity
+        - surface.mobile
+        - surface.ws_api
+      files:
+        - src/ChangesView.tsx
+        - src/LineageModal.tsx
+        - server/commands/approve-changes.ts
+        - server/commands/worktree-integration.ts
+    mitigation: Hide inapplicable controls, reject cross-family commands server-side, and test both success and conflict states.
+    domain: domain.integration
+  - id: risk.agent_tool_allowlist_drift
+    type: risk
+    summary: Tool factories, role allowlists, conditional registration, prompt documentation, and semantic-plan restrictions can drift or confuse exact callable identifiers with unnamed harness-native capabilities.
+    severity: high
+    applies_to:
+      capabilities:
+        - capability.task_orchestration
+        - capability.skill_library
+        - capability.execution_graph_runtime
+      flows:
+        - flow.delegate_and_steer_minions
+        - flow.arm_and_author_skills
+        - flow.execute_execution_graph
+      surfaces:
+        - surface.agent_tools
+      files:
+        - server/agents/leader.ts
+        - server/task-tools.ts
+        - server/minion-tools.ts
+        - shared/task-graph-planning-contracts.ts
+        - server/task-graph/planning-compiler.ts
+        - server/task-graph/execution-policy.ts
+    mitigation: Assert filtered factory definitions and role allowlists agree, update prompts with callable tool changes, validate semantic-plan allowedTools as exact harness/MCP identifiers, and inherit unnamed harness-native shell/filesystem access only through omission and the frozen planning policy.
+    domain: domain.delegation
+  - id: risk.canonical_conflict_controls_latent
+    type: risk
+    summary: Canonical conflict-resolution and gate-waiver commands exist in the WS contract without direct UI producers.
+    severity: medium
+    applies_to:
+      capabilities:
+        - capability.canonical_lineage_integration
+      flows:
+        - flow.recover_integration_conflict
+      surfaces:
+        - surface.ws_api
+        - surface.canvas
+        - surface.mobile
+      files:
+        - server/commands/worktree-integration.ts
+        - src/LineageModal.tsx
+    mitigation: Preserve the external contract, expose only supported recovery choices, and never imply unavailable resolution completed.
+    domain: domain.integration
+  - id: risk.project_worktree_content_split
+    type: risk
+    summary: REST-backed project artifacts and skill libraries use the workspace state root while agents may read or edit the source root or a separate execution worktree.
+    severity: high
+    applies_to:
+      capabilities:
+        - capability.project_workspace
+        - capability.context_routing
+      flows:
+        - flow.save_project_knowledge
+      surfaces:
+        - surface.canvas
+        - surface.agent_tools
+      files:
+        - src/api.ts
+        - server/skills.ts
+        - server/project-store.ts
+        - server/path-guard.ts
+    mitigation: Label content provenance, preserve owned-path guards, and deliberately resolve state-root, source-root, and execution-worktree reads.
+    domain: domain.workspace
+  - id: risk.legacy_workspace_root_overlap
+    type: risk
+    summary: Central workspace state can coexist with legacy in-repository sidecars and worktrees, creating ambiguity or unsafe cleanup during migration.
+    severity: high
+    applies_to:
+      capabilities:
+        - capability.project_workspace
+      flows:
+        - flow.open_project_workspace
+      surfaces:
+        - surface.canvas
+        - surface.ws_api
+      files:
+        - server/workspace-registry.ts
+        - server/workspace-legacy-identity.ts
+        - server/project-store.ts
+        - server/mcp-server-store.ts
+        - server/worktree-owned-root.ts
+        - server/worktree-create.ts
+    mitigation: Copy legacy sidecars once without overwrite or symlink following, never read them as a persistence fallback, create new artifacts centrally, accept only known owned roots, and leave legacy deletion to an explicit user decision.
+    domain: domain.workspace
+  - id: risk.sandbox_policy_overclaim
+    type: risk
+    summary: A requested sandbox policy may be mistaken for an enforced boundary when the selected harness cannot manage one or more axes.
+    severity: critical
+    applies_to:
+      capabilities:
+        - capability.runtime_configuration
+      flows:
+        - flow.configure_runtime
+      surfaces:
+        - surface.canvas
+        - surface.ws_api
+      files:
+        - server/harness/sandbox-policy.ts
+        - server/harness/types.ts
+        - src/nodes/leader/SandboxPolicyControls.tsx
+    mitigation: Persist requested and effective policies separately, mark unsupported filesystem or approval axes unmanaged, and only claim complete enforcement for Codex.
+    domain: domain.platform
+  - id: risk.evaluation_measurement_overclaim
+    type: risk
+    summary: Fixture demonstrations, partial token telemetry, or an unmanaged local backend could be presented as controlled provider performance evidence.
+    severity: high
+    applies_to:
+      capabilities:
+        - capability.standalone_agent_evaluation
+        - capability.evaluation_evidence_reporting
+      flows:
+        - flow.run_standalone_agent_evaluation
+        - flow.inspect_evaluation_evidence
+      surfaces:
+        - surface.external_evaluation
+      files:
+        - evals/src/cli/main.ts
+        - evals/src/telemetry/usage.ts
+        - evals/src/reports/aggregation.ts
+        - evals/src/reports/html.ts
+    mitigation: Require explicit provider-backed execution, immutable plans, supported isolation, and complete coverage before controlled comparisons; retain unknown or partial telemetry and label fixture checks as harness evidence.
+    domain: domain.evaluation

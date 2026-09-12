@@ -1,0 +1,29 @@
+id: constraint.execution_graph_admission
+type: constraint
+statement: Within a submitted graph run, the leased server scheduler and transactional outbox are the sole operational authority for graph-node admission and dispatch; readiness plus active capacity, ownership, and requested budget reservations gate every graph attempt.
+applies_to:
+  capabilities:
+    - capability.execution_graph_runtime
+  flows:
+    - flow.execute_execution_graph
+  surfaces:
+    - surface.agent_tools
+    - surface.ws_api
+  files:
+    - server/task-graph/readiness.ts
+    - server/task-graph/scheduler.ts
+    - server/task-graph/recovery.ts
+    - server/task-graph/service.ts
+    - server/task-graph/schema.ts
+    - server/session-host-agent-context.ts
+    - server/mutation-coordination.ts
+severity: critical
+agent_instruction: For work the Leader placed in a graph, persist the attempt, generation, lease-fenced reservations, and outbox row atomically before dispatch; never launch graph nodes from a UI projection or bypass graph capacity, ownership overlap, or requested budget checks. Do not apply graph admission as a gate on the Leader's direct work or direct task tools.
+review_gate: gate.execution_graph_runtime
+suggested_tests: [ server/task-graph/service.test.ts, server/mutation-coordination.test.ts, tests/task-graph/runtime.test.ts ]
+evidence: [ decision.server_owned_execution_graphs ]
+domain: domain.delegation
+scope: targeted
+guards:
+  - capability.execution_graph_runtime
+  - flow.execute_execution_graph

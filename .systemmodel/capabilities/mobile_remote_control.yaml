@@ -1,0 +1,21 @@
+id: capability.mobile_remote_control
+type: capability
+name: Mobile push and notification navigation
+summary: Users can subscribe to remote work notifications and open their target after revalidating the current project, WorkItem, and session state.
+constraints: []
+risks: []
+suggested_files: [ src/mobile/push.ts, src/mobile/MobileApp.tsx, server/push-notifier.ts, server/push-sender.ts, server/routes/push.ts ]
+suggested_tests: [ src/mobile/push.test.ts, src/mobile/MobileApp.test.tsx, server/push-notifier.test.ts, server/push-sender.test.ts, server/routes/push.test.ts ]
+keywords: [ mobile, push, notification, subscription, deep_link, revalidate ]
+entry_points:
+  - surface: surface.mobile
+    summary: Subscribe to notifications and resolve their target against current state before opening it.
+    files: [ src/mobile/push.ts, src/mobile/MobileApp.tsx ]
+    tests: [ src/mobile/push.test.ts, src/mobile/MobileApp.test.tsx ]
+    flows: []
+freshness:
+  class: code_coupled
+risk: high
+domain: domain.observability
+depends_on: []
+bridges: []

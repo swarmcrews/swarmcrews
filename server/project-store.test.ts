@@ -1,0 +1,351 @@
+/**
+ * server/project-store — sidecar + per-project file accessors.
+ *
+ * IMPORTANT: `project-store.ts` captures `os.homedir()` at MODULE LOAD time
+ * (`const GLOBAL_DIR = path.join(os.homedir(), ".minions")`). Tests
+ * MUST mock `node:os` BEFORE importing project-store so the recent-projects
+ * file lands in a tmpdir, not in the user's real home. The `vi.mock`
+ * factory below uses a synchronous tmpdir creation so the mocked
+ * `homedir()` is stable from the first import.
+ */
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// vi.mock factories are hoisted ABOVE imports, which means they run before
+// any `import { mkdtempSync }` resolves. To avoid the TDZ trap, derive the
+// tmpdir path deterministically from the PID inside `vi.hoisted` (which
+// executes alongside the mock factory) and create the directory itself in
+// `beforeAll`. The pid-based name is unique per vitest worker.
+const { FAKE_HOME, PRIOR_MINIONS_HOME } = vi.hoisted(() => {
+  const fakeHome = require("path").resolve(require("os").tmpdir(), `minions-fakehome-${process.pid}`);
+  const priorMinionsHome = process.env["MINIONS_HOME"];
+  // project-store captures its global directory at module load. Give this
+  // worker a private override so parallel suites cannot mutate its recents.
+  process.env["MINIONS_HOME"] = require("path").join(fakeHome, ".minions");
+  return { FAKE_HOME: fakeHome, PRIOR_MINIONS_HOME: priorMinionsHome };
+});
+
+vi.mock("node:os", async () => {
+  const actual = await vi.importActual<typeof import("node:os")>("node:os");
+  return {
+    ...actual,
+    default: { ...actual, homedir: () => FAKE_HOME },
+    homedir: () => FAKE_HOME,
+  };
+});
+
+import {
+  addRecentProject,
+  hasSidecar,
+  initSidecar,
+  listRecentProjects,
+  openProjectDb,
+  readContext,
+  readMcpServers,
+  readSettings,
+  readSkills,
+  removeRecentProject,
+  writeContext,
+  writeMcpServers,
+  writeSettings,
+  writeSkills,
+} from "./project-store.ts";
+import { findWorkspaceBySource, getSwarmcrewsHome, registerWorkspace } from "./workspace-registry.ts";
+
+let project: string;
+const cleanup: (() => void)[] = [];
+
+beforeAll(() => {
+  // Materialise the FAKE_HOME directory we promised the mocked os.homedir().
+  mkdirSync(FAKE_HOME, { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(FAKE_HOME, { recursive: true, force: true });
+  if (PRIOR_MINIONS_HOME === undefined) delete process.env["MINIONS_HOME"];
+  else process.env["MINIONS_HOME"] = PRIOR_MINIONS_HOME;
+});
+
+beforeEach(() => {
+  project = mkdtempSync(join(tmpdir(), "minions-project-"));
+  cleanup.push(() => rmSync(project, { recursive: true, force: true }));
+});
+
+afterEach(() => {
+  while (cleanup.length) cleanup.pop()!();
+  // Reset the canonical index between tests. getSwarmcrewsHome() also honors a
+  // test-runner MINIONS_HOME override, so sandboxed full-suite runs stay isolated.
+  rmSync(join(getSwarmcrewsHome(), "recent-projects.json"), {
+    force: true,
+  });
+});
+
+describe("initSidecar / openProjectDb", () => {
+  it("stores newly registered workspace state centrally and keeps the source clean", () => {
+    const workspace = registerWorkspace(project)!;
+    const db = initSidecar(project, {});
+    cleanup.push(() => db.close());
+
+    expect(existsSync(join(project, ".minions"))).toBe(false);
+    expect(existsSync(join(workspace.stateRoot, "canvas.db"))).toBe(true);
+    expect(existsSync(join(workspace.stateRoot, "context.md"))).toBe(true);
+  });
+
+  it("creates the sidecar directory, default context.md, and settings.json", () => {
+    expect(hasSidecar(project)).toBe(false);
+    const db = initSidecar(project, {
+      defaultModel: "claude-sonnet-5", defaultLeaderHarness: "codex", defaultLeaderModel: "gpt-5.6-sol",
+      defaultMinionHarness: "claude", defaultMinionModel: "claude-sonnet-5", mechanicalMinionModel: "claude-haiku-4-5",
+      reasoningMinionModel: "claude-opus-4-8", defaultPermissionMode: "auto", defaultWorktreeIsolation: false,
+    });
+    // On Windows, SQLite holds a file lock until the connection is closed.
+    // Push the close before the project rmSync so afterEach cleanup succeeds.
+    cleanup.push(() => db.close());
+    expect(hasSidecar(project)).toBe(true);
+
+    const ctx = readContext(project);
+    expect(ctx.exists).toBe(true);
+    // Don't pin the literal copy (§5.7) — assert structure: a heading +
+    // at least one paragraph.
+    expect(ctx.content.trim().startsWith("#")).toBe(true);
+    expect(
+      ctx.content.split("\n").filter((l) => l.trim().length > 0).length,
+    ).toBeGreaterThanOrEqual(2);
+
+    const settings = readSettings(project);
+    expect(settings.defaultModel).toBeTruthy();
+    // Explicit model selections are preserved when settings are read back.
+    expect(settings.defaultLeaderHarness).toBe("codex");
+    expect(settings.defaultLeaderModel).toBe("gpt-5.6-sol");
+    expect(settings.defaultMinionModel).toBe("claude-sonnet-5");
+    expect(settings.adaptiveMinionModelRouting).toBe(false);
+    expect(settings.mechanicalMinionModel).toBe("claude-haiku-4-5");
+    expect(settings.reasoningMinionModel).toBe("claude-opus-4-8");
+    expect(settings.defaultPermissionMode).toBeTruthy();
+    expect(settings.defaultSandboxPolicy).toEqual({
+      filesystemScope: "workspace-write",
+      approvalPolicy: "on-failure",
+    });
+    expect(typeof settings.defaultWorktreeIsolation).toBe("boolean");
+    expect(settings).not.toHaveProperty("leaderPlanningBackend");
+  });
+
+  it("openProjectDb initialises without provider defaults and re-uses an existing sidecar", () => {
+    expect(hasSidecar(project)).toBe(false);
+    const db1 = openProjectDb(project);
+    expect(hasSidecar(project)).toBe(true);
+    db1.close();
+
+    expect(readSettings(project).defaultLeaderModel).toBe("gpt-6-astra");
+
+    const db1b = openProjectDb(project);
+    db1b
+      .prepare("INSERT INTO projects (id, name) VALUES (?, ?)")
+      .run("p1", "First");
+    db1b.close();
+
+    const db2 = openProjectDb(project);
+    const row = db2
+      .prepare("SELECT name FROM projects WHERE id = ?")
+      .get("p1");
+    expect(row).toMatchObject({ name: "First" });
+    db2.close();
+  });
+});
+
+describe("context / settings / skills / mcp-servers round-trip", () => {
+  beforeEach(() => {
+    // Capture the db handle so afterEach can close it before the project dir
+    // is deleted.  On Windows, SQLite holds a file lock until close().
+    const db = initSidecar(project, {});
+    cleanup.push(() => db.close());
+  });
+
+  it("readContext returns the default for a missing file (does not throw)", () => {
+    rmSync(join(findWorkspaceBySource(project)!.stateRoot, "context.md"));
+    const ctx = readContext(project);
+    expect(ctx).toEqual({ content: "", exists: false });
+  });
+
+  it("writeContext / readContext round-trip preserves the markdown bytes", () => {
+    const md = "# Project\n\nSome **bold** text and a `code` span.\n";
+    writeContext(project, md);
+    expect(readContext(project)).toEqual({ content: md, exists: true });
+  });
+
+  it("writeSettings / readSettings round-trip", () => {
+    const next = {
+      defaultModel: "opus",
+      defaultPermissionMode: "review",
+      defaultWorktreeIsolation: true,
+      customExtra: 42,
+    };
+    writeSettings(project, next);
+    // readSettings merges in defaults for new harness fields; assert written values are preserved
+    expect(readSettings(project)).toMatchObject(next);
+  });
+
+  it("round-trips drag snapping opt-out and opt-in", () => {
+    expect(readSettings(project).snapWhileDragging).toBeUndefined();
+    for (const snapWhileDragging of [false, true]) {
+      writeSettings(project, { snapWhileDragging });
+      expect(readSettings(project).snapWhileDragging).toBe(snapWhileDragging);
+    }
+  });
+
+  it("drops the removed Graph opt-out on reads and writes", () => {
+    writeSettings(project, { leaderPlanningBackend: "legacy" });
+    expect(readSettings(project)).not.toHaveProperty("leaderPlanningBackend");
+    const settingsPath = join(findWorkspaceBySource(project)!.stateRoot, "settings.json");
+    expect(JSON.parse(readFileSync(settingsPath, "utf-8")))
+      .not.toHaveProperty("leaderPlanningBackend");
+    writeFileSync(settingsPath, JSON.stringify({ leaderPlanningBackend: "legacy", roleSystemBeta: true }));
+    expect(readSettings(project)).not.toHaveProperty("leaderPlanningBackend");
+    expect(readSettings(project).roleSystemBeta).toBe(true);
+  });
+
+  it("drops the removed network axis from legacy sandbox defaults", () => {
+    writeSettings(project, {
+      defaultSandboxPolicy: {
+        filesystemScope: "workspace-write",
+        approvalPolicy: "on-request",
+        networkAccess: "disabled",
+      },
+    } as never);
+
+    expect(readSettings(project).defaultSandboxPolicy).toEqual({
+      filesystemScope: "workspace-write",
+      approvalPolicy: "on-request",
+    });
+  });
+
+  it("migrates untouched legacy dashboard shortcuts to the array, preserving custom ones", () => {
+    writeSettings(project, {
+      dashboardLeaderActionNames: {
+        improve: "Improve",
+        execute: "Ship it",
+        analyze: "Analyze",
+      },
+      dashboardLeaderActionPrompts: {
+        improve: "Improve the connected dashboard context. Identify the highest-impact changes, then implement or produce the improved result.",
+        execute: "Use my custom implementation workflow.",
+        analyze: "Analyze the connected dashboard context. Summarize the key findings, risks, and recommended next steps.",
+      },
+    } as never);
+
+    const settings = readSettings(project);
+    // Legacy records are dropped in favour of the ordered array.
+    expect(settings["dashboardLeaderActionNames"]).toBeUndefined();
+    expect(settings["dashboardLeaderActionPrompts"]).toBeUndefined();
+
+    const actions = settings.dashboardLeaderActions ?? [];
+    const byId = Object.fromEntries(actions.map((a) => [a.id, a]));
+
+    // `execute` name is customized ("Ship it") so it is preserved, but its
+    // untouched-default prompt was replaced by a custom one → kept verbatim.
+    expect(byId.execute?.name).toBe("Ship it");
+    expect(byId.execute?.prompt).toBe("Use my custom implementation workflow.");
+
+    // `improve` and `analyze` matched the untouched legacy defaults → upgraded.
+    expect(byId.improve?.name).toBe("Fix");
+    expect(byId.improve?.prompt).toContain("root cause");
+    expect(byId.analyze?.name).toBe("Review");
+    expect(byId.analyze?.prompt).toContain("Do not make changes");
+  });
+
+  it.each(["claude-fable-5-1", "claude-fable-5", "fable"])("uses medium leader thinking for fable when no explicit setting is stored (%s)", (model) => {
+    writeSettings(project, {
+      defaultLeaderModel: model,
+    });
+
+    expect(readSettings(project).defaultLeaderThinkingConfig?.effort).toBe("medium");
+  });
+
+  it.each(["claude-fable-5-1", "claude-fable-5", "fable"])("preserves an explicit stored leader thinking effort for fable (%s)", (model) => {
+    writeSettings(project, {
+      defaultLeaderModel: model,
+      defaultLeaderThinkingConfig: {
+        enabled: true,
+        effort: "high",
+        display: "summarized",
+      },
+    });
+
+    expect(readSettings(project).defaultLeaderThinkingConfig?.effort).toBe("high");
+  });
+
+  it("readSkills returns [] for an unwritten skills file and round-trips after write", () => {
+    expect(readSkills(project)).toEqual([]);
+    const skills = [{ id: "alpha" }, { id: "beta", body: "rules" }];
+    writeSkills(project, skills);
+    expect(readSkills(project)).toEqual(skills);
+  });
+
+  it("readMcpServers returns [] for an unwritten file and round-trips after write", () => {
+    expect(readMcpServers(project)).toEqual([]);
+    const servers = [
+      { id: "ex", transport: "stdio", command: "node" },
+      { id: "ex2", transport: "sse", url: "https://x" },
+    ];
+    writeMcpServers(project, servers);
+    expect(readMcpServers(project)).toEqual(servers);
+  });
+});
+
+describe("recent-projects index", () => {
+  it("starts empty and round-trips through add/list", () => {
+    expect(listRecentProjects()).toEqual([]);
+    addRecentProject("/projects/alpha", "Alpha");
+    addRecentProject("/projects/beta", "Beta");
+    const recent = listRecentProjects();
+    // Most-recent-first.
+    expect(recent.map((r) => r.path)).toEqual([
+      "/projects/beta",
+      "/projects/alpha",
+    ]);
+    expect(recent[0]!.lastOpened).toBeTruthy();
+  });
+
+  it("adding the same path twice dedupes and bumps it to the top", () => {
+    addRecentProject("/projects/a", "A");
+    addRecentProject("/projects/b", "B");
+    addRecentProject("/projects/a", "A2");
+
+    const recent = listRecentProjects();
+    expect(recent.map((r) => r.path)).toEqual([
+      "/projects/a",
+      "/projects/b",
+    ]);
+    expect(recent[0]!.name).toBe("A2");
+  });
+
+  it("removeRecentProject filters by path", () => {
+    addRecentProject("/projects/a", "A");
+    addRecentProject("/projects/b", "B");
+    removeRecentProject("/projects/a");
+    expect(listRecentProjects().map((r) => r.path)).toEqual([
+      "/projects/b",
+    ]);
+  });
+
+  it("caps the recent list at 20 entries", () => {
+    for (let i = 0; i < 25; i++) {
+      addRecentProject(`/projects/p${i}`, `P${i}`);
+    }
+    const recent = listRecentProjects();
+    expect(recent).toHaveLength(20);
+    expect(recent[0]!.path).toBe("/projects/p24");
+    expect(recent.at(-1)!.path).toBe("/projects/p5");
+  });
+});

@@ -1,0 +1,41 @@
+.activity-loading {
+  padding: 12px 0 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.activity-loading-rows {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.activity-loading-row {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+  animation: activity-loading-pulse 1.8s ease-in-out infinite alternate;
+}
+
+.activity-loading-row span {
+  height: 10px;
+  width: 85%;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-muted) 15%, var(--bg-surface));
+}
+
+.activity-loading-row span:first-child { width: 55%; height: 14px; }
+.activity-loading-row span:last-child { width: 30%; }
+
+@keyframes activity-loading-pulse { to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .activity-loading-row { animation: none; }
+}
+
+/* At narrow widths the list owns loading feedback; keep the workspace from covering it. */
+@media (max-width: 900px) {
+  .act-root > .act-loading-workspace { display: none; }
+}

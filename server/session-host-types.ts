@@ -1,0 +1,146 @@
+import type { Bus } from "./bus.ts";
+import type { WorktreeInfo } from "./worktree.ts";
+import type { PlannedWorktree } from "./worktree-create.ts";
+import type { RuntimeSessionInfo, TaskManagerState } from "./task-tools.ts";
+import type { SessionRole, ThinkingConfig } from "./session-host-config.ts";
+import type { SessionTerminateReason } from "./session-host-terminate.ts";
+import type { SandboxPolicy } from "../shared/workspace-contracts.ts";
+import type { NormalizedToolDef } from "./harness/types.ts";
+import type { LiveEditPathInput } from "./live-edit-paths.ts";
+import type { LeaderOrchestrationMode } from "../shared/task-graph-planning-contracts.ts";
+import type { TaskGraphPlanningCoordinator } from "./task-graph/planning-coordinator.ts";
+
+export interface SessionHostDeps {
+  bus: Bus;
+  startChildSession: (opts: StartSessionOptions) => void | Promise<{
+    sessionKey: string; harness: string; model: string; permissionMode: string;
+  }>;
+  forEachLeaderTaskState: (
+    fn: (leaderKey: string, state: TaskManagerState) => void,
+  ) => void;
+  /** Lookup live/persisted runtime metadata for a session key. */
+  getSessionRuntime?: (sessionKey: string) => RuntimeSessionInfo | null;
+  /** Terminate another live session by key. */
+  terminateSession?: (sessionKey: string, reason: SessionTerminateReason) => void;
+  /** Wake a waiting leader once every delegated child is terminal. */
+  wakeWaitingLeaderIfAllChildrenTerminal?: (leaderKey: string) => void;
+  workItemLifecycle?: WorkItemRuntimeLifecycle;
+  startWorkItemChildRun?: (input: {
+    workItemId: string; parentRunKey: string; taskId: string; requestId: string;
+    attemptId?: string; attemptNumber?: number;
+    prompt: string; cwd: string; systemPrompt: string; model?: string;
+    harness?: string; thinkingConfig?: ThinkingConfig; permissionMode?: string;
+    executorClass?: "mechanical" | "standard" | "reasoning";
+    skillIds?: string[]; skillSnapshotId?: string | undefined;
+    /** Called after durable allocation and before provider launch. */
+    onAllocated?: (sessionKey: string) => void;
+  }) => void | Promise<{ sessionKey: string; harness: string; model: string; permissionMode: string }>;
+  wakeDelivery?: import("./wake-delivery-store.ts").WakeDeliveryStore;
+  resumeWorkItemRun?: (input: { workItemId: string; runKey: string; prompt: string; requestId: string; continuitySource?: "system" }) => void | Promise<void>;
+  continueWorkItemChild?: (input: { workItemId: string; runKey: string; prompt: string; requestId: string }) => void | Promise<void>;
+  cleanupLiveEditRun?: (runKey: string) => void;
+  getTaskGraphTools?: (runKey:string) => NormalizedToolDef[];
+  getTaskGraphAllowedTools?: (runKey:string) => string[]|null;
+  getTaskGraphMutationScope?: (runKey:string) => LiveEditPathInput[]|null;
+  getLeaderOrchestrationMode?: (runKey: string) => LeaderOrchestrationMode;
+  getTaskGraphPlanning?: (runKey: string) => TaskGraphPlanningCoordinator | null;
+  transitionWorktreeProvisioning?: (runKey: string,
+    outcome: "provisioning" | "active" | "failed", error?: string) => void;
+}
+
+export interface WorkItemRuntimeIdentity {
+  workItemId: string;
+  runKey: string;
+  runKind: SessionRunKind;
+  parentRunKey: string | null;
+  taskId: string | null;
+}
+
+export interface WorkItemRuntimeLifecycle {
+  providerInitialized(input: WorkItemRuntimeIdentity & { providerSessionId: string; providerGeneration: number; at: number }): void;
+  /** Idempotent ensure-working signal; provider continuations may repeat it. */
+  runStarted(input: WorkItemRuntimeIdentity & { at: number }): void;
+  runWaiting(input: WorkItemRuntimeIdentity & { waitKind: "decision" | "file_conflict" | "timer" | "blocked" | "continuation"; at: number }): void;
+  runTerminal(input: WorkItemRuntimeIdentity & {
+    outcome: "completed" | "error" | "stopped" | "interrupted";
+    finalReportId: string | null;
+    finalReport: string | null;
+    at: number;
+  }): void;
+}
+
+export interface ImageAttachment {
+  kind: "image";
+  filename?: string;
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  /** Pure base64 payload — no `data:` prefix. */
+  data: string;
+}
+
+export type SessionInvocationKind =
+  | "new_run"
+  | "resume_open_run"
+  | "provider_continuation";
+export type SessionRunKind = "primary" | "child";
+
+export interface StartSessionOptions {
+  sessionKey: string;
+  /**
+   * Logical-run semantics for this harness invocation. Omitted only by
+   * legacy/external callers and treated as `new_run` during migration.
+   */
+  invocationKind?: SessionInvocationKind | undefined;
+  /** Required for Leader launches; resumes inherit the existing immutable identity. */
+  workItemId?: string | undefined;
+  /** Immutable run lineage metadata; omitted by legacy callers. */
+  runKind?: SessionRunKind | undefined;
+  parentRunKey?: string | null | undefined;
+  taskId?: string | null | undefined;
+  prompt: string;
+  /** User-authored text persisted into the transcript before this invocation starts. */
+  displayPrompt?: string | undefined;
+  cwd: string;
+  resumeId?: string | undefined;
+  systemPrompt?: string | undefined;
+  role?: SessionRole | undefined;
+  /** Skill IDs tagged on this session; Leaders pass them to their Minions. */
+  skillIds?: string[] | undefined;
+  skillSnapshotId?: string | undefined;
+  /** Template values for the tagged skills, inherited by delegated Minions. */
+  skillValues?: Record<string, Record<string, string>> | undefined;
+  worktreeIsolation?: boolean | undefined;
+  parentWorktree?: WorktreeInfo | undefined;
+  /** Durable contribution identity allocated before provider launch. */
+  plannedContribution?: (PlannedWorktree & { resolutionTargetRef?: string;
+    resolutionKind?: "contribution" | "lineage" }) | undefined;
+  initialModel?: string | null | undefined;
+  thinkingConfig?: ThinkingConfig | null | undefined;
+  /** Multimodal attachments riding on the first user message. */
+  attachments?: ImageAttachment[] | undefined;
+  /** Server-owned full recovery media; turn attachments may be only a delta. */
+  canvasAttachments?: ImageAttachment[] | undefined;
+  promptAttachments?: ImageAttachment[] | undefined;
+  /** Durable user-authored instructions inherited from earlier iterations. */
+  userDirectives?: string[];
+  /** Server-owned fallback if launch readiness changes the selected provider. */
+  freshThreadPrompt?: string;
+  continuitySource?: "user" | "system";
+  /** External MCP servers merged alongside the agent's built-in servers. */
+  externalMcpServers?: Record<string, unknown> | undefined;
+  /** Formatted `mcp__<serverId>__<toolName>` names allowed without prompts. */
+  externalMcpToolNames?: string[] | undefined;
+  /** Optional exact task-scoped provider tool allowlist; internal completion/evidence tools remain available. */
+  toolAllowlist?: string[] | undefined;
+  /** Registered AgentHarness name. Defaults to "claude". */
+  harness?: string | undefined;
+  /** Initial permission mode; only honoured on the first start. */
+  permissionMode?: string | undefined;
+  /** Explicit provider-neutral execution boundary; resolved against harness support at launch. */
+  sandboxPolicy?: SandboxPolicy | undefined;
+  executorClass?: "mechanical" | "standard" | "reasoning" | undefined;
+  orchestrationMode?: LeaderOrchestrationMode | undefined;
+  planningContext?: string | undefined;
+  /** Guard for one automatic context-window recovery attempt. */
+  contextRecoveryAttempt?: number | undefined;
+  contextCheckpointId?: string | undefined;
+}

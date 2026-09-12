@@ -1,0 +1,43 @@
+.brand {
+  --brand-amber: #ffad1f;
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5%;
+  width: 100%;
+  aspect-ratio: 7.92;
+}
+
+.brand__mark {
+  flex: 0 0 12.6%;
+  aspect-ratio: 1;
+  background: var(--brand-amber);
+  mask: url("/brand/leader-mark.svg") center / contain no-repeat;
+}
+
+.brand__wordmark {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0.7%;
+  height: 65%;
+}
+
+.brand__swarm,
+.brand__crews {
+  height: 100%;
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+.brand__swarm {
+  flex: 1.218;
+  background: var(--brand-amber);
+  mask-image: url("/brand/swarm.svg");
+}
+
+.brand__crews {
+  flex: 1;
+  background: var(--text-primary, #f5f6fa);
+  mask-image: url("/brand/crews.svg");
+}

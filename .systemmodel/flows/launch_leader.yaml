@@ -1,0 +1,25 @@
+id: flow.launch_leader
+type: flow
+name: Launch a Leader on a new intention
+summary: A user launches configured Leader work from canvas, activity, or mobile and observes its durable work-item run; every Leader requires work-item identity.
+constraints:
+  - constraint.skill_freezing_and_role_gate
+decisions: [ decision.canonical_work_item_lifecycle, decision.role_gated_agent_tools ]
+risks:
+  - risk.dual_ingress_divergence
+suggested_files: [ src/App.tsx, src/ActivityEmptyState.tsx, server/leader-identity.ts, server/session-registry.ts, src/nodes/LeaderNode.tsx, src/ActivityView.tsx, src/mobile/LaunchScreen.tsx, server/commands/create-session.ts, server/commands/work-items.ts ]
+suggested_tests: [ server/leader-identity.test.ts, server/session-registry.test.ts, src/nodes/LeaderNode.session-init.test.tsx, src/ActivityView.test.tsx, src/mobile/LaunchScreen.test.tsx, server/commands/create-session.test.ts, server/commands/work-items.test.ts ]
+steps:
+  - Capture prompt, context, harness, model, permission, thinking, isolation, and armed skill choices.
+  - Create and bind a WorkItem for every canvas, activity, and mobile Leader launch; missing workspace context is an explicit launch error.
+  - Enforce project ownership, revision fences, harness readiness, and active session bounds.
+  - Reject identity-free Leader creation and identity changes at server ingress and runtime start; migrate historical Leaders before hydration.
+  - Start SessionHost through the resolved harness with immutable work-item identity and replay status to the initiating surface.
+freshness:
+  class: code_coupled
+risk: critical
+domain: domain.execution_lifecycle
+primary_capability: capability.leader_creation
+bridges:
+  - to: constraint.skill_freezing_and_role_gate
+    reason: Leader launch crosses into delegation policy when it freezes armed skill content and authoring eligibility.

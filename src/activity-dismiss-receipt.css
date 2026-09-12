@@ -1,0 +1,7 @@
+.canvas-zone-receipt.act-dismiss-receipt {
+  bottom: 16px;
+  z-index: 5;
+  max-width: calc(100% - 32px);
+}
+
+.act-dismiss-receipt button:disabled { opacity: .5; cursor: default; }

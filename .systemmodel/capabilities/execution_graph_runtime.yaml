@@ -1,0 +1,57 @@
+id: capability.execution_graph_runtime
+type: capability
+name: Execution graph runtime
+summary: Leaders can choose bounded dependency graphs with task-scoped skills, retrieve phase-specific procedures, inspect durable attempts and evidence across same-WorkItem Leader continuations, and recover execution while retaining direct work outside the graph. Historical reads preserve current-run mutation fences.
+constraints:
+  - constraint.execution_graph_authority
+  - constraint.execution_graph_admission
+  - constraint.execution_graph_evidence
+  - constraint.execution_graph_projection
+  - constraint.work_packet_reconciliation
+decisions:
+  - decision.server_owned_execution_graphs
+  - decision.canonical_work_item_lifecycle
+  - decision.typed_event_bus
+risks: []
+suggested_files: [ server/dialectic/graph-plan.ts, server/task-graph/**, server/task-graph/patterns.ts, server/task-graph/dispatch-context.ts, server/task-graph/planning-runtime.ts, server/work-item-service-sqlite.ts, shared/task-graph-patterns.ts, shared/task-graph-contracts.ts, shared/task-graph-planning-contracts.ts, shared/work-item-contracts.ts, shared/leader-prompt.ts, server/agents/leader.ts, server/system-model-tools/reconcile-run.ts, server/commands/task-graph.ts ]
+suggested_tests: [ server/dialectic/graph-plan.test.ts, server/task-graph/session-affinity.test.ts, shared/task-graph-patterns.test.ts, server/task-graph/patterns.test.ts, server/task-graph/planning-compiler.test.ts, server/task-graph/planning-coordinator.test.ts, server/task-graph/planning-runtime.test.ts, server/task-graph/service.test.ts, server/work-item-service-sqlite.test.ts, shared/leader-prompt.test.ts, server/agents/leader.test.ts, server/system-model-tools/reconcile-run.test.ts, tests/task-graph/runtime.test.ts, tests/contracts/work-item-contracts.test.ts ]
+keywords: [ execution_graph, task_graph, semantic_plan, dialectic, cognitive_diversity, session_affinity, provider_thread, prompt_cache, synthesis, goal_distance, leader_moderation, human_gate, pattern, router, lint, problem_signature, bounded_episode, proposal_revision, source_snapshot, policy_preflight, serial_iteration, topology, graph_revision, graph_run, node_attempt, scheduler, lease, outbox, artifact, verification, ownership, budget ]
+entry_points:
+  - surface: surface.agent_tools
+    summary: Leaders may attach versioned pattern and problem-signature metadata or submit a specialized dialectic graph; the server expands bounded role-differentiated turns, cache-stable affinity chains, structured synthesis checkpoints, and Leader gates before the ordinary source freeze, policy preflight, immutable materialization, and evidence lifecycle.
+    files: [ server/dialectic/graph-plan.ts, shared/task-graph-patterns.ts, shared/task-graph-planning-contracts.ts, server/task-graph/patterns.ts, server/task-graph/planning-tools.ts, server/task-graph/planning-runtime.ts, server/task-graph/planning-coordinator.ts, server/task-graph/planning-source.ts, server/task-graph/planning-compiler.ts, server/task-graph/execution-policy.ts, server/task-graph/dispatch-context.ts, server/task-graph/agent-tools.ts, server/session-host-agent-context.ts, server/agents/minion.ts ]
+    tests: [ server/dialectic/graph-plan.test.ts, server/task-graph/session-affinity.test.ts, shared/task-graph-patterns.test.ts, server/task-graph/patterns.test.ts, server/task-graph/planning-runtime.test.ts, server/task-graph/planning-coordinator.test.ts, server/task-graph/planning-source.test.ts, server/task-graph/planning-compiler.test.ts, server/task-graph/execution-policy.test.ts, server/task-graph/service.test.ts, server/agents/minion.test.ts ]
+    flows: [ flow.execute_execution_graph, flow.conduct_dialectic ]
+  - surface: surface.ws_api
+    summary: Validated commands create revisions, start and control fenced runs, and retrieve canonical graph projections.
+    files: [ server/commands/task-graph.ts, server/commands/schemas.ts, server/commands/index.ts, shared/task-graph-view-contracts.ts ]
+    tests: [ server/commands/schemas.test.ts, server/task-graph/service.test.ts ]
+    flows: [ flow.execute_execution_graph ]
+  - surface: surface.graph_inspector
+    summary: Review proposal pattern provenance, router rationale, lint findings, and artifact contracts, then inspect runtime topology, readiness, attempts, evidence, budget, critical path, and timeline without making the UI authoritative.
+    files: [ src/task-graph/**, shared/task-graph-view-contracts.ts, server/task-graph/view.ts ]
+    tests: [ src/task-graph/GraphInspector.test.tsx, src/task-graph/use-task-graph-view.test.tsx, src/task-graph/LeaderTaskGraphIntegration.test.tsx ]
+    flows: [ flow.inspect_execution_graph ]
+freshness:
+  class: code_coupled
+risk: critical
+domain: domain.delegation
+depends_on:
+  - capability.durable_work_items
+bridges:
+  - to: capability.standalone_agent_evaluation
+    reason: The external graph adapter exercises a dedicated protocol-connected instance and never becomes an alternate scheduler or runtime authority.
+  - to: capability.durable_work_items
+    reason: Graph execution is subordinate to durable WorkItem intent and its current primary run.
+  - to: flow.inspect_execution_graph
+    reason: The observability-owned inspector projects and controls this delegation-owned runtime.
+  - to: constraint.execution_graph_authority
+    reason: Graph execution crosses into canonical WorkItem lifecycle authority.
+  - to: constraint.execution_graph_projection
+    reason: Graph execution publishes into an observability-owned projection contract.
+  - to: flow.delegate_and_steer_minions
+    reason: Graph attempts launch attempt-identified child WorkItem runs while direct planning, delegation, steering, and waiting remain available whenever the Leader decides a graph would not add value.
+  - to: flow.monitor_execution
+    reason: Graph state is observed through the shared typed event and reconnect model.
+  - to: constraint.work_packet_reconciliation
+    reason: A terminal graph run completes scheduler execution but does not close an attached Work Packet before evidence and model reconciliation.

@@ -1,0 +1,759 @@
+import { ActivityLoading, type ActivityLoadingProps } from "../ActivityLoading.tsx";
+import { ChatLinkScope } from "../components/ChatLink.tsx";
+import { AgentMessageText } from "../components/AgentMessageText.tsx";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, ListX, Plus, RotateCcw, X } from "lucide-react";
+
+import type { MobileSessionInfo, ActivityVisibility } from "./mobile-selectors.ts";
+import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
+import { randomUuid } from "../random-id.ts";
+import { previousPrimaryRuns } from "../work-item-run-history.ts";
+import {
+  activeMinionSummary,
+  attentionAction,
+  attentionKind,
+  attentionReason,
+  compareActivityPriority,
+  isSessionTitleEcho,
+  groupSessionsForTriage,
+  needsAttention,
+  sessionDisplayTitle,
+  sessionRoleLabel,
+  isVisibleInActivity,
+} from "./mobile-selectors.ts";
+import {
+  buildLifecycleCommand,
+  canAcknowledge,
+  isDismissed,
+  type LifecycleAction,
+} from "./mobile-activity-actions.ts";
+
+export interface ActivityViewMemory {
+  visibility?: ActivityVisibility;
+  summaryFilter?: ActivitySummaryFilter | null;
+  scrollTop?: number;
+}
+
+interface ActivityScreenProps extends ActivityLoadingProps {
+  memory?: ActivityViewMemory;
+  resumeSession?: MobileSessionInfo | undefined;
+  onOpenReview?: ((sessionKey: string) => void) | undefined;
+  approvalSessionKeys?: string[];
+  sessions: MobileSessionInfo[];
+  onOpenSession: (sessionKey: string) => void;
+  onNewLeader?: () => void;
+  notice?: ActivityNotice | null;
+  workItemRuns?: Record<string, WorkItemRunSnapshot[]>;
+  runNextCursor?: Record<string, string | null>;
+  onLoadRuns?: (workItemId: string, cursor?: string) => void;
+  /** WS send — drives the triage lane's keep/review, remove, and restore actions. */
+  send?: (data: unknown) => void;
+}
+
+export interface ActivityNotice {
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  onDismiss?: () => void;
+}
+
+const VISIBILITY_LABELS: Record<ActivityVisibility, string> = {
+  open: "Open",
+  all: "All",
+  dismissed: "Dismissed",
+};
+
+type ActivitySummaryFilter = "needs-you" | "active" | "waiting";
+
+function matchesSummaryFilter(
+  session: MobileSessionInfo,
+  filter: ActivitySummaryFilter,
+): boolean {
+  switch (filter) {
+    case "needs-you":
+      return needsAttention(session);
+    case "active":
+      return session.status === "running" || session.status === "creating";
+    case "waiting":
+      return session.status === "waiting" ||
+        session.reviewLifecycle?.reviewState === "decision_needed";
+  }
+}
+
+function formatCost(cost: number | undefined): string {
+  if (cost == null || !Number.isFinite(cost)) return "$0.00";
+  if (cost > 0 && cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+}
+
+/**
+ * Work-item lifecycle commands validate `requestId` as a UUID server-side, so
+ * the fallback must be a real RFC-4122 UUID — a `${Date.now()}-…` string gets
+ * the whole command rejected on non-secure origins.
+ */
+function newRequestId(): string {
+  return randomUuid();
+}
+
+function MinionSummary({ session }: { session: MobileSessionInfo }) {
+  const summary = activeMinionSummary(session);
+  if (summary.total === 0) return null;
+  return (
+    <span className="mob-card-minions" aria-label="Active minions summary">
+      {summary.running > 0 ? (
+        <span data-tone="running" data-live="true">
+          <i aria-hidden="true" />
+          {summary.running} running
+        </span>
+      ) : null}
+      {summary.blocked > 0 ? <span data-tone="blocked">{summary.blocked} blocked</span> : null}
+      {summary.planned > 0 ? <span data-tone="planned">{summary.planned} queued</span> : null}
+    </span>
+  );
+}
+
+/** A checkbox that toggles a session's membership in the bulk-selection set. */
+function SelectBox({
+  checked,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="mob-select" onClick={(event) => event.stopPropagation()}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        aria-label={`Select ${label}`}
+      />
+    </label>
+  );
+}
+
+/**
+ * The immediate review/dismiss controls shared by the triage rows and the
+ * session cards, so a session can be resolved without opening it. Each button
+ * renders only when its lifecycle transition applies to the current state.
+ */
+function LifecycleActions({
+  session,
+  onAction,
+}: {
+  session: MobileSessionInfo;
+  onAction: (action: LifecycleAction, session: MobileSessionInfo) => void;
+}) {
+  const dismissed = isDismissed(session);
+  const retainedInactive = session.status === "inactive"
+    && session.reviewLifecycle?.reviewState === "interrupted_to_review"
+    && session.reviewLifecycle.acknowledgedAt == null
+    && session.reviewLifecycle.dismissedAt == null;
+  return (
+    <span className="mob-life-actions">
+      {canAcknowledge(session) ? (
+        <button
+          className="mob-mini-btn mob-mini-btn--icon mob-mini-btn--primary"
+          type="button"
+          onClick={() => onAction("acknowledge", session)}
+          aria-label={retainedInactive ? "Review" : "Mark reviewed"}
+          title={retainedInactive ? "Review and keep in Activity" : "Mark reviewed"}
+        >
+          <Check size={18} strokeWidth={2.5} aria-hidden />
+          <span>{retainedInactive ? "Review" : "Mark reviewed"}</span>
+        </button>
+      ) : null}
+      {dismissed ? (
+        <button
+          className="mob-mini-btn mob-mini-btn--icon"
+          type="button"
+          onClick={() => onAction("reopen", session)}
+          aria-label="Restore"
+          title="Restore"
+        >
+          <RotateCcw size={17} strokeWidth={2.25} aria-hidden />
+          <span>Restore</span>
+        </button>
+      ) : (
+        <button
+          className="mob-mini-btn mob-mini-btn--icon mob-mini-btn--dismiss"
+          type="button"
+          onClick={() => onAction("dismiss", session)}
+          aria-label={retainedInactive ? "Review and remove from Activity" : "Dismiss"}
+          title={retainedInactive
+            ? "Review, remove from Activity, and detach from Canvas"
+            : "Dismiss"}
+        >
+          {retainedInactive
+            ? <ListX size={18} strokeWidth={2.25} aria-hidden />
+            : <X size={18} strokeWidth={2.25} aria-hidden />}
+          <span>{retainedInactive ? "Remove" : "Dismiss"}</span>
+        </button>
+      )}
+    </span>
+  );
+}
+
+/**
+ * A pinned attention row for a session that needs the user. Tapping the body
+ * opens the session; the inline buttons resolve it without leaving Activity.
+ */
+function TriageRow({
+  session,
+  onOpenSession,
+  onOpenReview,
+  onAction,
+  checked,
+  onToggleSelect,
+}: {
+  session: MobileSessionInfo;
+  onOpenSession: (sessionKey: string) => void;
+  onOpenReview?: ((sessionKey: string) => void) | undefined;
+  onAction?: ((action: LifecycleAction, session: MobileSessionInfo) => void) | undefined;
+  checked?: boolean;
+  onToggleSelect?: (() => void) | undefined;
+}) {
+  const kind = onOpenReview ? "changes" : attentionKind(session);
+  const retainedInactive = session.status === "inactive"
+    && session.reviewLifecycle?.reviewState === "interrupted_to_review"
+    && session.reviewLifecycle.acknowledgedAt == null
+    && session.reviewLifecycle.dismissedAt == null;
+  return (
+    <div
+      className={`mob-triage-row mob-triage-row--${kind}${checked ? " mob-triage-row--selected" : ""}`}
+    >
+      {onToggleSelect ? (
+        <SelectBox
+          checked={checked ?? false}
+          label={sessionDisplayTitle(session)}
+          onToggle={onToggleSelect}
+        />
+      ) : null}
+      <button
+        className="mob-triage-main"
+        type="button"
+        onClick={() => onOpenSession(session.sessionKey)}
+      >
+        <span className={`mob-triage-icon mob-triage-icon--${kind}`} aria-hidden="true">
+          {kind === "inactive" ? "Ⅱ" : kind === "error" ? "!" : kind === "waiting" ? "?" : "±"}
+        </span>
+        <span className="mob-triage-body">
+          <span className="mob-triage-line">
+            <span className="mob-triage-title">{sessionDisplayTitle(session)}</span>
+            <span className={`mob-triage-reason mob-triage-reason--${kind}`}>
+              {onOpenReview ? "changes ready" : attentionReason(session)}
+            </span>
+          </span>
+          <span className="mob-triage-sub">
+            {sessionRoleLabel(session).toUpperCase()} · {formatCost(session.totalCost)} ·{" "}
+            {session.turns ?? 0} turns
+          </span>
+        </span>
+      </button>
+      <span className="mob-triage-actions">
+        {(!retainedInactive || !onAction) ? (
+          <button
+            className="mob-mini-btn mob-mini-btn--primary"
+            type="button"
+            onClick={() => (onOpenReview ?? onOpenSession)(session.sessionKey)}
+          >
+            {onOpenReview ? "Review changes" : attentionAction(session)}
+          </button>
+        ) : null}
+        {onAction ? <LifecycleActions session={session} onAction={onAction} /> : null}
+      </span>
+    </div>
+  );
+}
+
+function SessionCard({
+  session,
+  onOpenSession,
+  onAction,
+  checked,
+  onToggleSelect,
+}: {
+  session: MobileSessionInfo;
+  onOpenSession: (sessionKey: string) => void;
+  onAction?: ((action: LifecycleAction, session: MobileSessionInfo) => void) | undefined;
+  checked?: boolean;
+  onToggleSelect?: (() => void) | undefined;
+}) {
+  const hasSessionRun = !session.sessionKey.startsWith("work-item:");
+  const activity = session.lastActivity?.trim();
+  const showActivity = Boolean(activity) && !isSessionTitleEcho(session, activity);
+  return (
+    <div
+      className={`mob-session-card-wrap${checked ? " mob-session-card-wrap--selected" : ""}`}
+    >
+      {onToggleSelect ? (
+        <SelectBox
+          checked={checked ?? false}
+          label={sessionDisplayTitle(session)}
+          onToggle={onToggleSelect}
+        />
+      ) : null}
+      <button
+        className={`mob-session-card${needsAttention(session) ? " mob-session-card--attention" : ""}`}
+        onClick={() => { if (hasSessionRun) onOpenSession(session.sessionKey); }}
+        disabled={!hasSessionRun}
+        title={hasSessionRun ? undefined : "No run has started for this work item"}
+        type="button"
+      >
+        <span className="mob-card-topline">
+          <span className="mob-card-role">{sessionRoleLabel(session)}</span>
+          <span className={`mob-status-pill mob-status-pill--${session.status}`}>
+            {session.status}
+          </span>
+        </span>
+        <span className="mob-card-title">{sessionDisplayTitle(session)}</span>
+        <span className="mob-card-meta">
+          {formatCost(session.totalCost)}
+          {session.turns ? ` · ${session.turns} turns` : ""}
+          {session.model ? ` · ${session.model}` : ""}
+        </span>
+        <MinionSummary session={session} />
+        {showActivity ? (
+          <span className="mob-card-activity">
+            {activity}
+          </span>
+        ) : null}
+      </button>
+      {onAction ? <LifecycleActions session={session} onAction={onAction} /> : null}
+    </div>
+  );
+}
+
+function NoticeBanner({ notice }: { notice: ActivityNotice }) {
+  return (
+    <section className="mob-activity-notice" role="alert" aria-label={notice.title}>
+      <div>
+        <h2>{notice.title}</h2>
+        <p>{notice.message}</p>
+      </div>
+      <div className="mob-activity-notice-actions">
+        {notice.actionLabel && notice.onAction ? (
+          <button type="button" onClick={notice.onAction}>
+            {notice.actionLabel}
+          </button>
+        ) : null}
+        {notice.onDismiss ? (
+          <button type="button" onClick={notice.onDismiss} aria-label="Dismiss notice">
+            Dismiss
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function RunHistory({
+  session,
+  workItemRuns,
+  runNextCursor,
+  onLoadRuns,
+}: {
+  session: MobileSessionInfo;
+  workItemRuns: Record<string, WorkItemRunSnapshot[]>;
+  runNextCursor: Record<string, string | null>;
+  onLoadRuns?: ((workItemId: string, cursor?: string) => void) | undefined;
+}) {
+  const workItemId = session.workItemId ?? "";
+  const runs = workItemId ? workItemRuns[workItemId] ?? [] : [];
+  const historicalRuns = useMemo(
+    () => previousPrimaryRuns(runs, session.sessionKey),
+    [runs, session.sessionKey],
+  );
+  const [open, setOpen] = useState(false);
+  const [previewRunKey, setPreviewRunKey] = useState<string | null>(null);
+  const requestedPages = useRef(new Set<string>());
+  useEffect(() => {
+    requestedPages.current.clear();
+    setPreviewRunKey(null);
+  }, [workItemId]);
+  useEffect(() => {
+    if (!workItemId || !open || !onLoadRuns) return;
+    const nextCursor = runNextCursor[workItemId];
+    const pageKey = nextCursor === undefined ? "__first__" : nextCursor;
+    if (!pageKey || requestedPages.current.has(pageKey)) return;
+    requestedPages.current.add(pageKey);
+    onLoadRuns(workItemId, pageKey === "__first__" ? undefined : pageKey);
+  }, [onLoadRuns, open, runNextCursor, workItemId]);
+  if (!workItemId) return null;
+  return (
+    <details className="mob-run-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary>
+        <span>Run history</span>
+        {historicalRuns.length > 0 ? (
+          <span className="mob-run-history-count">{historicalRuns.length}</span>
+        ) : null}
+      </summary>
+      <div className="mob-run-history-body">
+        {historicalRuns.length === 0 ? (
+          <p className="mob-run-history-empty">
+            {runs.length === 0 ? "No previous iterations loaded." : "No previous iterations."}
+          </p>
+        ) : (
+          <ol aria-label={`Run history for ${sessionDisplayTitle(session)}`}>
+            {historicalRuns.map((run) => <li key={run.runKey}>
+              <div className="mob-run-history-line">
+                <strong>Iteration {run.runNumber}</strong>
+                <span>{run.outcome}</span>
+              </div>
+              <time>{run.endedAt
+                ? new Date(run.endedAt).toLocaleString()
+                : "Active now"}</time>
+              <button
+                className="mob-mini-btn"
+                type="button"
+                aria-expanded={previewRunKey === run.runKey}
+                onClick={() => setPreviewRunKey((current) => current === run.runKey ? null : run.runKey)}
+              >
+                {previewRunKey === run.runKey ? "Hide preview" : "Preview"}
+              </button>
+              {previewRunKey === run.runKey ? (
+                <div className="mob-run-history-preview" role="region"
+                  aria-label={`Preview of iteration ${run.runNumber}`}>
+                  <strong>Read-only preview</strong>
+                  <ChatLinkScope project={session.projectId} cwd={session.cwd}>
+                    <AgentMessageText text={run.finalReport ?? "This iteration did not publish a final report."} />
+                  </ChatLinkScope>
+                </div>
+              ) : null}
+            </li>)}
+          </ol>
+        )}
+        {runNextCursor[workItemId] ? (
+          <p className="mob-run-history-empty" role="status">Loading earlier iterations…</p>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
+export function ActivityScreen({ loading = false, loadError = null, onRetryLoad, connected = true, sessions, onOpenSession, onNewLeader, notice,
+  workItemRuns = {}, runNextCursor = {}, onLoadRuns, send, memory, resumeSession, onOpenReview, approvalSessionKeys = [] }: ActivityScreenProps) {
+  const [visibility, setVisibility] = useState<ActivityVisibility>(memory?.visibility ?? "open");
+  const [selecting, setSelecting] = useState(false);
+  const [summaryFilter, setSummaryFilter] = useState<ActivitySummaryFilter | null>(memory?.summaryFilter ?? null);
+  const [checkedKeys, setCheckedKeys] = useState<Set<string>>(() => new Set());
+  const screenRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (screenRef.current) screenRef.current.scrollTop = memory?.scrollTop ?? 0;
+  }, [memory]);
+  useLayoutEffect(() => {
+    if (memory) { memory.visibility = visibility; memory.summaryFilter = summaryFilter; }
+  }, [memory, visibility, summaryFilter]);
+  const rememberScroll = () => {
+    if (memory && screenRef.current) memory.scrollTop = screenRef.current.scrollTop;
+  };
+
+
+  const toggleChecked = (sessionKey: string) =>
+    setCheckedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(sessionKey)) next.delete(sessionKey);
+      else next.add(sessionKey);
+      return next;
+    });
+
+  // Minions are spawned and managed by their leader; the mobile Activity list
+  // surfaces top-level sessions only, so their cards are filtered out here.
+  const visibilitySessions = sessions
+    .filter((session) => session.role !== "minion" && (isVisibleInActivity(session, visibility)
+      || (visibility === "open" && approvalSessionKeys.includes(session.sessionKey))))
+    .sort(compareActivityPriority);
+  const visibleSessions = summaryFilter
+    ? visibilitySessions.filter((session) => matchesSummaryFilter(session, summaryFilter))
+    : visibilitySessions;
+  const triage = groupSessionsForTriage(visibleSessions);
+  const summaryItems: Array<{
+    id: ActivitySummaryFilter;
+    label: string;
+    count: number;
+    attention?: boolean;
+  }> = [
+    {
+      id: "needs-you",
+      label: "needs you",
+      count: visibilitySessions.filter((session) => needsAttention(session)).length,
+      attention: true,
+    },
+    {
+      id: "active",
+      label: "active",
+      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "active")).length,
+    },
+    {
+      id: "waiting",
+      label: "waiting",
+      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "waiting")).length,
+    },
+  ];
+
+  const handleAction = send
+    ? (action: LifecycleAction, session: MobileSessionInfo) =>
+        send(buildLifecycleCommand(action, session, newRequestId()))
+    : undefined;
+
+  // The concrete sessions currently checked for a bulk action, in list order.
+  const checkedSessions = visibleSessions.filter((session) => checkedKeys.has(session.sessionKey));
+  const bulkCounts = {
+    reviewable: checkedSessions.filter((session) => canAcknowledge(session)).length,
+    dismissed: checkedSessions.filter((session) => isDismissed(session)).length,
+    open: checkedSessions.filter((session) => !isDismissed(session)).length,
+  };
+  const clearSelection = () => setCheckedKeys(new Set());
+  const selectAllVisible = () =>
+    setCheckedKeys(new Set(visibleSessions.map((session) => session.sessionKey)));
+  const applyBulk = handleAction
+    ? (action: LifecycleAction) => {
+        for (const session of checkedSessions) {
+          if (action === "acknowledge" && !canAcknowledge(session)) continue;
+          if (action === "dismiss" && isDismissed(session)) continue;
+          if (action === "reopen" && !isDismissed(session)) continue;
+          handleAction(action, session);
+        }
+        clearSelection();
+      }
+    : undefined;
+
+  // Drop checked keys whose sessions have left the current view (e.g. after a
+  // bulk dismiss moves them out of Open, or a filter change hides them) so the
+  // bulk bar count stays honest. Keyed on a stable signature of visible keys.
+  const visibleKeysSignature = visibleSessions.map((session) => session.sessionKey).join("\n");
+  useEffect(() => {
+    setCheckedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(visibleKeysSignature ? visibleKeysSignature.split("\n") : []);
+      let changed = false;
+      const next = new Set<string>();
+      for (const key of prev) {
+        if (visible.has(key)) next.add(key);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [visibleKeysSignature]);
+
+  const filters = (
+    <div className="mob-filters" role="tablist" aria-label="Activity visibility">
+      {(["open", "all", "dismissed"] as const).map((id) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={visibility === id}
+          className={`mob-filter${visibility === id ? " mob-filter--active" : ""}`}
+          onClick={() => {
+            setVisibility(id);
+            setSummaryFilter(null);
+          }}
+        >
+          {VISIBILITY_LABELS[id]}
+        </button>
+      ))}
+    </div>
+  );
+
+  const loadPending = loading || Boolean(loadError);
+  if (visibilitySessions.length === 0 && loadPending) {
+    return <main ref={screenRef} onScroll={rememberScroll} className="mob-screen mob-activity" aria-label="Activity">
+      <header className="mob-screen-header"><h1>Activity</h1></header>
+      {notice ? <NoticeBanner notice={notice} /> : null}
+      {filters}
+      <ActivityLoading loadError={loadError} onRetryLoad={onRetryLoad} connected={connected} skeleton />
+    </main>;
+  }
+  if (visibilitySessions.length === 0) {
+    const canStartFirstLeader = sessions.length === 0 && visibility !== "dismissed" && onNewLeader;
+    return (
+      <main ref={screenRef} onScroll={rememberScroll} className="mob-screen mob-activity" aria-label="Activity">
+        <header className="mob-screen-header">
+          <h1>Activity</h1>
+          <span className="mob-count">0</span>
+        </header>
+        {notice ? <NoticeBanner notice={notice} /> : null}
+        {filters}
+        <div className="mob-empty mob-empty--surface">
+          <h2>{visibility === "dismissed" ? "Nothing dismissed" : "No active sessions"}</h2>
+          <p>{visibility === "dismissed"
+            ? "No dismissed sessions."
+            : canStartFirstLeader
+              ? "Start a Leader to give this project its first task."
+              : "No sessions are running."}</p>
+          {canStartFirstLeader ? (
+            <button
+              type="button"
+              className="mob-empty-action mob-primary-action"
+              onClick={onNewLeader}
+            >
+              <Plus size={18} aria-hidden="true" />
+              New leader
+            </button>
+          ) : null}
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main ref={screenRef} onScroll={rememberScroll} className="mob-screen mob-activity" aria-label="Activity">
+      <header className="mob-screen-header">
+        <div className="mob-activity-heading">
+          <h1>Activity</h1>
+          <span className="mob-count">{visibleSessions.length}</span>
+        </div>
+        {handleAction ? (
+          <button className="mob-header-action mob-selection-toggle" type="button"
+            aria-pressed={selecting}
+            onClick={() => { setSelecting(!selecting); clearSelection(); }}>
+            {selecting ? "Done" : "Select"}
+          </button>
+        ) : null}
+      </header>
+      {notice ? <NoticeBanner notice={notice} /> : null}
+
+      {loadPending && <ActivityLoading loadError={loadError} onRetryLoad={onRetryLoad} connected={connected} />}
+      {resumeSession ? <button type="button" className="mob-resume-session"
+        aria-label={`Continue conversation ${sessionDisplayTitle(resumeSession)}`}
+        onClick={() => onOpenSession(resumeSession.sessionKey)}>
+        <span>Continue conversation</span><strong>{sessionDisplayTitle(resumeSession)} →</strong>
+      </button> : null}
+      <div className="mob-activity-summary" aria-label="Filter activity by status">
+        {summaryItems.map((item) => {
+          const selected = summaryFilter === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`mob-summary-item${item.attention ? " mob-summary-item--attention" : ""}${
+                selected ? " mob-summary-item--active" : ""
+              }`}
+              aria-pressed={selected}
+              aria-label={`${item.label}: ${item.count}. ${selected ? "Clear filter" : "Filter activity"}`}
+              onClick={() => setSummaryFilter(selected ? null : item.id)}
+            >
+              <strong>{item.count}</strong><span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filters}
+
+      {applyBulk && checkedSessions.length > 0 ? (
+        <div className="mob-bulk" role="toolbar" aria-label="Bulk actions">
+          <span className="mob-bulk-count">{checkedSessions.length} selected</span>
+          <div className="mob-bulk-actions">
+            {bulkCounts.reviewable > 0 ? (
+              <button
+                className="mob-mini-btn mob-mini-btn--primary"
+                type="button"
+                onClick={() => applyBulk("acknowledge")}
+              >
+                Mark {bulkCounts.reviewable} reviewed
+              </button>
+            ) : null}
+            {bulkCounts.open > 0 ? (
+              <button className="mob-mini-btn" type="button" onClick={() => applyBulk("dismiss")}>
+                Dismiss {bulkCounts.open}
+              </button>
+            ) : null}
+            {bulkCounts.dismissed > 0 ? (
+              <button className="mob-mini-btn" type="button" onClick={() => applyBulk("reopen")}>
+                Restore {bulkCounts.dismissed}
+              </button>
+            ) : null}
+            <button
+              className="mob-mini-btn mob-mini-btn--ghost"
+              type="button"
+              onClick={selectAllVisible}
+              disabled={checkedSessions.length === visibleSessions.length}
+            >
+              Select all
+            </button>
+            <button className="mob-mini-btn mob-mini-btn--ghost" type="button" onClick={clearSelection}>
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {visibleSessions.length === 0 ? (
+        <div className="mob-empty mob-empty--surface">
+          <h2>No matches</h2>
+          <p>No sessions match this activity filter.</p>
+        </div>
+      ) : null}
+
+      {triage.needsYou.length > 0 ? (
+        <section className="mob-activity-section mob-activity-section--triage" aria-label="Needs you">
+          <h2 className="mob-section-header">
+            <span>Needs you</span>
+            <span className="mob-section-count">{triage.needsYou.length}</span>
+          </h2>
+          <div className="mob-triage-list">
+            {triage.needsYou.map((session) => (
+              <div key={session.sessionKey}>
+                <TriageRow
+                  session={session}
+                  onOpenSession={onOpenSession}
+                  onOpenReview={approvalSessionKeys.includes(session.sessionKey) || session.reviewableChanges ? onOpenReview : undefined}
+                  onAction={handleAction}
+                  checked={checkedKeys.has(session.sessionKey)}
+                  onToggleSelect={
+                    handleAction && selecting ? () => toggleChecked(session.sessionKey) : undefined
+                  }
+                />
+                <RunHistory
+                  session={session}
+                  workItemRuns={workItemRuns}
+                  runNextCursor={runNextCursor}
+                  onLoadRuns={onLoadRuns}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {triage.sections.map((section) => (
+        <section
+          className="mob-activity-section"
+          key={section.id}
+          aria-label={section.title}
+        >
+          <h2 className="mob-section-header">
+            <span>{section.title}</span>
+            <span className="mob-section-count">{section.sessions.length}</span>
+          </h2>
+          <div className="mob-session-list">
+            {section.sessions.map((session) => (
+              <div key={session.sessionKey}>
+                <SessionCard
+                  session={session}
+                  onOpenSession={onOpenSession}
+                  onAction={handleAction}
+                  checked={checkedKeys.has(session.sessionKey)}
+                  onToggleSelect={
+                    handleAction && selecting ? () => toggleChecked(session.sessionKey) : undefined
+                  }
+                />
+                <RunHistory
+                  session={session}
+                  workItemRuns={workItemRuns}
+                  runNextCursor={runNextCursor}
+                  onLoadRuns={onLoadRuns}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </main>
+  );
+}

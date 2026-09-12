@@ -1,0 +1,426 @@
+<p align="center">
+  <img src="./assets/swarmcrews-logo.svg" alt="Swarmcrews" width="720">
+</p>
+
+<p align="center">
+A spatial workspace for coordinating coding agents through Claude Code,
+OpenAI Codex, OpenCode, and Pi harnesses. Give a Leader a complex task, and it
+spawns parallel Minion agents that collaborate in real time.
+</p>
+
+> **Status:** Early-stage open-source software. Interfaces and data formats may
+> change, and rough edges should be expected.
+
+---
+
+## What This Is
+
+Swarmcrews gives you a spatial interface for orchestrating coding agents:
+
+- **Infinite canvas** — drag, zoom, arrange nodes visually
+- **Leader/Minion orchestration** — give a Leader a complex task, and it spawns Minion agents, wires them up, and tracks progress through a live task board
+- **Git worktree isolation** — Minions share the Leader's isolated worktree, declared overlapping write scopes are rejected during assignment, and changes route through an explicit approval flow before merging
+- **Skills browser** — browse, create, and launch pre-configured skill templates
+- **Project management** — persistent projects with SQLite storage, session history, cost tracking
+- **Multiple agent harnesses** — use Claude Code, OpenAI Codex, OpenCode, or Pi, with each installed harness exposing its own configured model catalog
+
+## Prerequisites
+
+You need all of the following installed before starting:
+
+| Requirement | Why |
+|---|---|
+| **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. OpenCode and Pi are discovered on `PATH` (or via `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
+| **Node.js ≥ 22** | Required by the agent SDKs and modern runtime features |
+| **pnpm** | Package manager (`npm install -g pnpm` if you don't have it) |
+| **git** | Used for repository access and optional worktree isolation |
+| **[Tailscale](https://tailscale.com/download)** | Optional, for tailnet HTTPS and the mobile companion |
+
+### Verify your setup
+
+```bash
+pnpm preflight
+```
+
+This checks the host, loopback ports, native dependencies, and every registered
+harness runtime. It succeeds when at least one harness is authenticated and
+prints controlled remediation for the others.
+
+## Quick Start
+
+**New to Swarmcrews?** Follow the [Getting Started guide](./docs/getting-started.md)
+for a complete first-project walkthrough, screenshots, copyable prompts, and
+help with Swarmcrews, task graphs, dashboards, context, and reviewing changes.
+
+```bash
+git clone https://github.com/hipsterusername/minions.git swarmcrews
+cd swarmcrews
+pnpm install
+pnpm preflight
+pnpm start
+```
+
+`pnpm start` launches the backend and Vite together as a background service and
+returns the terminal to you immediately. It opens the browser, writes logs to
+`.run/swarmcrews.log`, and keeps running until you `pnpm stop`. Use `pnpm status`
+to check on it. It never configures Tailscale unless you pass `-- --tailscale`.
+
+If you'd rather run in the foreground and stream logs (stopping both on
+`Ctrl-C`), use `pnpm dev` instead.
+
+- Local URL: **http://localhost:6173**
+
+That's it. No environment variables, no database setup, no Docker — SQLite handles storage automatically.
+
+### Independent agent evaluations
+
+The separately installable [`evals/`](./evals/README.md) package validates task
+fixtures, plans explicit adapter runs, grades frozen submissions, accounts for
+usage coverage, and generates offline performance reports. It is not part of
+the Swarmcrews application runtime and does not run during normal app startup.
+
+## Usage
+
+### Leader/Minion Orchestration
+
+1. Click the **+** button on the canvas toolbar and add a **Leader** node
+2. Give the Leader a complex task — it plans the work and spawns **Minion** agents
+3. Minion nodes appear on the canvas, automatically wired to the Leader
+4. Minions run inside the Leader's isolated worktree, so parallel tasks should own disjoint files
+5. The Leader tracks progress, integrates results, and routes the shared worktree through approval
+
+> Minion nodes are created and wired automatically — you never need to add or connect them manually.
+
+### Other Node Types
+
+Click **+** on the canvas toolbar to add:
+
+- **Leader** — orchestrator agent that decomposes work and delegates to Minions
+- **Markdown** — rich documentation and notes
+- **Image** — drop in screenshots or diagrams as canvas context
+- **Dashboard** — render DSL component view (also driven by Leader render tools)
+- **Context Group** — group nodes together to feed as context into Leader sessions
+
+Folder and File Viewer nodes are created automatically when you drag in directories or files.
+
+## Configuration
+
+All optional — sane defaults are provided:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `3141` | Backend server port |
+| `HOST` | `127.0.0.1` | Server bind address; set explicitly for remote binding |
+| `VITE_PORT` | `6173` | Vite and Tailscale-facing application port |
+| `CLAUDE_CODE_PATH` | SDK discovery | Optional Claude executable override |
+| `CODEX_PATH` | SDK discovery | Optional Codex executable override |
+| `CODEX_API_KEY` / `OPENAI_API_KEY` | Codex CLI login | Optional Codex API credentials |
+| `SWARMCREWS_HOME` | `~/.swarmcrews` | Central registry, project state, and Swarmcrews-owned worktrees |
+
+Set them as environment variables:
+
+```bash
+PORT=8080 pnpm start
+```
+
+### Workspace storage and migration
+
+Opening or creating a project explicitly registers its canonical source folder
+and assigns it a stable workspace UUID. The UUID is the public identity; the
+server owns the mapping to the source folder, so projects on mounted volumes are
+supported without treating every path on the host as authorized.
+
+New Swarmcrews state is kept outside the repository:
+
+```text
+$SWARMCREWS_HOME/
+├── server.db                           # global sessions and orchestration state
+├── artifacts/                          # session-scoped generated artifacts
+├── recent-projects.json
+└── workspaces/
+    ├── registry.json                 # UUID → canonical sourceRoot + nickname
+    └── <workspace-uuid>/             # stateRoot
+        ├── canvas.db
+        ├── context.md
+        ├── settings.json
+        ├── skills.json
+        ├── mcp-servers.json
+        └── worktrees/                # execution worktrees
+```
+
+`SWARMCREWS_HOME` defaults to `~/.swarmcrews` for fresh installs. If that directory
+does not exist but `~/.minions` does, Swarmcrews continues using the legacy home.
+Explicit `SWARMCREWS_HOME` takes precedence over the supported `MINIONS_HOME`
+alias; if both default directories exist, `~/.swarmcrews` wins. Nothing is moved
+or merged automatically. See [rebrand compatibility](./docs/rebrand-compatibility.md).
+Do not hand-edit `registry.json` or
+derive a source path from a UUID. Registration canonicalizes paths and the file
+APIs continue to reject traversal and symlink escapes outside the registered
+source root.
+
+Existing projects migrate non-destructively:
+
+1. Back up the repository and its existing `.minions/` and
+   `.canvas-worktrees/` directories if they contain work you need.
+2. Open the existing source folder in Swarmcrews. On first registration, a single
+   valid legacy project UUID is preserved; otherwise a UUID is assigned. Regular
+   files from `.minions/` are copied into the new UUID state root without
+   overwriting destination files or following symlinks.
+3. Verify project settings, skills, session history, and pending work. New state
+   and new worktrees are created under `$SWARMCREWS_HOME/workspaces/<uuid>/`.
+4. Keep the legacy directories until you have completed or discarded old
+   worktrees and verified the migrated state. Swarmcrews recognizes legacy
+   in-repository worktree paths during the transition and does not
+   automatically delete either legacy directory.
+
+Changing `SWARMCREWS_HOME` selects a different registry and state collection. Move
+that directory as a unit while Swarmcrews is stopped if you need to relocate it.
+
+Moving a repository does not create new state: explicitly rebind its workspace
+UUID to the new source folder (`POST /api/projects/rebind`). A copied repository
+gets a new UUID by default. To intentionally make a copy the source for an
+existing workspace, use `POST /api/projects/attach`; the replaced binding's
+central state is retained and is never deleted implicitly.
+
+Every Leader runs under a durable work item; launches without work-item identity are rejected.
+Graph is always enabled for Leaders and is the standard path for executing Minion
+assignments. Choose automatic start for safe Graph work or review before start
+in the Leader orchestration controls. Leaders can still perform local work themselves.
+
+### Git change mode and execution sandbox
+
+Leader configuration exposes two independent boundaries:
+
+- **Git change mode** chooses whether edits land in a shared checkout or an
+  isolated worktree. It is a coordination and review boundary, not an
+  operating-system sandbox.
+- **Execution sandbox** requests filesystem access (`read-only`,
+  `workspace-write`, or explicit `unrestricted`) and approval behavior
+  independently. An explicit sandbox policy takes precedence over legacy plan mode; without
+  an explicit policy, legacy plan mode defaults to read-only. Normal execution
+  defaults to workspace-write.
+
+Full Host has two choices: **Full Host - Leader Only** keeps Minions in their
+task sandbox, while **Full Host - Leader + Minions** also grants full host access
+to newly launched Minions, including graph tasks. Task-specific approval policies
+still apply. Existing saved Full Host settings remain Leader-only. Choose the
+scope in project defaults or before launching a new Leader; it persists across
+resumes and restarts. Running processes retain their launch policy.
+
+Codex enforces both sandbox axes. Harnesses that cannot enforce an axis
+report it as `unmanaged`; Swarmcrews does not claim that Claude, OpenCode, or Pi
+enforce these provider-neutral sandbox guarantees. Treat requested policy and
+effective policy as different values, and use OS-level isolation when an
+unmanaged axis is unacceptable.
+
+Remote browser access is limited to loopback and Tailscale-style hosts
+(`100.64.0.0/10`, Tailscale IPv6, and MagicDNS `*.ts.net`). The browser talks to
+the backend same-origin — Vite proxies both `/api` and the `/ws` WebSocket to the
+server — so changing `PORT` alone is enough; the front end follows automatically:
+
+```bash
+PORT=8080 pnpm start
+```
+
+### Mobile access over HTTPS (Tailscale)
+
+The mobile companion at `/m` uses **Web Push** for notifications, and browsers
+only expose the Service Worker / Push APIs in a **secure context** (HTTPS, or
+`localhost`). Opening the app from a phone over `http://<host>:6173` is *not* a
+secure context, so the notifications button shows **"Notifications Unsupported"**.
+
+Start the optional background service with tailnet HTTPS:
+
+```bash
+pnpm start -- --tailscale
+```
+
+Then open `https://<machine>.<tailnet>.ts.net:6173/m` on your phone (small screens
+auto-redirect to `/m`). Notifications now work: tap **Enable notifications**.
+
+- Stop the background app: `pnpm stop`.
+- A local built preview is `pnpm build && pnpm preview` and includes the backend.
+- On **iOS**, Web Push additionally requires iOS 16.4+ and adding the app to the
+  Home Screen (Share → *Add to Home Screen*), then launching it from that icon.
+
+This stays tailnet-only; it does not enable `tailscale funnel` (public internet)
+or claim the bare `https://<machine>.<tailnet>.ts.net/` origin.
+
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `pnpm start` | Start the full stack as a background service on loopback (non-blocking) |
+| `pnpm start -- --tailscale` | Start the background service and opt into tailnet HTTPS |
+| `pnpm dev` | Foreground backend + frontend development server on loopback (streams logs, `Ctrl-C` to stop) |
+| `pnpm preview` | Foreground backend + built frontend preview on loopback |
+| `pnpm stop` | Stop the background service |
+| `pnpm restart` | Restart the background service |
+| `pnpm status` | Report whether the background app is running |
+| `pnpm server` | Backend server only |
+| `pnpm build` | Production build |
+| `pnpm typecheck` | TypeScript type checking |
+| `pnpm test` | Run vitest in watch mode |
+| `pnpm test:run` | Run all unit, contract, and architecture tests once |
+| `pnpm test:coverage` | Run the suite once with coverage (used by CI) |
+| `pnpm test:smoke` | Run the isolated Echo browser journey without provider credentials |
+| `pnpm test:e2e` | Run the smoke journey, then the remaining browser tests with graph fixtures |
+| `pnpm audit:prod` | Audit production dependencies; fail on high or critical findings |
+| `pnpm verify` | Run the full CI gate locally (typechecks, tests, licenses, system model, build) |
+| `pnpm preflight` | Validate prerequisites |
+
+## Testing & development workflow
+
+Tests are required for all behavioural changes:
+
+See [Testing strategy](docs/testing-strategy.md) for choosing test boundaries,
+reviewing test value, and pruning with explicit surviving-coverage evidence.
+
+1. **Before pushing**, run `pnpm verify` (typechecks, tests, license and system-model checks, build).
+   CI runs the same gate and will fail the PR otherwise.
+   For an even tighter local loop, install `prek` once
+   (`prek install`) — the hook config in `.pre-commit-config.yaml`
+   will run typecheck + tests on every commit.
+2. **When refactoring**, preserve tests of observable behavior. If a test
+   fails because code moved, a CSS token moved to a stylesheet, or a fixture
+   assumes an old lifecycle, repair the test without weakening its behavioral
+   contract. Describe actual behavior changes in the PR.
+3. **When fixing a bug**, write a failing test first, then make it pass.
+   The test stays in the suite.
+4. **Test files live next to the code they test** (`src/foo.ts` →
+   `src/foo.test.ts`). Cross-tree contract tests live under
+   `tests/contracts/`; architecture-fitness tests under
+   `tests/architecture/`.
+
+CI collects coverage during the main test run and publishes available reports even
+when tests fail; coverage percentages are diagnostic, not a separate threshold.
+The smoke server exposes only Echo, while the remaining browser tests also get a
+fake Pi runtime for graph recovery. Both use temporary homes and databases. The
+smoke journey exercises explicit Git initialization, so its temporary directory
+must be outside any Git repository. If your system temp directory is inside one,
+use a clean location, for example `TMPDIR=/var/tmp pnpm test:smoke` on Linux.
+
+Assert user-visible outcomes rather than source-file spellings. Layout and
+computed-style assertions are appropriate when position, size, visibility, or
+readable contrast is the behavior under test; do not remove them to satisfy a
+blanket style ban. Browser tests cover actual rendering, which jsdom cannot.
+
+The architecture-fitness suite encodes invariants enforced in CI:
+server file size ceilings (≤ 400 lines), no cross-tree imports between
+`src/` and `server/`, broadcasts only through `server/bus.ts`, and a
+handler registered for every WebSocket command.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development workflow and
+pull-request expectations. Report suspected vulnerabilities privately as
+described in [SECURITY.md](./SECURITY.md); do not include credentials, private
+repository content, or local transcripts in public issues.
+
+### Harness terms and assumption of risk
+
+Swarmcrews is an independent orchestration layer. It operates through locally
+installed and authenticated agent harnesses; it does not provide, resell, or
+grant access to their underlying model services. You are responsible for
+ensuring that how you install, authenticate, configure, and use each harness
+complies with the provider's then-current terms, policies, plan or billing
+conditions, and any rules imposed by your organization. Review the
+[Anthropic legal terms](https://www.anthropic.com/legal) and
+[OpenAI policies](https://openai.com/policies/) that apply to your account and
+use case. Swarmcrews does not alter or supersede those terms, and references to
+provider products do not imply provider endorsement.
+
+Swarmcrews is provided on an "AS IS" basis, without warranties or conditions of
+any kind, as set out in the [Apache License 2.0](./LICENSE). You use Swarmcrews at
+your own risk. Coding agents can read and modify files, run commands, create
+worktrees, contact configured services, and consume paid provider capacity with
+the permissions and credentials you give them. Review permission settings,
+protect credentials, keep recoverable backups, and supervise consequential
+actions.
+
+Run Swarmcrews only on a trusted local machine or private tailnet. Worktrees are
+coordination boundaries, not process sandboxes. Codex can enforce the displayed
+filesystem, approval, and network policy; unsupported axes on other harnesses
+are explicitly `unmanaged`, and local MCP processes may retain the permissions
+of the account that started Swarmcrews. Review the effective policy and the
+workspace-owned `mcp-servers.json` before launching unattended sessions.
+
+## Architecture
+
+```
+Browser (localhost:6173 or Tailscale HTTPS host:6173)
+  │
+  ├── React 19 + Vite 8 (infinite canvas UI)
+  │
+  └── WebSocket ──► Express session host (same host:3141)
+                      │
+                      ├── AgentHarness
+                      │   ├── Claude Agent SDK / Claude Code
+                      │   ├── OpenAI Codex SDK / Codex CLI
+                      │   ├── OpenCode CLI
+                      │   └── Pi CLI
+                      ├── SQLite (per-project state)
+                      ├── MCP tools (task management, render dashboard)
+                      └── Git worktree manager (agent isolation)
+```
+
+### Key directories
+
+```
+src/                  Frontend React application
+  nodes/              Node type components (Leader, Minion, ClaudeSession, …)
+  prompts/            System prompts shared with the frontend
+  components/         Shared UI components
+server/               Backend Express + WebSocket server
+  agents/             Per-agent (leader, minion, default) wiring
+  harness/            Claude, Codex, OpenCode, Pi, and test adapters
+  mcp-bridge/         Loopback bridge for harness MCP tool access
+  commands/           Per-command WebSocket handlers
+  routes/             REST API route handlers
+  task-tools/         MCP tools for Leader task management
+  minion-tools.ts     MCP tools for Minion reporting
+  render-tools.ts     MCP tools for Dashboard render DSL
+  bus.ts              Typed event bus — all broadcasts go through here
+  worktree*.ts        Git worktree lifecycle and approval flow
+scripts/              Utility scripts (preflight, permission setup)
+```
+
+## Troubleshooting
+
+**"claude: command not found"**
+Install Claude Code and sign in: https://docs.anthropic.com/en/docs/claude-code
+
+**Sessions fail to start**
+Make sure `claude` works on its own first — run `claude` in your terminal to verify authentication.
+
+**Codex sessions report missing credentials**
+Run `codex login`, or start Swarmcrews with `CODEX_API_KEY` or `OPENAI_API_KEY`
+available in the server environment.
+
+**OpenCode or Pi does not appear with models**
+Run `opencode models` or `pi --list-models` in the project directory. Swarmcrews
+shows the effective catalog returned by that command. Set `OPENCODE_PATH` or
+`PI_PATH` when the executable is not on the server's `PATH`.
+
+**Port already in use**
+Another instance may be running. Kill it or use a different port: `PORT=3142 pnpm start`
+
+**Native module build errors during `pnpm install`**
+`better-sqlite3` 13 bundles native binaries for supported platforms, including Windows x64. The project's pnpm configuration skips its unnecessary implicit `node-gyp rebuild`; `esbuild` remains allowed to run its install script. If an older checkout fails while looking for Visual Studio or a C++ compiler, update the checkout and run `pnpm install` again.
+
+**Cannot find package `tsx`**
+Run `pnpm install` successfully before starting Swarmcrews or running `pnpm preflight`. This error usually means dependencies have not been installed yet.
+
+Startup commands now check for missing local dependencies and print `Run pnpm install` before launching. The Windows CI job runs a frozen-lockfile install with native compilation disabled, then checks startup diagnostics and SQLite database creation, writes, and reads. Run those checks locally with `pnpm test:install` and `pnpm test:sqlite`.
+
+## License
+
+Swarmcrews is licensed under the [Apache License 2.0](./LICENSE).
+
+---
+
+Built with the
+[Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)
+and [OpenAI Codex SDK](https://www.npmjs.com/package/@openai/codex-sdk), with
+CLI adapters for [OpenCode](https://opencode.ai/docs/) and
+[Pi](https://github.com/earendil-works/pi).

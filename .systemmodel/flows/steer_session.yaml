@@ -1,0 +1,22 @@
+id: flow.steer_session
+type: flow
+name: Steer a running or waiting session
+summary: Users send canonical follow-up guidance or attachments through continue_work_item; the server resolves waiting replies, queued active-run guidance, orphan recovery, or a new iteration.
+constraints: []
+decisions: [ decision.canonical_work_item_lifecycle ]
+risks:
+  - risk.dual_ingress_divergence
+suggested_files: [ src/nodes/LeaderNode.tsx, src/ActivityView.tsx, src/mobile/SessionChatScreen.tsx, server/commands/send-message.ts, server/commands/work-items.ts, server/work-item-continuation.ts, src/use-work-items.ts ]
+suggested_tests: [ src/nodes/LeaderNode.test.tsx, src/ActivityView.test.tsx, src/mobile/SessionChatScreen.test.tsx, server/commands/send-message.test.ts, server/commands/work-items.test.ts, server/work-item-service-sqlite.test.ts, src/use-work-items.test.ts ]
+steps:
+  - Load current host or WorkItem state and sanitize attached context.
+  - Dispatch canonical continue_work_item using authoritative server state; canonical send_message also forwards to this service.
+  - Reply to a waiting run, queue idempotent guidance for a live run, recover an orphaned run, or start an eligible new iteration.
+  - Keep bare-session send_message as a separate legacy path.
+  - Resume on the existing harness and create a fresh worktree when approval feedback requires new edits.
+freshness:
+  class: code_coupled
+risk: critical
+domain: domain.execution_lifecycle
+primary_capability: capability.conversation_steering
+bridges: []
