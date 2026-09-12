@@ -122,6 +122,12 @@ have its runtime dependencies installed. Server startup is included in execution
 time. API-key authentication may be supplied through the process environment;
 existing user app databases and Codex state are not reused.
 
+The three-mode evaluation uses `codex-raw`, `minion-single`, and `minion-graph`.
+The single Minion is the accepted proxy for single-agent execution within the
+application. Native Codex delegation is disabled in every arm. See the
+[three-mode evaluation protocol](docs/three-mode-evaluation.md) for the workload,
+measurements, and calibration status.
+
 For Docker, set `settings.isolation` to `docker` and a profile `imageDigest` to
 `repository@sha256:<64 hex>` or a local `sha256:<64 hex>` image ID. Prepare images
 before planning: the runner never pulls. An image must contain Node and the

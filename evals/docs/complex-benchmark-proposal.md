@@ -6,6 +6,11 @@ repository and implement the supplied release requirements while preserving
 existing behavior. This is a benchmark selection, not an installed fixture or
 a completed experiment.
 
+Update, 2026-09-12: the [three-mode evaluation protocol](three-mode-evaluation.md)
+records preparation checks and successful reference calibration after explicit
+dependency and test-ID adaptations. Fixture integration and adapter calibration
+remain prerequisites for measured model execution.
+
 ## Pinned source and ground truth
 
 - Dataset: [Fsoft-AIC/SWE-EVO](https://huggingface.co/datasets/Fsoft-AIC/SWE-EVO),
@@ -18,8 +23,8 @@ a completed experiment.
 - Dataset grading lists: 44 `FAIL_TO_PASS` and 2,861 `PASS_TO_PASS` test IDs.
 - Environment image supplied by the dataset:
   `xingyaoww/sweb.eval.x86_64.dask_s_dask-9531`.
-  Availability and reproducibility remain unverified; resolve and pin its digest
-  during preparation rather than treating this tag as immutable.
+  Resolved image digest: `sha256:b067cb26fc09fd8cb8371a6271f19e1357de2d303ddd220a53894cab77f39cce`.
+  The supplied dependency versions require the adaptation documented above.
 
 These counts come from inspecting the pinned dataset record, not running tests.
 The benchmark's reference patch and trusted test patch supply the ground truth;
@@ -43,7 +48,7 @@ an evaluator-authored solution plan or privileged reference information.
 
 ## Proposed comparison
 
-Use raw Codex, single Minion, and graph Swarmcrews with the same resolved model,
+Use raw Codex, single Minion (`minion-single`, the accepted single-agent proxy), and graph Swarmcrews with the same resolved model,
 reasoning effort, starting tree, requirements, tools, and test visibility.
 Run three repetitions per arm (nine runs), randomizing arm order within each
 repetition. Keep calibration attempts separate and lock the whole cohort before

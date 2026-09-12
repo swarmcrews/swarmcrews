@@ -21,7 +21,7 @@ server.on('upgrade',(req,socket)=>{
     if(opcode===8){socket.end(Buffer.from([0x88,0]));return;}if(opcode!==1)continue;
     const m=JSON.parse(bytes.toString());let result;
     if(m.type==='list_harnesses')result={type:'harness_list',harnesses:[{name:'codex'}]};
-    if(m.type==='create_session'){sessionKey=m.sessionKey;appendFileSync(process.env.MINIONS_HOME+'/launches','1');writeFileSync(workspace+'/answer.mjs','console.log(42)');result={type:'session_created',sessionKey};}
+    if(m.type==='create_session'){sessionKey=m.sessionKey;appendFileSync(process.env.SWARMCREWS_HOME+'/launches','1');writeFileSync(workspace+'/answer.mjs','console.log(42)');result={type:'session_created',sessionKey};}
     if(m.type==='list_sessions')result={type:'session_list',sessions:[{sessionKey,status:'idle'}]};
     if(m.type==='sync_session')result={type:'sync_response',sessionKey,status:'idle',usageTotals:{input:2,cacheRead:0,cacheCreation:0,output:1},turns:1,totalCost:0};
     if(!result)continue;
