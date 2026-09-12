@@ -8,7 +8,7 @@ import { SessionHost, type StartSessionOptions } from "./session-host.ts";
 import { SessionRegistry } from "./session-registry.ts";
 import { closePersistDb, openPersistDb, removePersistedSession } from "./session-persist.ts";
 import { captureSessionContinuity } from "./session-continuity.ts";
-import { buildPendingCompactionStartOptions } from "./proactive-compaction.ts";
+import { buildDeferredCompactionStartOptions } from "./proactive-compaction.ts";
 import { compileContextCheckpoint, renderCheckpointPrompt } from "./context-checkpoint.ts";
 import { buildHarnessStartOpts } from "./session-host-run.ts";
 import type { AgentHarness } from "./harness/types.ts";
@@ -102,7 +102,7 @@ describe("provider-boundary handoff regressions", () => {
     expect(boundary(host, options("Fresh")).attachments).toEqual([direct]);
   });
 
-  it("preserves original instructions, corrections, decisions and recent evidence across repeated forced resets", () => {
+  it("preserves original instructions, corrections, decisions and recent evidence across repeated deferred rotations", () => {
     const host = leader();
     captureSessionContinuity(host, options("Migrate the API. PRESERVE_V1."));
     captureSessionContinuity(host, options("CORRECTION: use the blue deployment."));
@@ -110,8 +110,9 @@ describe("provider-boundary handoff regressions", () => {
       modelHandoff: "Goal: Migrate safely\nDecisions:\n- Keep v1 because callers depend on it\nDead ends:\n- Avoid schema rewrite\nNext actions:\n- Verify compatibility", persist: false });
     host.bufferEvent({ type: "sdk_event", sessionKey: host.id, timestamp: Date.now(), event: { kind: "text", role: "assistant", text: "EVIDENCE: compatibility suite passes; rollout remains." } });
     for (let index = 0; index < 3; index++) {
+      host.proactiveCompaction.setting = "auto";
       host.proactiveCompaction.forcePending = { action: "force" } as never;
-      const next = buildPendingCompactionStartOptions(host, options("Continue", { resumeId: host.sessionId! }))!;
+      const next = buildDeferredCompactionStartOptions(host, options("Continue", { resumeId: host.sessionId! }))!;
       const launched = boundary(host, next);
       expect(launched.resumeId).toBeUndefined();
       for (const sentinel of ["PRESERVE_V1", "CORRECTION", "callers depend", "Avoid schema rewrite", "Verify compatibility", "EVIDENCE"]) {

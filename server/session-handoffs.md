@@ -26,6 +26,21 @@ Provider history is an optimization, not the only continuity record.
 
 ## Budgets and evidence retrieval
 
+Proactive compaction uses measured root-request context occupancy, separately
+from cumulative token and cost accounting. Provider-reported context windows take
+precedence over model defaults when available. Claude root assistant usage includes
+cache reads and creation; result totals and subagent usage are not context signals.
+The current Codex SDK exposes turn totals without current occupancy, so those totals
+do not trigger proactive compaction. Explicit checkpoints and context-error recovery
+remain available.
+
+`recommend` only adds advice to a subsequent requested invocation. `auto` also marks
+a rotation pending at the force threshold, but opens the fresh thread only when a
+real user request or runtime wake arrives. Completion itself never schedules an
+automatic reporting turn. A model-requested checkpoint still continues immediately
+after a successful handoff when substantial work remains; final answers need no
+checkpoint.
+
 The active instruction set is bounded to approximately 12,000 characters,
 reserving the first request independently of recent corrections. Checkpoint text
 is limited to 24,000 characters through section budgets; connected-source excerpts

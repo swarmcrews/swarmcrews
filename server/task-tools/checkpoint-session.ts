@@ -50,7 +50,7 @@ export function createCheckpointSessionToolDef(
   return {
     name: "checkpoint_session",
     description:
-      "Request a proactive session checkpoint. Use at a safe boundary; the next assistant message must be a compact handoff with goal, decisions, dead ends, open threads, and next steps.",
+      "Request a proactive session checkpoint only when substantial work remains. If the task is complete or only the final answer remains, finish normally without a checkpoint. Use at a safe boundary; the next assistant message must be a compact handoff with goal, decisions, dead ends, open threads, and next steps.",
     inputSchema: checkpointInputSchema,
     annotations: {
       readOnlyHint: false,

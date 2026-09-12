@@ -44,6 +44,10 @@ export type NormalizedEvent =
       output: number;
       cacheRead?: number;
       cacheCreation?: number;
+      /** Current root request occupancy, never cumulative billing usage. */
+      contextTokens?: number;
+      /** Provider-reported effective window, when available. */
+      contextWindowTokens?: number;
       costUSD?: number;
       messageId?: string;
       turnId?: string;
@@ -110,6 +114,8 @@ const usageSchema = z.object({
   output: z.number().nonnegative(),
   cacheRead: z.number().nonnegative().optional(),
   cacheCreation: z.number().nonnegative().optional(),
+  contextTokens: z.number().nonnegative().optional(),
+  contextWindowTokens: z.number().positive().optional(),
   costUSD: z.number().nonnegative().optional(),
   messageId: z.string().optional(),
   turnId: z.string().optional(),

@@ -54,4 +54,12 @@ describe("harness producers → normalized event consumer", () => {
     expect(normalizedEventSchema.safeParse({ kind: "usage", input: -1, output: 2 }).success).toBe(false);
     expect(normalizedEventSchema.safeParse({ kind: "not-a-real-event" }).success).toBe(false);
   });
+
+  it("preserves measured occupancy and the reported window separately from billing", () => {
+    const usage = { kind: "usage", source: "turn_completed", input: 80_963,
+      cacheRead: 1_295_616, output: 14_727, contextTokens: 88_908, contextWindowTokens: 258_400 };
+    expect(normalizedEventSchema.parse(usage)).toEqual(usage);
+    expect(normalizedEventSchema.safeParse({ ...usage, contextWindowTokens: 0 }).success).toBe(false);
+    expect(normalizedEventSchema.safeParse({ ...usage, contextTokens: -1 }).success).toBe(false);
+  });
 });

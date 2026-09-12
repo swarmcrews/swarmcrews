@@ -8,7 +8,7 @@ import {
   processNormalizedEvent,
   shouldRecoverFromContextWindow,
 } from "./session-host-run.ts";
-import { buildPendingCompactionStartOptions } from "./proactive-compaction.ts";
+import { buildPendingCompactionStartOptions, discardCheckpointHandoff } from "./proactive-compaction.ts";
 import { normalizedEventEnvelope, sessionHostLogFields } from "./session-host-identity.ts";
 import { serverLogger } from "./logging.ts";
 
@@ -31,32 +31,41 @@ export async function consumeProviderInvocation(input: {
   const { host, opts, deps, agentType, agentCtx, events, abortController } = input;
   let continuationOpts: StartSessionOptions | null = null;
   let checkpointInitialized = false;
-  for await (const event of events) {
-    if (abortController.signal.aborted) break;
-    // Creating an iterable or a thread does not prove prompt acceptance. Wakes
-    // require model output/tool activity or a successful terminal response.
-    if (provesProviderAcceptance(event)) { input.onAccepted?.(); input.onAccepted = undefined; }
-    if (event.kind === "done" && shouldRecoverFromContextWindow(opts, event)) {
-      continuationOpts = buildContextRecoveryStartOptions(host, opts, event);
-      const recoveryEvent = normalizedEventEnvelope(host, {
-        kind: "text",
-        role: "assistant",
-        text: "The Codex thread exceeded the model context window. Starting a fresh continuation with compacted session state.",
-      });
-      host.bufferEvent(recoveryEvent);
-      deps.bus.emitToSession(host.id, recoveryEvent);
-      break;
+  let completedNormally = false;
+  try {
+    for await (const event of events) {
+      if (abortController.signal.aborted) break;
+      // Creating an iterable or a thread does not prove prompt acceptance. Wakes
+      // require model output/tool activity or a successful terminal response.
+      if (provesProviderAcceptance(event)) { input.onAccepted?.(); input.onAccepted = undefined; }
+      if (event.kind === "done" && shouldRecoverFromContextWindow(opts, event)) {
+        continuationOpts = buildContextRecoveryStartOptions(host, opts, event);
+        const recoveryEvent = normalizedEventEnvelope(host, {
+          kind: "text",
+          role: "assistant",
+          text: "The Codex thread exceeded the model context window. Starting a fresh continuation with compacted session state.",
+        });
+        host.bufferEvent(recoveryEvent);
+        deps.bus.emitToSession(host.id, recoveryEvent);
+        break;
+      }
+      if (event.kind === "done" && (event.reason === "completed" || event.reason === "stop")) {
+        completedNormally = true;
+        continuationOpts = buildPendingCompactionStartOptions(host, opts);
+      }
+      if (event.kind === "done" && continuationOpts) {
+        recordProviderContinuationBoundary(host, event);
+      } else {
+        processNormalizedEvent(host, deps.bus, agentType, agentCtx, event, deps.workItemLifecycle);
+      }
+      checkpointInitialized = commitCheckpointOnInit(host, deps, opts, event) || checkpointInitialized;
+      if (continuationOpts) break;
     }
-    if (event.kind === "done") continuationOpts = buildPendingCompactionStartOptions(host, opts);
-    if (event.kind === "done" && continuationOpts) {
-      recordProviderContinuationBoundary(host, event);
-    } else {
-      processNormalizedEvent(host, deps.bus, agentType, agentCtx, event, deps.workItemLifecycle);
-    }
-    checkpointInitialized = commitCheckpointOnInit(host, deps, opts, event) || checkpointInitialized;
-    if (continuationOpts) break;
+  } finally {
+    // An aborted, failed, or incomplete handoff must not restart this run or
+    // capture the final answer of an unrelated future invocation.
+    if (!completedNormally) discardCheckpointHandoff(host);
   }
-  continuationOpts ??= buildPendingCompactionStartOptions(host, opts);
   return { continuationOpts, checkpointInitialized };
 }
 

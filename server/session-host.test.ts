@@ -94,6 +94,7 @@ import { requestWaitResume } from "./wait-resume.ts";
 import "./agents/index.ts"; // registers agent types
 import {
   createCheckpointSessionToolDef,
+  isCheckpointRequested,
   resetCheckpointSessionStateForTest,
 } from "./task-tools/checkpoint-session.ts";
 import type { TaskToolContext } from "./task-tools/types.ts";
@@ -671,7 +672,7 @@ describe("SessionHost.start — error path", () => {
 
     harnessRef.events = [
       { kind: "init", sessionId: "thread-1", model: "sonnet" },
-      { kind: "usage", input: 110_000, output: 1 },
+      { kind: "usage", input: 110_000, contextTokens: 110_000, output: 1 },
       { kind: "done", reason: "stop" },
     ];
     await host.start({ sessionKey: host.id, prompt: "first", cwd: host.cwd, role: "leader", workItemId: "work-1" }, deps);
@@ -838,8 +839,11 @@ describe("SessionHost.start — error path", () => {
     ).toEqual({ status: "idle" });
   });
 
-  it("auto-compacts at the force threshold on the next idle boundary", async () => {
-    const { host, deps } = makeHarness("leader-force");
+  it("finishes once at the force threshold and rotates only for a real follow-up", async () => {
+    const { host, deps, envelopes } = makeHarness("leader-force");
+    deps.getLeaderOrchestrationMode = () => "direct";
+    const runTerminal = vi.fn();
+    deps.workItemLifecycle = { providerInitialized: vi.fn(), runStarted: vi.fn(), runWaiting: vi.fn(), runTerminal };
     host.proactiveCompaction.setting = "auto";
     host.proactiveCompaction.settingResolved = true;
     let starts = 0;
@@ -849,8 +853,9 @@ describe("SessionHost.start — error path", () => {
         starts === 1
           ? ([
               { kind: "init", sessionId: "old-force", model: "sonnet" },
-              { kind: "usage", input: 160_000, output: 1 },
-              { kind: "done", reason: "stop" },
+              { kind: "usage", input: 160_000, contextTokens: 160_000, output: 1 },
+              { kind: "text", role: "assistant", text: "Implementation complete." },
+              { kind: "done", reason: "completed", result: "Implementation complete." },
             ] satisfies NormalizedEvent[])
           : ([
               { kind: "init", sessionId: "new-force", model: "sonnet" },
@@ -861,10 +866,67 @@ describe("SessionHost.start — error path", () => {
 
     await host.start({ sessionKey: host.id, prompt: "p", cwd: host.cwd, role: "leader", workItemId: "work-1", resumeId: "old-force" }, deps);
 
+    expect(starts).toBe(1);
+    expect(host.status).toBe("idle");
+    expect(host.contextCheckpoint).toBeNull();
+    expect(runTerminal).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      outcome: "completed", finalReport: "Implementation complete.",
+    }));
+    expect(envelopes.some(e => e.type === "session_compacted")).toBe(false);
+
+    await host.start({ sessionKey: host.id, prompt: "Now add keyboard navigation",
+      displayPrompt: "Now add keyboard navigation", cwd: host.cwd, role: "leader",
+      workItemId: "work-1", resumeId: "old-force" }, deps);
     expect(starts).toBe(2);
     const secondStart = harnessRef.starts[1] as { resumeId?: string; prompt: string };
     expect(secondStart.resumeId).toBeUndefined();
     expect(secondStart.prompt).toContain("Automatic checkpoint");
+    expect(secondStart.prompt).toContain("<current-request>\nNow add keyboard navigation\n</current-request>");
+    expect(host.contextCheckpoint?.status).toBe("committed");
+    expect(host.proactiveCompaction.forcePending).toBeNull();
+    expect(host.proactiveCompaction.advisor).toEqual({ recommendedArmed: false, forcedArmed: false });
+    expect(envelopes.filter(e => e.type === "session_compacted")).toHaveLength(1);
+    expect(host.eventBuffer.flatMap(e => e.type === "sdk_event" && e.event?.kind === "text"
+      && e.event.role === "user" ? [e.event.text] : [])).toEqual(["Now add keyboard navigation"]);
+  });
+
+  it.each(["error", "abort", "incomplete", "throw"] as const)("does not continue or retain a %s handoff", async (ending) => {
+    const { host, deps } = makeHarness("leader-failed-handoff");
+    await createCheckpointSessionToolDef(taskToolCtx(host.id)).handler({});
+    harnessRef.startFnOverride = () => ({
+      events: (async function* () {
+        yield { kind: "init", sessionId: "handoff-thread", model: "sonnet" } as NormalizedEvent;
+        yield { kind: "text", role: "assistant", text: "Next actions: verify remaining work." } as NormalizedEvent;
+        if (ending === "throw") throw new Error("Transport failed");
+        if (ending !== "incomplete") yield { kind: "done", reason: ending, error: "Interrupted" } as NormalizedEvent;
+      })(),
+      control: { abort: () => {} },
+    });
+    await host.start({ sessionKey: host.id, prompt: "Finish", cwd: host.cwd,
+      role: "leader", workItemId: "work-1" }, deps);
+    expect(harnessRef.starts).toHaveLength(1);
+    expect(host.contextCheckpoint).toBeNull();
+    expect(isCheckpointRequested(host.id)).toBe(false);
+    expect(host.proactiveCompaction.handoffText).toBe("");
+  });
+
+  it("does not restart a completed Codex task because of cumulative usage", async () => {
+    const { host, deps } = makeHarness("leader-billing-only");
+    host.proactiveCompaction.setting = "auto";
+    host.proactiveCompaction.settingResolved = true;
+    harnessRef.events = [
+      { kind: "init", sessionId: "codex-thread", model: "gpt-6-astra" },
+      { kind: "text", role: "assistant", text: "Verified all 183 tests. Done." },
+      { kind: "usage", source: "turn_completed", input: 80_963, cacheRead: 1_295_616, output: 14_727 },
+      { kind: "done", reason: "completed", result: "Verified all 183 tests. Done." },
+    ];
+    await host.start({ sessionKey: host.id, prompt: "Implement history", cwd: host.cwd,
+      role: "leader", workItemId: "work-1" }, deps);
+    expect(harnessRef.starts).toHaveLength(1);
+    expect(host.status).toBe("idle");
+    expect(host.contextCheckpoint).toBeNull();
+    expect(host.proactiveCompaction.forcePending).toBeNull();
+    expect(host.proactiveCompaction.recommended).toBeNull();
   });
 
   it("preserves prior session metrics when an error occurs", async () => {

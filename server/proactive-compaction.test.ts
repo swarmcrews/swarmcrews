@@ -6,6 +6,7 @@ import {
   buildProactiveCompactionSeed,
   createProactiveCompactionState,
   recordCompactionUsage,
+  withCompactionReminder,
 } from "./proactive-compaction.ts";
 import type { SessionHost } from "./session-host.ts";
 
@@ -119,5 +120,24 @@ describe("proactive compaction setting resolution", () => {
     host.proactiveCompaction.settingResolved = true;
     recordCompactionUsage(host, usage);
     expect(host.proactiveCompaction.setting).toBe("auto");
+  });
+
+  it.each(["off", "recommend", "auto"] as const)("honors %s above the force threshold", (setting) => {
+    const host = makeLeaderHost(makeProject({ proactiveCompaction: setting }));
+    recordCompactionUsage(host, { ...usage, contextTokens: 850_000 });
+    expect(Boolean(host.proactiveCompaction.forcePending)).toBe(setting === "auto");
+    expect(Boolean(host.proactiveCompaction.recommended)).toBe(setting === "recommend");
+    if (setting === "recommend") {
+      expect(withCompactionReminder(host, "Finish the task")).toContain("only the final answer remains");
+    }
+  });
+
+  it("drops a pending rotation when native compaction lowers context usage", () => {
+    const host = makeLeaderHost(makeProject({ proactiveCompaction: "auto" }));
+    recordCompactionUsage(host, { ...usage, contextTokens: 850_000 });
+    expect(host.proactiveCompaction.forcePending).not.toBeNull();
+    recordCompactionUsage(host, { ...usage, contextTokens: 10_000 });
+    expect(host.proactiveCompaction.forcePending).toBeNull();
+    expect(host.proactiveCompaction.recommended).toBeNull();
   });
 });

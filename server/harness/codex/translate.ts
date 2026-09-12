@@ -229,6 +229,8 @@ export function createCodexTranslator(ctx: TranslatorContext): CodexTranslator {
           return handleItemCompleted(evt.item);
 
         case "turn.completed": {
+          // SDK usage is cumulative across the turn's requests. Keep it for
+          // billing, but do not label it as current context occupancy.
           const rawTurn = evt as ThreadEvent & { turn_id?: string; id?: string };
           const turnId =
             rawTurn.turn_id ??

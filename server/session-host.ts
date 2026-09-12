@@ -34,7 +34,7 @@ import { captureSessionContinuity, type SessionContinuity } from "./session-cont
 import { seedTaskName } from "./session-task-name.ts";
 import { persistHostSnapshot } from "./session-host-persist.ts";
 import { emptyUsageTotals, type SessionUsageTotals } from "./usage-telemetry.ts";
-import { createProactiveCompactionState, type ProactiveCompactionState } from "./proactive-compaction.ts";
+import { buildDeferredCompactionStartOptions, createProactiveCompactionState, type ProactiveCompactionState } from "./proactive-compaction.ts";
 import {
   MAX_BUFFERED_EVENTS,
   type BufferedEvent,
@@ -317,6 +317,10 @@ export class SessionHost {
       // Register tools with the harness (grouped by MCP server name).
       harness.registerTools(toolResult.toolGroups);
 
+      // Continuity and the user bubble above retain the original request.
+      // Automatic compaction changes the provider context for this invocation,
+      // never schedules an invocation of its own after a completed response.
+      opts = buildDeferredCompactionStartOptions(this, opts) ?? opts;
       const { startOpts } = buildHarnessStartOpts({
         host: this,
         opts,

@@ -3,6 +3,8 @@ import type { Bus } from "./bus.ts";
 import type { SessionHost, StartSessionOptions } from "./session-host.ts";
 import {
   DEFAULT_PROACTIVE_COMPACTION,
+  FORCE_THRESHOLD,
+  RECOMMEND_THRESHOLD,
   evaluateCompactionUsage,
   initialCompactionAdvisorState,
   type CompactionAdvice,
@@ -24,7 +26,7 @@ import {
 
 const MAX_HANDOFF_CHARS = 4_000;
 const RECOMMEND_REMINDER =
-  "System reminder: Context is above the proactive checkpoint recommendation threshold. Call `checkpoint_session` at the next safe boundary. Include the objective, user constraints and corrections, decisions, completed work, exact artifact paths, verification evidence, unresolved risks, and the next concrete action.";
+  "System reminder: Context is above the proactive checkpoint recommendation threshold. If substantial work remains, call `checkpoint_session` at the next safe boundary. If the task is complete or only the final answer remains, finish normally without a checkpoint. Include the objective, user constraints and corrections, decisions, completed work, exact artifact paths, verification evidence, unresolved risks, and the next concrete action in any handoff.";
 
 export interface ProactiveCompactionState {
   setting: ProactiveCompactionSetting;
@@ -49,6 +51,21 @@ export function createProactiveCompactionState(): ProactiveCompactionState {
     handoffSawDelta: false,
     oldSessionIds: [],
   };
+}
+
+export function resetCompactionForFreshThread(host: SessionHost): void {
+  const state = host.proactiveCompaction;
+  state.advisor = initialCompactionAdvisorState();
+  state.recommended = null;
+  state.forcePending = null;
+  state.handoffText = "";
+  state.handoffSawDelta = false;
+}
+
+export function discardCheckpointHandoff(host: SessionHost): void {
+  consumeCheckpointHandoff(host.id);
+  host.proactiveCompaction.handoffText = "";
+  host.proactiveCompaction.handoffSawDelta = false;
 }
 
 function parseCompactionSetting(raw: unknown): ProactiveCompactionSetting {
@@ -81,8 +98,11 @@ export function recordCompactionUsage(
   const state = host.proactiveCompaction;
   if (state.setting === "off") return;
   const advice = evaluateCompactionUsage(state.advisor, usage, host.model);
-  if (advice.action === "recommend") state.recommended = advice;
-  if (advice.action === "force" && (state.setting === "recommend" || state.setting === "auto")) {
+  if (!advice) return;
+  if (advice.ratio < RECOMMEND_THRESHOLD) state.recommended = null;
+  if (advice.ratio < FORCE_THRESHOLD) state.forcePending = null;
+  if (advice.action === "recommend" || (advice.action === "force" && state.setting === "recommend")) state.recommended = advice;
+  if (advice.action === "force" && state.setting === "auto") {
     state.forcePending = advice;
   }
 }
@@ -119,22 +139,45 @@ export function buildPendingCompactionStartOptions(
   host: SessionHost,
   opts: StartSessionOptions,
 ): StartSessionOptions | null {
-  if (host.role !== "leader") return null;
-  if ((isCheckpointRequested(host.id) || host.proactiveCompaction.forcePending) && !isSafeToAutoCompact(host)) return null;
-  const handoff = consumeCheckpointHandoff(host.id) ?? autoHandoff(host);
+  if (host.role !== "leader" || !isCheckpointRequested(host.id) || !isSafeToAutoCompact(host)) return null;
   const manual = host.proactiveCompaction.handoffText.trim();
+  if (!manual) return null;
+  consumeCheckpointHandoff(host.id);
+  return prepareCheckpoint(host, opts, manual);
+}
+
+/** Rotate only when a real user request or runtime wake already needs a turn. */
+export function buildDeferredCompactionStartOptions(
+  host: SessionHost,
+  opts: StartSessionOptions,
+): StartSessionOptions | null {
+  if (host.role !== "leader" || !opts.resumeId || opts.contextCheckpointId
+    || host.proactiveCompaction.setting !== "auto" || !host.proactiveCompaction.forcePending
+    || isCheckpointRequested(host.id) || !isSafeToAutoCompact(host)) return null;
+  const checkpointOpts = prepareCheckpoint(host, opts,
+    "Automatic checkpoint before the next requested invocation. Prior work may already be complete; act on the current request.");
+  return {
+    ...checkpointOpts,
+    // This is the already-requested invocation, not an extra continuation turn.
+    invocationKind: opts.invocationKind,
+    displayPrompt: opts.displayPrompt,
+    prompt: `${checkpointOpts.prompt}\n\n<current-request>\n${opts.prompt}\n</current-request>`,
+  };
+}
+
+function prepareCheckpoint(host: SessionHost, opts: StartSessionOptions, handoff: string): StartSessionOptions {
   const forced = host.proactiveCompaction.forcePending;
-  if (!manual && !forced && !handoff) return null;
   const priorSessionId = host.sessionId;
   if (priorSessionId) host.proactiveCompaction.oldSessionIds.push(priorSessionId);
   const checkpoint = compileContextCheckpoint(host, {
     trigger: "proactive",
     originalPrompt: opts.continuitySource === "system" ? "" : opts.prompt,
-    modelHandoff: manual || handoff || "Automatic checkpoint at idle boundary.",
+    modelHandoff: handoff,
     usage: forced,
   });
   host.contextCheckpoint = checkpoint;
   host.proactiveCompaction.forcePending = null;
+  host.proactiveCompaction.recommended = null;
   host.proactiveCompaction.handoffText = "";
   host.proactiveCompaction.handoffSawDelta = false;
   return checkpointStartOptions(checkpoint, opts);
@@ -185,11 +228,6 @@ function appendHandoff(host: SessionHost, text: string): void {
     `${host.proactiveCompaction.handoffText}${text}`,
     MAX_HANDOFF_CHARS,
   );
-}
-
-function autoHandoff(host: SessionHost): string | null {
-  if (!host.proactiveCompaction.forcePending) return null;
-  return "Automatic checkpoint at the force threshold. Continue from the server-authoritative state snapshot and avoid repeating completed work.";
 }
 
 function isSafeToAutoCompact(host: SessionHost): boolean {

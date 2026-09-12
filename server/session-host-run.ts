@@ -20,7 +20,7 @@ import type { SessionHost, StartSessionOptions } from "./session-host.ts";
 import { applySessionRunningForMinion } from "./task-lifecycle.ts";
 import { buildFreshThreadPrompt } from "./session-handoff.ts";
 import { captureUsageEvent } from "./session-usage-capture.ts";
-import { captureCheckpointHandoffEvent, recordCompactionUsage, withCompactionReminder } from "./proactive-compaction.ts";
+import { captureCheckpointHandoffEvent, recordCompactionUsage, resetCompactionForFreshThread, withCompactionReminder } from "./proactive-compaction.ts";
 import { serverLogger } from "./logging.ts";
 import { commitReviewLifecycle, finishRun } from "./session-review-lifecycle.ts";
 import { emitMutationToolObservation } from "./mutation-observability.ts";
@@ -169,6 +169,7 @@ export function processNormalizedEvent(
     applySessionRunningForMinion({ bus, minionSessionKey: host.id, forEachLeaderTaskState: agentCtx.forEachLeaderTaskState });
 
   if (event.kind === "init") {
+    if (host.sessionId !== event.sessionId) resetCompactionForFreshThread(host);
     host.sessionId = event.sessionId;
     if (event.model) host.model = event.model;
     // Only refresh `host.permissionMode` when the harness reports one on init.

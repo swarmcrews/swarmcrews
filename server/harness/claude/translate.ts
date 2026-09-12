@@ -185,6 +185,10 @@ function translateAssistant(msg: AssistantLike): NormalizedEvent[] {
     const messageId = msg.message.id ?? msg.uuid;
     events.push(usageFromRaw(msg.message.usage, {
       source: "assistant",
+      // Subagents have their own context windows. Result usage is cumulative.
+      ...(parentId ? {} : { contextTokens: msg.message.usage.input_tokens
+        + (msg.message.usage.cache_read_input_tokens ?? 0)
+        + (msg.message.usage.cache_creation_input_tokens ?? 0) }),
       messageId,
       sdkSessionId: msg.session_id,
     }));
@@ -266,6 +270,7 @@ function usageFromRaw(
   u: RawUsage,
   meta: {
     source: UsageSource;
+    contextTokens?: number;
     costUSD?: number | undefined;
     messageId?: string | undefined;
     turnId?: string | undefined;
@@ -275,6 +280,7 @@ function usageFromRaw(
   return {
     kind: "usage",
     source: meta.source,
+    ...(meta.contextTokens != null && { contextTokens: meta.contextTokens }),
     input: u.input_tokens,
     output: u.output_tokens,
     ...(u.cache_read_input_tokens != null && { cacheRead: u.cache_read_input_tokens }),

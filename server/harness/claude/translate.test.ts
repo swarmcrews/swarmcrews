@@ -179,6 +179,7 @@ describe("sdkToNormalized: assistant", () => {
       sdkSessionId: "claude-session",
       input: 100,
       output: 50,
+      contextTokens: 100,
     });
   });
 
@@ -199,6 +200,24 @@ describe("sdkToNormalized: assistant", () => {
     );
     const usage = events.find((e) => e.kind === "usage") as { cacheRead?: number } | undefined;
     expect(usage?.cacheRead).toBe(200);
+  });
+
+  it("measures root context including cache creation without using subagent or result totals", () => {
+    const usage = { input_tokens: 10, cache_read_input_tokens: 200,
+      cache_creation_input_tokens: 300, output_tokens: 5 };
+    const assistant = { type: "assistant", parent_tool_use_id: null,
+      message: { content: [], usage } };
+    expect(sdkToNormalized(msg(assistant))).toContainEqual(expect.objectContaining({
+      kind: "usage", contextTokens: 510,
+    }));
+    for (const input of [
+      { ...assistant, parent_tool_use_id: "child-tool" },
+      { type: "result", is_error: false, usage },
+    ]) {
+      const event = sdkToNormalized(msg(input)).find(e => e.kind === "usage");
+      expect(event).toBeDefined();
+      expect(event).not.toHaveProperty("contextTokens");
+    }
   });
 
   it("produces events for all block types in a mixed content message", () => {

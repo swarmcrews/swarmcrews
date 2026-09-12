@@ -41,19 +41,28 @@ export function contextWindowForModel(model: string | null | undefined): number 
 
 export function promptContextTokens(
   usage: Extract<NormalizedEvent, { kind: "usage" }>,
-): number {
-  return usage.input + (usage.cacheRead ?? 0);
+): number | null {
+  // Billing totals (including Codex turn.completed and Claude result) do not
+  // measure context occupancy. Unknown occupancy must not trigger a reset.
+  return usage.contextTokens != null && Number.isFinite(usage.contextTokens) && usage.contextTokens >= 0
+    ? usage.contextTokens : null;
 }
 
 export function evaluateCompactionUsage(
   state: CompactionAdvisorState,
   usage: Extract<NormalizedEvent, { kind: "usage" }>,
   model: string | null | undefined,
-): CompactionAdvice {
+): CompactionAdvice | null {
   const contextTokens = promptContextTokens(usage);
-  const contextWindowTokens = contextWindowForModel(model);
+  if (contextTokens === null) return null;
+  const contextWindowTokens = usage.contextWindowTokens ?? contextWindowForModel(model);
+  if (!Number.isFinite(contextWindowTokens) || contextWindowTokens <= 0) return null;
   const ratio = contextTokens / contextWindowTokens;
   let action: CompactionAction = "none";
+
+  // Native provider compaction can lower occupancy without changing threads.
+  if (ratio < RECOMMEND_THRESHOLD) state.recommendedArmed = false;
+  if (ratio < FORCE_THRESHOLD) state.forcedArmed = false;
 
   if (ratio >= FORCE_THRESHOLD && !state.forcedArmed) {
     state.forcedArmed = true;
