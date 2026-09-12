@@ -22,6 +22,8 @@ export interface DisplayMessage {
   role: "user" | "assistant" | "tool" | "system" | "result" | "thinking";
   content: string;
   timestamp: number;
+  /** Local placeholder replaced when its persisted user turn arrives. */
+  optimistic?: boolean;
   toolName?: string | undefined;
   toolInput?: Record<string, unknown> | undefined;
   /** e.g. "8.6s · $0.0288" */

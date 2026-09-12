@@ -479,8 +479,9 @@ function stripTaskNameMarker(s: string): string {
  * This helper takes the caller's authoritative `prev` feed (which holds the
  * optimistic user turns) and the reducer's `next` feed, and re-inserts any
  * `user` message missing from `next` at the position it held in `prev` —
- * immediately after its nearest surviving predecessor. When nothing is
- * missing it returns `next` unchanged so reference equality is preserved.
+ * immediately after its nearest surviving predecessor. Marked placeholders
+ * are then replaced by matching persisted user turns. When neither operation
+ * changes the feed, it returns `next` unchanged to preserve reference equality.
  */
 export function preserveOptimisticUserMessages(
   prev: ReadonlyArray<DisplayMessage>,
@@ -491,7 +492,7 @@ export function preserveOptimisticUserMessages(
   for (const m of prev) {
     if (m.role === "user" && !nextIds.has(m.id)) missing.push(m);
   }
-  if (missing.length === 0) return next as DisplayMessage[];
+  if (missing.length === 0) return collapseOptimisticUserEchoes(next);
 
   const result = [...next];
   for (const u of missing) {
@@ -516,7 +517,27 @@ export function preserveOptimisticUserMessages(
       result.splice(anchorIdx + 1, 0, u);
     }
   }
-  return result;
+  return collapseOptimisticUserEchoes(result);
+}
+
+/** Match placeholders one-to-one within a turn, preserving repeated requests. */
+function collapseOptimisticUserEchoes(messages: ReadonlyArray<DisplayMessage>): DisplayMessage[] {
+  const replaced = new Set<number>();
+  for (let i = 0; i < messages.length; i++) {
+    const message = messages[i]!;
+    if (message.role !== "user" || message.optimistic) continue;
+    for (let j = i - 1; j >= 0; j--) {
+      const candidate = messages[j]!;
+      if (candidate.role !== "user" && candidate.role !== "system") break;
+      if (candidate.role === "user" && candidate.optimistic
+        && candidate.content === message.content && !replaced.has(j)) {
+        replaced.add(j);
+        break;
+      }
+    }
+  }
+  return replaced.size ? messages.filter((_, index) => !replaced.has(index))
+    : messages as DisplayMessage[];
 }
 
 /** Convenience: a fresh empty state. */

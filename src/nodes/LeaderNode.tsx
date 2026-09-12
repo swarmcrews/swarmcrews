@@ -754,7 +754,7 @@ export function LeaderNodeRenderer({
       syncedRef.current = true;
       emitUpdate({ ...dataRef.current, status: "creating", contextDelivery,
         messages: [...prevMessages, { id: msgId(), role: "user" as const,
-          content: userPrompt, timestamp: Date.now() }] });
+          content: userPrompt, timestamp: Date.now(), optimistic: true }] });
       void beginCanonicalRun({ userPrompt, prompt: fullPrompt,
         systemPrompt: frozenPrompt.systemPrompt, attachments, contextItems })
         .catch((error: unknown) => {
@@ -795,7 +795,7 @@ export function LeaderNodeRenderer({
       syncedRef.current = true;
       emitUpdate({ ...dataRef.current, status: "creating", autoStartPrompt: null,
         contextDelivery, messages: [...prevMessages, { id: msgId(), role: "user" as const,
-          content: prompt, timestamp: Date.now() }] });
+          content: prompt, timestamp: Date.now(), optimistic: true }] });
       void beginCanonicalRun({ userPrompt: prompt, prompt: fullPrompt,
         systemPrompt: frozenPrompt.systemPrompt, attachments, contextItems })
         .catch((error: unknown) => {

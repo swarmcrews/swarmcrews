@@ -566,6 +566,37 @@ describe("sessionStreamReducer: continuity marker", () => {
 // ── preserveOptimisticUserMessages ─────────────────────
 
 describe("preserveOptimisticUserMessages", () => {
+  const placeholder: DisplayMessage = { id: "local", role: "user", content: "Start here",
+    timestamp: 1, optimistic: true };
+  const persisted: DisplayMessage = { id: "lm-user-server", role: "user", content: "Start here", timestamp: 2 };
+
+  it("replaces the initial placeholder on live delivery and sync replay", () => {
+    const system: DisplayMessage = { id: "init", role: "system", content: "Session started", timestamp: 2 };
+    for (const next of [[placeholder, system, persisted], [persisted, system]]) {
+      const merged = preserveOptimisticUserMessages([placeholder], next);
+      expect(merged.filter(message => message.role === "user")).toEqual([persisted]);
+      expect(preserveOptimisticUserMessages(merged, [persisted, system])).toEqual([persisted, system]);
+    }
+  });
+
+  it("matches each persisted turn to at most one placeholder", () => {
+    const second = { ...placeholder, id: "local-2" };
+    expect(preserveOptimisticUserMessages([placeholder, second], [persisted]))
+      .toEqual([placeholder, persisted]);
+  });
+
+  it("preserves distinct persisted requests with identical text", () => {
+    const next = [placeholder, persisted, { ...persisted, id: "lm-user-server-2" }];
+    expect(preserveOptimisticUserMessages([placeholder], next)).toEqual(next.slice(1));
+  });
+
+  it("does not match a later turn or unrelated text to the initial placeholder", () => {
+    const reply: DisplayMessage = { id: "reply", role: "assistant", content: "Done", timestamp: 2 };
+    for (const next of [[placeholder, reply, persisted], [placeholder, { ...persisted, content: "Another request" }]]) {
+      expect(preserveOptimisticUserMessages([placeholder], next)).toBe(next);
+    }
+  });
+
   const m = (
     id: string,
     role: DisplayMessage["role"],

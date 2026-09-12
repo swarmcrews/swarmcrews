@@ -332,9 +332,10 @@ describe("LeaderNode: new-session initiation", () => {
     expect(creates()).toHaveLength(1);
   });
 
-  it("creates, binds, and reuses a work item across distinct terminal iterations", async () => {
+  it.each([false, true])("creates, binds, and reuses a work item without duplicate initial prompts (autoStart=%s)", async (autoStart) => {
     const { socket, replay } = createReplaySocket();
-    let latest: LeaderData = { ...disconnectedLeaderData(), harness: "codex" };
+    let latest: LeaderData = { ...disconnectedLeaderData(), harness: "codex",
+      ...(autoStart ? { autoStartPrompt: "First iteration" } : {}) };
     function Probe() {
       const [data, setData] = useState(latest);
       latest = data;
@@ -347,9 +348,12 @@ describe("LeaderNode: new-session initiation", () => {
     render(<Probe />);
     const latestCommand = (type: string) => socket.sent.filter((message) =>
       (message as { type?: string }).type === type).at(-1);
-    fireEvent.change(screen.getByTestId("leader-prompt-input-inline"),
-      { target: { value: "First iteration" } });
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    if (!autoStart) {
+      fireEvent.change(screen.getByTestId("leader-prompt-input-inline"),
+        { target: { value: "First iteration" } });
+      fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    }
+    expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
     const create = latestCommand("create_work_item") as { requestId: string };
     expect(create).toMatchObject({ type: "create_work_item", workspaceId: "project-1",
       title: "First iteration" });
@@ -372,11 +376,18 @@ describe("LeaderNode: new-session initiation", () => {
       result: { workItem: canonicalItem("run-1", 2, "starting", "none"), bindings: [], currentRun: null, runs: [], nextCursor: null } } }]));
     await waitFor(() => expect(latest.currentRunKey).toBe("run-1"));
     expect(latestCommand("sync_session")).toEqual({ type: "sync_session", sessionKey: "run-1" });
+    const userEvent = { kind: "text" as const, role: "user" as const,
+      text: "First iteration", id: "initial-prompt" };
+    await act(() => replay([{ message: { type: "sdk_event", sessionKey: "run-1", event: userEvent } }]));
+    expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
     await act(() => replay([{ message: { type: "sync_response", sessionKey: "run-1",
-      found: true, status: "running", events: [{ type: "sdk_event", sessionKey: "run-1",
+      found: true, status: "running", events: [
+        { type: "sdk_event", sessionKey: "run-1", timestamp: 0, event: userEvent },
+        { type: "sdk_event", sessionKey: "run-1",
         timestamp: 1, event: { kind: "text", role: "assistant", text: "Early launch reply" } }] } }]));
     expect(latest.messages.some((message) => message.content === "Early launch reply")).toBe(true);
     expect(latest.messages.some((message) => message.content === "First iteration")).toBe(true);
+    expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
 
     await act(() => replay([{ message: { type: "work_item_changed",
       workItem: canonicalItem("run-1", 3, "inactive", "completed"), revision: 3,
