@@ -170,7 +170,7 @@ function reduceSyncResponse(
   }
 
   const events = msg.events ?? [];
-  const rebuilt: DisplayMessage[] = [];
+  let rebuilt: DisplayMessage[] = [];
   const seen = new Set<string>();
   let cost = msg.totalCost ?? state.totalCost;
   let turns = msg.turns ?? state.turns;
@@ -183,6 +183,7 @@ function reduceSyncResponse(
   for (const evt of events) {
     if (evt.type === "sdk_event" && evt.event) {
       const event = evt.event;
+      if (!evt.historyRef) rebuilt = retainChangedPaths(rebuilt, event, prefix);
       if (isStreamingEvent(event) && !evt.historyRef) {
         streaming = reduceSdkEvent(streaming, {
           type: "sdk_event", sessionKey: msg.sessionKey, event,
@@ -330,6 +331,9 @@ function reduceSdkEvent(
     return next;
   }
 
+  const withChangedPaths = retainChangedPaths(state.messages, event, prefix);
+  if (withChangedPaths !== state.messages) return { ...state, messages: withChangedPaths };
+
   // ── Complete messages (text, thinking, tool_call, tool_progress) ──
   const produced = normalizedToDisplayMessages(event, prefix);
   const collapse = collapseAssistantResultDup(state.messages, produced, event);
@@ -374,6 +378,20 @@ function reduceSdkEvent(
     next.streamingText = "";
     next.streamingBlockIndex = null;
   }
+  return next;
+}
+
+/** Codex supplies changed paths on completion, after the displayed tool call. */
+function retainChangedPaths(messages: DisplayMessage[], event: NormalizedEvent, prefix: string): DisplayMessage[] {
+  if (event.kind !== "tool_result" || event.isError || !event.output || typeof event.output !== "object") return messages;
+  const changes = (event.output as { changes?: unknown }).changes;
+  if (!Array.isArray(changes)) return messages;
+  const index = messages.findIndex(m => m.id === `${prefix}-call-${event.callId}` && m.toolName === "codex_file_change");
+  if (index < 0) return messages;
+  const message = messages[index]!;
+  if (JSON.stringify(message.toolInput?.["changes"]) === JSON.stringify(changes)) return messages;
+  const next = [...messages];
+  next[index] = { ...message, toolInput: { ...message.toolInput, changes } };
   return next;
 }
 

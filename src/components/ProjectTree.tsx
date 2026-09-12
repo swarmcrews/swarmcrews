@@ -6,7 +6,7 @@
  * within that subtree. Files show the specific leader(s) working on them.
  */
 
-import { memo, useState, useMemo, useCallback, type CSSProperties, type ReactNode } from "react";
+import { memo, useState, useMemo, useCallback, useEffect, type CSSProperties, type ReactNode } from "react";
 import type { TreeNode } from "../api.ts";
 import { getAuthToken } from "../api.ts";
 import { fuzzyMatch } from "../fuzzy-file-search.ts";
@@ -207,9 +207,9 @@ function buildActivityMap(leaders: LeaderActivity[], projectPath?: string): Map<
  *
  * Returns null when the query is empty — callers treat null as "no filter".
  */
-function buildSearchMatch(tree: TreeNode[], query: string): Set<string> | null {
+function buildSearchMatch(tree: TreeNode[], query: string, allowedPaths?: Set<string>): Set<string> | null {
   const trimmed = query.trim();
-  if (trimmed.length === 0) return null;
+  if (trimmed.length === 0 && !allowedPaths) return null;
   const visible = new Set<string>();
   function walk(node: TreeNode): boolean {
     let descendantMatched = false;
@@ -218,7 +218,8 @@ function buildSearchMatch(tree: TreeNode[], query: string): Set<string> | null {
         if (walk(child)) descendantMatched = true;
       }
     }
-    const selfMatch = fuzzyMatch(trimmed, node.path) !== null;
+    const selfMatch = (!allowedPaths || allowedPaths.has(node.path))
+      && (trimmed.length === 0 || fuzzyMatch(trimmed, node.path) !== null);
     if (selfMatch || descendantMatched) {
       visible.add(node.path);
       return true;
@@ -245,10 +246,22 @@ function collectDirectoryPaths(tree: TreeNode[]): string[] {
 // ── Components ──
 
 export const ProjectTree = memo(function ProjectTree({ tree, rootName, leaders, projectPath, filterActive = false, query = "", onFileClick, onTreeChanged }: ProjectTreeProps) {
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const selectedAgentIndex = leaders.findIndex(leader => leader.id === selectedAgentId);
   const activityMap = useMemo(() => buildActivityMap(leaders, projectPath), [leaders, projectPath]);
-  const searchMatch = useMemo(() => buildSearchMatch(tree, query), [tree, query]);
+  const searchMatch = useMemo(() => {
+    if (selectedAgentIndex < 0) return buildSearchMatch(tree, query);
+    const agentPaths = new Set([...activityMap]
+      .filter(([, indices]) => indices.has(selectedAgentIndex))
+      .map(([path]) => path));
+    return buildSearchMatch(tree, query, agentPaths);
+  }, [tree, query, activityMap, selectedAgentIndex]);
   const directoryPaths = useMemo(() => collectDirectoryPaths(tree), [tree]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (selectedAgentIndex < 0) setSelectedAgentId(null);
+  }, [selectedAgentIndex]);
 
   const activeLeaders = leaders.filter(l => l.status === "running" || l.status === "creating");
   const allDirectoriesExpanded = directoryPaths.length > 0 && directoryPaths.every(path => expandedPaths.has(path));
@@ -284,14 +297,26 @@ export const ProjectTree = memo(function ProjectTree({ tree, rootName, leaders, 
           {leaders.map((leader) => {
             const c = getLeaderColor(leader.colorIndex);
             const isActive = leader.status === "running" || leader.status === "creating";
+            const isSelected = leader.id === selectedAgentId;
             return (
-              <div
+              <button
                 key={leader.id}
+                type="button"
+                aria-label={`Filter files touched by ${leader.name}`}
+                aria-pressed={isSelected}
+                title={isSelected ? "Clear agent filter" : `Show files touched by ${leader.name}`}
+                onClick={() => setSelectedAgentId(isSelected ? null : leader.id)}
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 5,
-                  opacity: isActive ? 1 : 0.45,
+                  padding: "3px 5px",
+                  border: `1px solid ${isSelected ? c.dot : "transparent"}`,
+                  borderRadius: 4,
+                  background: isSelected ? c.bg : "transparent",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  opacity: isSelected || isActive ? 1 : 0.45,
                 }}
               >
                 <span
@@ -331,7 +356,7 @@ export const ProjectTree = memo(function ProjectTree({ tree, rootName, leaders, 
                     {leader.files.length}
                   </span>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -425,16 +450,17 @@ export const ProjectTree = memo(function ProjectTree({ tree, rootName, leaders, 
             onTreeChanged={onTreeChanged}
           />
         ))}
+        {selectedAgentIndex >= 0 && !tree.some(node => searchMatch?.has(node.path)) && (
+          <div role="status" style={{ padding: "8px 12px", color: "var(--text-muted)" }}>
+            {query.trim() ? "No touched files match this search." : "No touched files to show for this agent."}
+          </div>
+        )}
       </div>
 
       <style>{`
         @keyframes treePulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.4; }
-        }
-        @keyframes treeFlicker {
-          0%, 100% { opacity: 0.85; }
-          50% { opacity: 1; }
         }
       `}</style>
     </div>
@@ -632,21 +658,6 @@ const TreeRow = memo(function TreeRow({
 
   if (filteredOut) return null;
 
-  // Determine if any touching leader is actively running
-  const hasRunningLeader = leaderIndices
-    ? [...leaderIndices].some(i => leaders[i]?.status === "running" || leaders[i]?.status === "creating")
-    : false;
-
-  // Background highlight for touched nodes
-  const rowBg = isDirectlyTouched && node.type === "file"
-    ? (() => {
-        // Use the first leader's color as tint
-        const firstIdx = [...leaderIndices!][0]!;
-        const c = getLeaderColor(firstIdx);
-        return c.bg;
-      })()
-    : "transparent";
-
   return (
     <>
       <div
@@ -664,24 +675,22 @@ const TreeRow = memo(function TreeRow({
           padding: "3px 12px 3px 0",
           paddingLeft: indent,
           cursor: isDir || onFileClick ? "pointer" : "default",
-          background: isDragOver ? "rgba(192, 132, 252, 0.12)" : rowBg,
+          background: isDragOver ? "rgba(192, 132, 252, 0.12)" : "transparent",
           borderLeft: isDragOver
             ? "2px solid rgba(192, 132, 252, 0.6)"
-            : isDirectlyTouched && node.type === "file"
-              ? `2px solid ${getLeaderColor([...leaderIndices!][0]!).dot}`
-              : "2px solid transparent",
+            : "2px solid transparent",
           transition: "background 0.2s ease",
           userSelect: "none",
           position: "relative",
         }}
         onMouseEnter={(e) => {
-          if (!isDragOver && (!isDirectlyTouched || node.type !== "file")) {
+          if (!isDragOver) {
             e.currentTarget.style.background = "var(--bg-elevated)";
           }
         }}
         onMouseLeave={(e) => {
           if (!isDragOver) {
-            e.currentTarget.style.background = rowBg;
+            e.currentTarget.style.background = "transparent";
           }
         }}
       >
@@ -782,75 +791,29 @@ const TreeRow = memo(function TreeRow({
             }}
           >
             {[...leaderIndices!].map((idx) => {
-              const c = getLeaderColor(idx);
-              const leader = leaders[idx];
-              const isRunning = leader?.status === "running" || leader?.status === "creating";
-              const label = leader?.name
-                ? (leader.name.length > 12 ? leader.name.slice(0, 12) + "…" : leader.name)
-                : null;
+              const leader = leaders[idx]!;
+              const c = getLeaderColor(leader.colorIndex);
+              const isRunning = leader.status === "running" || leader.status === "creating";
               return (
                 <span
-                  key={idx}
-                  title={leader?.name ?? `Agent ${idx}`}
+                  key={leader.id}
+                  role="img"
+                  aria-label={`${leader.name} touched ${node.path}`}
+                  title={leader.name}
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    padding: "0 4px",
-                    borderRadius: 3,
-                    background: c.bg,
-                    border: `1px solid ${c.ring}`,
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: c.dot,
                     boxShadow: isRunning ? `0 0 6px ${c.ring}` : "none",
-                    animation: isRunning ? "treeFlicker 1.5s ease-in-out infinite" : "none",
+                    animation: isRunning ? "treePulse 2s ease-in-out infinite" : "none",
+                    display: "inline-block",
                     flexShrink: 0,
-                    maxWidth: 100,
                   }}
-                >
-                  <span
-                    style={{
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      background: c.dot,
-                      display: "inline-block",
-                      flexShrink: 0,
-                    }}
-                  />
-                  {label && (
-                    <span
-                      style={{
-                        fontSize: 9,
-                        fontFamily: "var(--font-mono)",
-                        color: c.text,
-                        fontWeight: 500,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        lineHeight: "14px",
-                      }}
-                    >
-                      {label}
-                    </span>
-                  )}
-                </span>
+                />
               );
             })}
           </span>
-        )}
-
-        {isDir && hasRunningLeader && !isDirectlyTouched && (
-          <span
-            style={{
-              width: 4,
-              height: 4,
-              borderRadius: "50%",
-              background: "var(--accent)",
-              opacity: 0.5,
-              flexShrink: 0,
-              marginLeft: 6,
-              animation: "treePulse 2s ease-in-out infinite",
-            }}
-          />
         )}
       </div>
 

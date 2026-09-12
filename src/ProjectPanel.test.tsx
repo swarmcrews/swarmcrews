@@ -168,3 +168,26 @@ describe("ProjectPanel navigation clearance", () => {
     }
   });
 });
+
+describe("ProjectPanel live touched paths", () => {
+  it("shows dots for leader and minion activity from their worktree as messages arrive", async () => {
+    vi.mocked(getProjectContext).mockResolvedValue({ exists: false, content: "" });
+    const leader = {
+      id: "leader-1", type: "leader", position: { x: 0, y: 0 }, size: { width: 300, height: 300 },
+      data: { status: "running", taskName: "Fix docs", totalCost: 0, turns: 1, messages: [], worktreePath: "/tmp/worktree" },
+    };
+    const props = { projectId: "workspace-1", projectPath: "/source/project", projectName: "Project", onSpawnContextExplorer: vi.fn() };
+    const { rerender } = render(<ProjectPanel {...props} nodes={[leader]} />);
+    await screen.findByText("README.md");
+    expect(screen.queryByRole("img", { name: "Fix docs touched README.md" })).toBeNull();
+    rerender(<ProjectPanel {...props} nodes={[
+      { ...leader, data: { ...leader.data, messages: [{ role: "tool", content: "Read", toolName: "Read", toolInput: { file_path: "/tmp/worktree/README.md" } }] } },
+      { id: "minion-1", type: "minion", position: leader.position, size: leader.size, data: {
+        status: "running", leaderId: leader.id, totalCost: 0, turns: 1, activeTaskIndex: 0, taskQueue: [{ title: "Review docs" }],
+        messages: [{ role: "tool", content: "Edit", toolName: "Edit", toolInput: { file_path: "/tmp/worktree/README.md" } }],
+      } },
+    ]} />);
+    expect(await screen.findByRole("img", { name: "Fix docs touched README.md" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Review docs touched README.md" })).toBeInTheDocument();
+  });
+});

@@ -41,6 +41,7 @@ type FilePathMessage = {
   role: string;
   content: string;
   toolName?: string | undefined;
+  toolInput?: Record<string, unknown> | undefined;
 };
 
 const EMPTY_MESSAGES: ReadonlyArray<FilePathMessage> = [];
@@ -49,6 +50,27 @@ const EMPTY_MESSAGES: ReadonlyArray<FilePathMessage> = [];
 function extractFilePaths(messages: ReadonlyArray<FilePathMessage>): string[] {
   const paths = new Set<string>();
   for (const msg of messages) {
+    if (msg.role !== "tool") continue;
+    const input = msg.toolInput;
+    if (input) {
+      for (const key of ["file_path", "path", "notebook_path"]) {
+        const path = input[key];
+        if (typeof path === "string" && path.trim()) paths.add(path);
+      }
+      if (msg.toolName === "codex_file_change" && Array.isArray(input["changes"])) {
+        for (const change of input["changes"]) {
+          if (change && typeof change.path === "string") paths.add(change.path);
+        }
+      }
+      // Patch headers identify paths without mistaking patch contents for activity.
+      for (const key of ["patch", "input"]) {
+        const patch = input[key];
+        if (typeof patch !== "string") continue;
+        for (const match of patch.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/gm)) {
+          paths.add(match[1]!.trim());
+        }
+      }
+    }
     if (msg.toolName === "Read" || msg.toolName === "Write" || msg.toolName === "Edit") {
       // Try to extract path from content like "Read /path/to/file" or tool summaries
       const pathMatch = msg.content.match(/(?:Read|Write|Edit|Glob|Grep)\s+([^\s(]+)/);
@@ -62,7 +84,7 @@ function extractFilePaths(messages: ReadonlyArray<FilePathMessage>): string[] {
       for (const f of fileMatches) paths.add(f);
     }
   }
-  return [...paths].slice(-8); // last 8 files
+  return [...paths];
 }
 
 export function createFilePathExtractor(): (messages: ReadonlyArray<FilePathMessage>) => string[] {
@@ -221,6 +243,7 @@ export function ProjectPanel({
       files: string[];
       minionCount: number;
       worktreeBranch: string | null;
+      worktreePath?: string | null | undefined;
     }> = [];
 
     for (const node of nodes) {
@@ -238,6 +261,7 @@ export function ProjectPanel({
           files,
           minionCount: d.taskPlan?.filter((t) => t.executor === "minion" && t.status === "completed").length ?? 0,
           worktreeBranch: d.worktreeBranch ?? null,
+          worktreePath: d.worktreePath,
         });
       } else if (node.type === "minion") {
         const d = node.data as MinionData;
@@ -254,6 +278,7 @@ export function ProjectPanel({
           files,
           minionCount: 0,
           worktreeBranch: d.worktreeBranch ?? null,
+          worktreePath: (nodes.find(n => n.id === d.leaderId)?.data as LeaderData | undefined)?.worktreePath,
         });
       }
     }
@@ -802,6 +827,7 @@ function DashboardView({
     files: string[];
     minionCount: number;
     worktreeBranch: string | null;
+    worktreePath?: string | null | undefined;
   }>;
   totalCost: number;
   runningCount: number;
@@ -841,7 +867,6 @@ function DashboardView({
   // Build leader activity list for the tree
   const leaderActivities: LeaderActivity[] = useMemo(() => {
     const next = agents
-      .filter(a => a.type === "leader")
       .map((a, i) => ({
         id: a.id,
         name: a.name !== a.id.slice(0, 8)
@@ -850,8 +875,10 @@ function DashboardView({
             ? a.worktreeBranch.replace(/^canvas-/, "").slice(0, 16)
             : a.name,
         colorIndex: i,
-        status: a.status as LeaderActivity["status"],
-        files: a.files,
+        status: (a.status === "completed" ? "idle" : a.status) as LeaderActivity["status"],
+        files: a.files.map(path => a.worktreePath && path.startsWith(a.worktreePath.replace(/\/$/, "") + "/")
+          ? path.slice(a.worktreePath.replace(/\/$/, "").length + 1)
+          : path),
       }));
     const previous = leaderActivitiesRef.current;
     if (previous && sameLeaderActivities(previous, next)) {

@@ -209,3 +209,70 @@ describe("ProjectTree query filter", () => {
     expect(screen.getByText("README.md")).toBeInTheDocument();
   });
 });
+
+describe("ProjectTree activity dots", () => {
+  it("updates file and ancestor dots with matching agent colors and no row badges", () => {
+    const { rerender } = render(<ProjectTree tree={tree} rootName="proj" leaders={[{ ...leaders[0]!, files: [] }]} />);
+    expect(screen.queryByRole("img", { name: /touched src/ })).toBeNull();
+    rerender(<ProjectTree tree={tree} rootName="proj" leaders={[{ ...leaders[0]!, colorIndex: 3, files: ["src/nested/deep.ts"] }]} />);
+    const folderDot = screen.getByRole("img", { name: "Leader 1 touched src" });
+    expect(folderDot).toHaveTextContent("");
+    fireEvent.click(screen.getByRole("button", { name: /expand all project folders/i }));
+    const fileDot = screen.getByRole("img", { name: "Leader 1 touched src/nested/deep.ts" });
+    expect(fileDot.style.background).toBe(folderDot.style.background);
+    expect(screen.getByRole("img", { name: "Leader 1 touched src/nested" })).toBeInTheDocument();
+    expect(screen.getAllByText("Leader 1")).toHaveLength(1);
+    expect(screen.queryByRole("img", { name: "Leader 1 touched src/untouched.ts" })).toBeNull();
+  });
+});
+
+describe("ProjectTree agent filter", () => {
+  const agents: LeaderActivity[] = [
+    { ...leaders[0]!, files: ["/repo/src/nested/deep.ts"] },
+    { id: "minion-1", name: "Minion 1", colorIndex: 1, status: "running", files: ["README.md"] },
+  ];
+
+  it("selects, switches and clears an agent filter while keeping ancestor folders", () => {
+    render(<ProjectTree tree={tree} rootName="proj" leaders={agents} projectPath="/repo" />);
+    const first = screen.getByRole("button", { name: "Filter files touched by Leader 1" });
+    const second = screen.getByRole("button", { name: "Filter files touched by Minion 1" });
+    fireEvent.click(first);
+    expect(first).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("deep.ts")).toBeInTheDocument();
+    expect(screen.getByText("nested")).toBeInTheDocument();
+    expect(screen.getByText("src")).toBeInTheDocument();
+    expect(screen.queryByText("README.md")).toBeNull();
+    expect(screen.queryByText("touched.ts")).toBeNull();
+    fireEvent.click(second);
+    expect(first).toHaveAttribute("aria-pressed", "false");
+    expect(second).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(screen.queryByText("src")).toBeNull();
+    fireEvent.click(second);
+    expect(second).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("src")).toBeInTheDocument();
+  });
+
+  it("keeps selection by agent ID across updates and combines it with search and touched-only filters", () => {
+    const { rerender } = render(<ProjectTree tree={tree} rootName="proj" leaders={agents} projectPath="/repo" filterActive />);
+    fireEvent.click(screen.getByRole("button", { name: "Filter files touched by Leader 1" }));
+    const updated = [agents[1]!, { ...agents[0]!, files: [...agents[0]!.files, "README.md"] }];
+    rerender(<ProjectTree tree={tree} rootName="proj" leaders={updated} projectPath="/repo" filterActive query="README" />);
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(screen.queryByText("deep.ts")).toBeNull();
+    expect(screen.getByRole("button", { name: "Filter files touched by Leader 1" })).toHaveAttribute("aria-pressed", "true");
+    rerender(<ProjectTree tree={tree} rootName="proj" leaders={updated} projectPath="/repo" filterActive query="untouched" />);
+    expect(screen.getByRole("status")).toHaveTextContent("No touched files match this search.");
+    expect(screen.queryByText("untouched.ts")).toBeNull();
+  });
+
+  it("shows an empty state for an agent with no paths and clears selection when it leaves", () => {
+    const { rerender } = render(<ProjectTree tree={tree} rootName="proj" leaders={[{ ...agents[0]!, files: [] }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filter files touched by Leader 1" }));
+    expect(screen.getByRole("status")).toHaveTextContent("No touched files to show for this agent.");
+    expect(screen.queryByText("README.md")).toBeNull();
+    rerender(<ProjectTree tree={tree} rootName="proj" leaders={[]} />);
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+});
