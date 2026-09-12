@@ -22,13 +22,15 @@ dist/
 *.tmp
 *.temp
 
-# Local documentation work, except published guides and feature documentation
+# docs/ is for external-facing help and its assets, never temporary work.
+# Store plans, specs, notes, audits and evidence in .scratch/<task>/ instead.
+# Existing exceptions below do not authorize new internal material in docs/.
 /docs/*
 !/docs/getting-started.md
 !/docs/rebrand-compatibility.md
 !/docs/progressive-system-model-retrieval.md
 !/docs/testing-strategy.md
-# Session audit records stay local; publish only sanitized, portable guidance.
+# Legacy local audit records remain ignored; do not create new work here.
 /docs/audits/
 !/docs/features/
 /docs/features/*

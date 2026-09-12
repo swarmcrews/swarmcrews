@@ -21,6 +21,7 @@ live in [CLAUDE.md](./CLAUDE.md).
 When using Swarmcrews to work on this repository, keep session working material in
 ignored `.scratch/<task>/` directories. For example:
 
+- `.scratch/<task>/plan.md` and `spec.md` for implementation plans and working specs.
 - `.scratch/<task>/notes.md` and `handoff.md` for working notes and continuity.
 - `.scratch/<task>/evidence/` for logs, screenshots, audit ledgers and reports.
 - `.scratch/<task>/repro/` for disposable experiments and reproduction scripts.
@@ -34,8 +35,15 @@ files; tests must use isolated temporary storage rather than live user state.
 
 Use the canvas `update_project_context` tool to save project knowledge in
 workspace-owned storage. Include these scratch conventions in task assignments.
-Do not write session context or raw audit output into published documentation.
-Legacy `docs/audits/` working records are also ignored.
+**`docs/` is reserved for external-facing help documentation and its assets:**
+installation, configuration, usage guides, supported feature references, and
+troubleshooting. Never store temporary documents, plans, implementation specs,
+proposals, work logs, session context, notes, handoffs, audit reports, or evidence
+there. This applies even to ignored subdirectories such as `docs/audits/` and
+`docs/research/`. Legacy working files and existing ignore exceptions do not
+authorize new internal material; use `.scratch/<task>/` instead. Maintained
+engineering guidance and contributor tooling belong beside the relevant source,
+tests, or scripts, outside the help collection.
 
 Before promoting a result into source or documentation, remove usernames,
 absolute checkout paths, session identifiers, credentials and dependencies on

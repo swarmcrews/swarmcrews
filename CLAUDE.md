@@ -8,9 +8,11 @@ narrows them to this codebase. **Where the two conflict, this file wins.**
 
 ## North star
 
-Swarmcrews is an infinite canvas in front of the Claude Agent SDK. The
-architecture uses a typed event bus, an agent-type registry, and
-graph-as-bus routing.
+Swarmcrews is a spatial workspace for coordinating coding agents through
+Claude Code, OpenAI Codex, OpenCode, and Pi harnesses. Activity and Canvas
+present durable work items, Leader/Minion orchestration, task graphs, and
+reviewed contribution/lineage integration. The architecture uses a typed
+event bus, an agent-type registry, and graph-as-bus routing.
 
 The testing rules below describe the layering model, file locations, and
 what to test. They are the working agreement.
@@ -152,9 +154,14 @@ New server files must be under 400 lines; split them if they grow.
 
 ## Conventions worth repeating
 
-- Keep local notes, handoffs, raw audit ledgers, evidence and recovery patches
-  under ignored `.scratch/<task>/`. Follow the portable-fixture and staging
-  checks in [CONTRIBUTING.md](./CONTRIBUTING.md#local-working-artifacts).
+- **`docs/` is reserved for external-facing help documentation and its assets.**
+  Never use it to store temporary documents, implementation plans, specs,
+  proposals, work logs, notes, handoffs, audits, evidence, or recovery patches,
+  even in ignored subdirectories such as `docs/audits/` or `docs/research/`.
+  Existing internal files or ignore exceptions are not permission to add more.
+  Keep working material under ignored `.scratch/<task>/` instead. Follow the
+  portable-fixture and staging checks in
+  [CONTRIBUTING.md](./CONTRIBUTING.md#local-working-artifacts).
   Save canvas project context through `update_project_context`; do not promote
   session output or machine-specific paths into source or published docs.
 - **Replace, don't deprecate.** When the new shape lands, delete the
