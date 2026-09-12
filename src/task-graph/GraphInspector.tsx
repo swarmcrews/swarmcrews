@@ -1,13 +1,14 @@
+import { containDialogFocus, dismissDialogMenu } from "./dialog-focus.ts";
 import { TaskRetryFeedback } from "./TaskRetryFeedback.tsx";
 import type { TaskRetryReceipt } from "./use-task-retry-receipts.ts";
 import { CrewIcon } from "../components/CrewIcon.tsx";
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ViewportOverlay } from "../components/ViewportOverlay.tsx";
 import { randomUuid } from "../random-id.ts";
 import { ContextLineage, findProducer } from "./ContextLineage.tsx";
 import { formatDuration } from "./GraphSummaryCard.tsx";
 import { IterationTrack } from "./IterationTrack.tsx";
-import { filterNodes, summarizeGraph } from "./model.ts";
+import { filterNodes, summarizeGraph, whyNotRunning } from "./model.ts";
 import { NodeState } from "./NodeState.tsx";
 import { PlanMap } from "./PlanMap.tsx";
 import { PlanRail } from "./PlanRail.tsx";
@@ -59,8 +60,10 @@ export interface GraphInspectorProps extends GraphInspectorCallbacks {
   initialTab?: Tab;
   initialSelectedNodeId?: string | null;
   controlsEnabled?: boolean;
+  stale?: boolean;
   retryReceipts?: Record<string, TaskRetryReceipt>;
   onRefresh?: (() => void) | undefined;
+  navigation?: ReactNode;
 }
 
 export function GraphInspector({
@@ -73,8 +76,10 @@ export function GraphInspector({
   initialTab = "topology",
   initialSelectedNodeId = null,
   controlsEnabled = true,
+  stale = false,
   retryReceipts = {},
   onRefresh,
+  navigation,
 }: GraphInspectorProps) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [filter, setFilter] = useState<GraphFilter>("all");
@@ -87,6 +92,16 @@ export function GraphInspector({
   const [detailOpen, setDetailOpen] = useState(selectedId !== null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
+  const objectiveId = useId();
+  const [objectiveExpanded, setObjectiveExpanded] = useState(false);
+  const restoreRailFocus = useRef<"plan" | "detail" | null>(null);
+  useEffect(() => {
+    const rail = restoreRailFocus.current;
+    if (!rail) return;
+    restoreRailFocus.current = null;
+    const label = narrow ? `Expand ${rail === "plan" ? "plan" : "details"}` : `Toggle ${rail === "plan" ? "plan" : "details"} rail`;
+    dialogRef.current?.querySelector<HTMLElement>(`[aria-label="${label}"]`)?.focus();
+  }, [planOpen, detailOpen, selectedId, selectedEvidenceId, narrow]);
   const filteredNodes = useMemo(() => filterNodes(snapshot.nodes, filter), [snapshot.nodes, filter]);
   const selected = snapshot.nodes.find((node) => node.id === selectedId) ?? null;
   const selectedEvidence = snapshot.evidence.find((item) => item.id === selectedEvidenceId) ?? null;
@@ -117,6 +132,7 @@ export function GraphInspector({
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (dialogRef.current && dismissDialogMenu(event, dialogRef.current)) return;
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         onClose();
@@ -125,23 +141,18 @@ export function GraphInspector({
       if (event.key === "Escape") {
         event.stopPropagation();
         if (narrow && (planOpen || detailOpen)) {
+          restoreRailFocus.current = planOpen ? "plan" : "detail";
           setSelectedId(null);
           setSelectedEvidenceId(null);
           setPlanOpen(false);
           setDetailOpen(false);
         } else if (selectedId || selectedEvidenceId) {
+          restoreRailFocus.current = "detail";
           setSelectedId(null);
           setSelectedEvidenceId(null);
         } else onClose();
       }
-      if (event.key === "Tab" && dialogRef.current) {
-        const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]')];
-        if (!focusable.length) return;
-        const first = focusable[0]!;
-        const last = focusable.at(-1)!;
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }
+      if (dialogRef.current) containDialogFocus(event, dialogRef.current);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -213,19 +224,27 @@ export function GraphInspector({
           </div>
         </header>
 
+        {navigation}
+
         <section className="tg-mission-bar" aria-label="Execution goal and run status">
-          <div className="tg-mission-copy"><span className="tg-eyebrow">Run objective</span><p>{goal ?? snapshot.title}</p></div>
+          <div className={`tg-mission-copy${objectiveExpanded ? " is-expanded" : ""}`}>
+            <div className="tg-mission-copy__heading"><span className="tg-eyebrow">Run objective</span>
+              <button type="button" className="tg-objective-toggle" aria-expanded={objectiveExpanded} aria-controls={objectiveId} onClick={() => setObjectiveExpanded(!objectiveExpanded)}>{objectiveExpanded ? "Collapse objective" : "Show full objective"}</button>
+            </div>
+            <p id={objectiveId} tabIndex={objectiveExpanded ? 0 : undefined}>{goal ?? snapshot.title}</p>
+          </div>
           <div className="tg-mission-stats">
             <span className={`tg-run-status tg-run-status--${snapshot.status}`}>{snapshot.status}</span>
             <span><b>{summary.succeeded}/{summary.total}</b> complete</span>
             <span><b>{snapshot.capacity.running}/{snapshot.capacity.limit}</b> active slots</span>
             <span>Run revision <b>{snapshot.revision}</b></span>
           </div>
+          {stale ? <div className="tg-stale-notice" role="status"><strong>Cached state</strong><span>Waiting to confirm a fresh revision.</span>{onRefresh ? <button type="button" className="tg-button" onClick={onRefresh}>Refresh</button> : null}</div> : null}
         </section>
 
         <div className={`tg-workspace${planOpen ? "" : " is-plan-collapsed"}${detailOpen ? "" : " is-detail-collapsed"}`}>
           {narrow && (planOpen || detailOpen) ? <button type="button" className="tg-rail-scrim" aria-label="Close open inspector rail" onClick={() => { setPlanOpen(false); setDetailOpen(false); }} /> : null}
-          {planOpen ? <PlanRail snapshot={snapshot} plan={plan} selectedTaskId={focusedPlanTaskId} onSelect={selectPlan} onClose={() => setPlanOpen(false)} /> : (
+          {planOpen ? <PlanRail snapshot={snapshot} plan={plan} selectedTaskId={focusedPlanTaskId} onSelect={selectPlan} onClose={() => { restoreRailFocus.current = "plan"; setPlanOpen(false); }} /> : (
             <button type="button" className="tg-rail-tab tg-rail-tab--plan" aria-label="Expand plan" onClick={togglePlan}><span>Plan</span><b aria-hidden="true">›</b></button>
           )}
 
@@ -245,10 +264,11 @@ export function GraphInspector({
                   >{item.label}</button>
                 ))}
               </div>
-              {tab === "topology" ? (
+              {tab === "topology" || tab === "queue" ? (
                 <div className="tg-filterbar" aria-label="Graph filters">
                   {FILTERS.map((item) => <button key={item.id} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}</button>)}
                   <span className="tg-filterbar__count">{filteredNodes.length}/{snapshot.nodes.length}</span>
+                  {filter !== "all" ? <button type="button" onClick={() => setFilter("all")}>Clear filter</button> : null}
                 </div>
               ) : null}
               {focusedPlanTaskId ? <button className="tg-selection-chip" type="button" onClick={() => setFocusedPlanTaskId(null)}>Plan focus · {focusedPlanTaskId} ×</button> : null}
@@ -259,7 +279,7 @@ export function GraphInspector({
               {tab === "plan" ? <PlanMap snapshot={snapshot} plan={plan} selectedTaskId={focusedPlanTaskId} onSelectPlan={setFocusedPlanTaskId} onSelectNode={(id) => selectNode(id, true)} onSelectEvidence={selectEvidence} /> : null}
               {tab === "evidence" ? <ContextLineage snapshot={snapshot} selectedEvidenceId={selectedEvidenceId} onSelectEvidence={selectEvidence} onSelectNode={(id) => selectNode(id)} /> : null}
               {tab === "overview" ? <Overview snapshot={snapshot} onSelect={(id) => selectNode(id, true)} /> : null}
-              {tab === "queue" ? <WorkQueue nodes={filteredNodes} onSelect={(id) => selectNode(id)} /> : null}
+              {tab === "queue" ? <WorkQueue nodes={filteredNodes} onSelect={(id) => selectNode(id)} {...(filter === "all" ? {} : { onClearFilter: () => setFilter("all") })} /> : null}
               {tab === "timeline" ? <Timeline snapshot={snapshot} onSelect={(id) => selectNode(id, true)} /> : null}
             </main>
 
@@ -267,9 +287,9 @@ export function GraphInspector({
           </section>
 
           {detailOpen ? selected ? (
-            <DetailDrawer receipt={retryReceipts[selected.id]} onRefresh={onRefresh} key={selected.id} node={selected} controlsEnabled={controlsEnabled} onClose={() => { setSelectedId(null); setDetailOpen(false); }} dispatch={dispatch} />
+            <DetailDrawer receipt={retryReceipts[selected.id]} onRefresh={onRefresh} key={selected.id} node={selected} controlsEnabled={controlsEnabled} onClose={() => { restoreRailFocus.current = "detail"; setSelectedId(null); setDetailOpen(false); }} dispatch={dispatch} />
           ) : selectedEvidence ? (
-            <EvidenceDetail evidence={selectedEvidence} snapshot={snapshot} onSelectNode={(id) => selectNode(id, true)} onClose={() => { setSelectedEvidenceId(null); setDetailOpen(false); }} />
+            <EvidenceDetail evidence={selectedEvidence} snapshot={snapshot} onSelectNode={(id) => selectNode(id, true)} onClose={() => { restoreRailFocus.current = "detail"; setSelectedEvidenceId(null); setDetailOpen(false); }} />
           ) : (
             <aside className="tg-detail tg-detail--empty" aria-label="Selection details">
               <span className="tg-empty-state__icon">⌁</span><strong>Choose work to inspect</strong><p>Select a task to review its brief, routed context, and minion responses. Checkpoints show evidence lineage.</p>
@@ -325,7 +345,7 @@ function DetailDrawer({ node, controlsEnabled: enabled, onClose, dispatch, recei
     <section className="tg-detail__brief" aria-labelledby="tg-brief-heading"><h4 id="tg-brief-heading">Minion brief</h4><p className="tg-detail__objective">{node.objective}</p><BriefList label="Constraints" items={node.constraints} empty="No additional constraints were routed." /><BriefList label="Acceptance criteria" items={node.acceptanceCriteria} empty="No acceptance criteria were declared." /></section>
     <section aria-labelledby="tg-context-heading"><div className="tg-detail__section-heading"><h4 id="tg-context-heading">Routed context</h4><span>{node.context.length} source{node.context.length === 1 ? "" : "s"}</span></div>{node.context.length ? <div className="tg-context-list">{node.context.map((entry) => <article className={`tg-context-card${"withheld" in entry ? " is-withheld" : ""}`} key={`${entry.sourceId}-${entry.contentHash}`}><header><strong>{entry.sourceId}</strong><span>{entry.classification}</span></header>{"withheld" in entry ? <p>Content withheld by its {entry.classification} classification.</p> : <p>{entry.content || "This context source is empty."}</p>}</article>)}</div> : <p className="tg-detail__empty-copy">No routed context was attached to this task.</p>}</section>
     <section aria-labelledby="tg-responses-heading"><div className="tg-detail__section-heading"><h4 id="tg-responses-heading">Attempt responses</h4><span>{node.attemptHistory.length} attempt{node.attemptHistory.length === 1 ? "" : "s"}</span></div>{node.attemptHistory.length ? <div className="tg-response-list">{node.attemptHistory.slice(-30).reverse().map((attempt) => <article className="tg-response-card" key={attempt.id}><header><strong>Attempt {attempt.number}</strong><span className={`tg-attempt-label tg-attempt-label--${attempt.state}`}>{attempt.state}</span></header><div className="tg-response-card__meta">{attempt.executor ?? "Unassigned"} · ${attempt.costUsd.toFixed(2)} · {attempt.tokens===0&&attempt.state==="running"?"usage pending":`${attempt.tokens.toLocaleString()} tokens`}</div>{attempt.response ? <p>{attempt.response}</p> : <p className="tg-detail__empty-copy">No response was recorded for this attempt.</p>}</article>)}</div> : <p className="tg-detail__empty-copy">This task has not started an attempt yet.</p>}</section>
-    <section><h4>Runtime</h4><p>{node.currentAttempt?.state === "running" ? "Running now" : node.blocker?.explanation ?? (node.readiness === "ready" ? "Ready; waiting for executor capacity" : "Waiting for dependencies")}</p><p>{node.currentAttempt?.sessionId ?? "No active session"} · ${node.budgetReservedUsd?.toFixed(2) ?? "0.00"} reserved · ${node.costUsd.toFixed(2)} spent</p></section>
+    <section><h4>Runtime</h4><p>{whyNotRunning(node)}</p><p>{node.currentAttempt?.sessionId ?? "No active session"} · ${node.budgetReservedUsd?.toFixed(2) ?? "0.00"} reserved · ${node.costUsd.toFixed(2)} spent</p></section>
     {node.adjudication ? <section><h4>Leader resolution</h4><p><strong>{node.adjudication.decision}</strong> by {node.adjudication.actor}</p><p>{node.adjudication.reason}</p>{node.adjudication.guidance ? <p>Guidance: {node.adjudication.guidance}</p> : null}</section> : null}
     <section><h4>Inputs &amp; outputs</h4><div className="tg-detail-chips">{node.inputIds.map((id) => <span key={`input-${id}`}>{id}</span>)}{node.outputArtifactIds.map((id) => <span key={`output-${id}`}>{id}</span>)}{!node.inputIds.length && !node.outputArtifactIds.length ? <em>None projected</em> : null}</div></section>
     <div className="tg-detail__controls">

@@ -8,6 +8,9 @@ const command=<T extends string>(type:T,fields:z.ZodRawShape)=>
 
 /** Inbound graph commands stay isolated so the global command gate remains reviewable. */
 export const TASK_GRAPH_COMMAND_SCHEMAS={
+  get_task_graph_history:command("get_task_graph_history",{
+    workItemId:requiredId,runId:requiredId.optional(),
+  }),
   get_task_graph_plan:command("get_task_graph_plan",{workItemId:requiredId}),
   approve_task_graph_plan:command("approve_task_graph_plan",{
     workItemId:requiredId,proposalId:requiredId,expectedProposalRevision:revision,

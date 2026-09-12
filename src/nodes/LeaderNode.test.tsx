@@ -1050,7 +1050,7 @@ describe("LeaderNode: connected-context dedup", () => {
     await pump(replay, [{ message: { type: "session_status", sessionKey: created.sessionKey, status: "idle" } as ServerMessage }]);
 
     const nonCanvasCommands = () =>
-      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan"]
+      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan", "get_task_graph_history"]
         .includes((msg as { type?: string }).type ?? ""));
     const canvasCommands = () =>
       captured.filter((msg) => (msg as { type?: string }).type === "canvas_context");
@@ -1162,7 +1162,7 @@ describe("LeaderNode: connected-context dedup", () => {
     await pump(replay, [{ message: { type: "session_status", sessionKey: created.sessionKey, status: "idle" } as ServerMessage }]);
 
     const nonCanvasCommands = () =>
-      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan"]
+      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan", "get_task_graph_history"]
         .includes((msg as { type?: string }).type ?? ""));
     expect((nonCanvasCommands()[0] as { type: string }).type).toBe("continue_work_item");
 

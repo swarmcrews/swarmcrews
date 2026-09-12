@@ -1,4 +1,6 @@
+import { containDialogFocus, dismissDialogMenu } from "./dialog-focus.ts";
 import { CrewIcon } from "../components/CrewIcon.tsx";
+import { useEffect, useId, useRef, type ReactNode } from "react";
 import type { TaskGraphPlanSnapshotView } from "../../shared/task-graph-planning-contracts.ts";
 import "./task-graph.css";
 
@@ -35,7 +37,7 @@ export function GraphPlanProposalCard({ snapshot, actions }: {
           {snapshot.steps.slice(0, 5).map((step) => <li key={step.key}>{step.title}</li>)}
         </ol>
         <div className="tg-plan-proposal__meta">
-          <span>{snapshot.steps.length} steps</span><span>{parallel} can begin in parallel</span>
+          <span>{snapshot.steps.length} steps</span><span>{parallel} without dependencies</span>
           <span>{snapshot.steps.filter((step) => step.requiresApproval).length} approvals</span>
           {snapshot.pattern ? <span>{snapshot.pattern.id} · v{snapshot.pattern.version}</span> : null}
         </div>
@@ -46,7 +48,7 @@ export function GraphPlanProposalCard({ snapshot, actions }: {
         {snapshot.patternRecommendation?.id === "p00.direct"
           ? <p className="tg-plan-proposal__warning">Router recommends direct execution for this bounded unit.</p>
           : null}
-        <ReviewRequirements requirements={snapshot.reviewRequirements} />
+        <ReviewRequirements requirements={snapshot.reviewRequirements} canStart={canStart} />
         {snapshot.error && snapshot.state !== "stale"
           ? <p className="tg-plan-proposal__warning">{snapshot.error}</p> : null}
       </>}
@@ -72,22 +74,38 @@ function summarizeFailure(error: string): string {
   return concise.length > 160 ? `${concise.slice(0, 157)}…` : concise;
 }
 
-export function GraphPlanProposalDialog({ snapshot, actions, onClose }: {
+export function GraphPlanProposalDialog({ snapshot, actions, onClose, navigation }: {
   snapshot: TaskGraphPlanSnapshotView;
   actions: ProposalActions;
   onClose: () => void;
+  navigation?: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const canStart = snapshot.state === "ready" && snapshot.canStart
     && actions.controlsEnabled && !actions.stale;
-  return <div className="tg-backdrop" onMouseDown={(event) => {
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (dialogRef.current && dismissDialogMenu(event, dialogRef.current)) return;
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeRef.current(); return; }
+      if (dialogRef.current) containDialogFocus(event, dialogRef.current);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => { window.removeEventListener("keydown", onKeyDown, true); opener?.focus(); };
+  }, []);
+  return <div className="tg-backdrop tg-backdrop--proposal" onMouseDown={(event) => {
     if (event.target === event.currentTarget) onClose();
   }}>
-    <div className="tg-plan-dialog" role="dialog" aria-modal="true"
-      aria-label={`Execution plan: ${snapshot.objective}`}>
-      <header className="tg-inspector__header"><div className="tg-inspector__title">
+    <div ref={dialogRef} className="tg-plan-dialog" role="dialog" aria-modal="true" aria-label={`Execution plan: ${snapshot.objective}`} tabIndex={-1}>
+      <header className="tg-inspector__header"><div className="tg-plan-dialog__identity">
         <span className="tg-summary__leader-mark" aria-hidden="true"><CrewIcon aria-hidden="true" /></span>
-        <div><strong>{titleFor(snapshot)}</strong><span>{snapshot.objective}</span></div>
+        <div><h2 id={headingId}>{titleFor(snapshot)}</h2><p>{snapshot.objective}</p></div>
       </div><button type="button" className="tg-close" onClick={onClose} aria-label="Close">×</button></header>
+      {navigation}
       <div className="tg-plan-dialog__body">
         {snapshot.patternRecommendation ? <section className="tg-plan-pattern">
           <span className="tg-eyebrow">Orchestration pattern</span>
@@ -116,10 +134,11 @@ export function GraphPlanProposalDialog({ snapshot, actions, onClose }: {
         <section><span className="tg-eyebrow">Acceptance criteria</span><ul>
           {snapshot.acceptanceCriteria.map((criterion) => <li key={criterion}>{criterion}</li>)}
         </ul></section>
+        {snapshot.questions.length ? <section><span className="tg-eyebrow">Open questions</span><ul>{snapshot.questions.map((question) => <li key={question}>{question}</li>)}</ul></section> : null}
         <section><span className="tg-eyebrow">Execution steps</span><ol>
           {snapshot.steps.map((step) => <li key={step.key}><strong>{step.title}</strong>
             <p>{step.objective}</p><small>{step.dependsOn.length
-              ? `After ${step.dependsOn.join(", ")}` : "Can start immediately"}
+              ? `After ${step.dependsOn.map((key) => snapshot.steps.find((candidate) => candidate.key === key)?.title ?? key).join(", ")}` : "No dependencies"}
               {step.contextSelectors.length ? ` · Context: ${step.contextSelectors.join(", ")}` : ""}</small>
             {Object.keys(step.outputSchemas).length ? <details className="tg-plan-contracts">
               <summary>Artifact contracts ({Object.keys(step.outputSchemas).length})</summary>
@@ -134,7 +153,7 @@ export function GraphPlanProposalDialog({ snapshot, actions, onClose }: {
         {snapshot.assumptions.length ? <section><span className="tg-eyebrow">Assumptions</span><ul>
           {snapshot.assumptions.map((assumption) => <li key={assumption}>{assumption}</li>)}
         </ul></section> : null}
-        <ReviewRequirements requirements={snapshot.reviewRequirements} detailed />
+        <ReviewRequirements requirements={snapshot.reviewRequirements} detailed canStart={canStart} />
         {snapshot.topologyWarnings.length ? <section className="tg-plan-proposal__warning">
           <strong>Topology preflight</strong><ul>{snapshot.topologyWarnings.map(warning=><li key={warning}>{warning}</li>)}</ul>
         </section> : null}
@@ -151,14 +170,15 @@ export function GraphPlanProposalDialog({ snapshot, actions, onClose }: {
   </div>;
 }
 
-function ReviewRequirements({ requirements, detailed = false }: {
+function ReviewRequirements({ requirements, detailed = false, canStart = false }: {
   requirements: TaskGraphPlanSnapshotView["reviewRequirements"];
   detailed?: boolean;
+  canStart?: boolean;
 }) {
   if (requirements.length === 0) return null;
   return <section className="tg-plan-proposal__review" role="note">
     <strong>Review required before integration</strong>
-    <p>This work can start now. Integration remains blocked until these reviews pass or are waived.</p>
+    <p>{canStart ? "This work is eligible to start. " : "This work is not currently eligible to start. "}Integration remains blocked until these reviews pass or are waived.</p>
     {detailed ? <ul>{requirements.map((requirement) =>
       <li key={requirement.gateId}><strong>{requirement.name}</strong>: {requirement.reason}</li>)}</ul>
       : <span>{requirements.map((requirement) => requirement.name).join(" · ")}</span>}

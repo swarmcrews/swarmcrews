@@ -3,7 +3,7 @@ import type { Bus } from "../bus.ts";
 import { serverLogger } from "../logging.ts";
 import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import type { ArtifactStageInput,GraphRevisionInput,GraphSnapshot,SourceSnapshot } from "../../shared/task-graph-contracts.ts";
-import type { TaskGraphSnapshotView } from "../../shared/task-graph-view-contracts.ts";
+import { type TaskGraphSnapshotView, type TaskGraphRunSummary } from "../../shared/task-graph-view-contracts.ts";
 import { workItemRunSealedEnvelopeSchema } from "../../shared/ws-envelope.ts";
 import { storeTaskGraphArtifactForNode } from "./artifact-store.ts";
 import { adjudicateTaskGraphNode,type TaskNodeAdjudicationInput } from "./adjudication.ts";
@@ -18,7 +18,7 @@ import { activeTaskGraphRunIds,availableAdmissionSlots,availableDispatchSlots,
   observeTaskGraphActivity,tickTaskGraphExclusive } from "./service-execution.ts";
 import { reconcileTaskGraph,steerTaskGraph,taskGraphArtifact } from "./service-controls.ts";
 import { executeTaskGraphCommand } from "./service-idempotency.ts";
-import { publishTaskGraphChanged,publishTaskGraphSnapshot } from "./service-projection.ts";
+import { taskGraphHistory,publishTaskGraphChanged,publishTaskGraphSnapshot } from "./service-projection.ts";
 import { requestTaskGraphVerification,waiveTaskGraphVerification } from "./service-verification.ts";
 import { validateRevision,type TaskGraphNodePolicyValidator } from "./validation.ts";
 import { projectTaskGraphSnapshot } from "./view.ts";
@@ -163,6 +163,7 @@ export class TaskGraphService {
     return row?this.repo.snapshot(String(row.id)):null;
   }
 
+  historyForWorkItem(workItemId:string):TaskGraphRunSummary[] { return taskGraphHistory(this,workItemId); }
   viewForWorkItem(workItemId:string,primaryRunKey?:string|null):TaskGraphSnapshotView|null {
     const snapshot=this.snapshotForWorkItem(workItemId,primaryRunKey);
     if (!snapshot) return null;

@@ -1,3 +1,4 @@
+import { taskGraphRunSummarySchema, type TaskGraphRunSummary } from "../../shared/task-graph-view-contracts.ts";
 import type { GraphSnapshot } from "../../shared/task-graph-contracts.ts";
 import { projectTaskGraphSnapshot } from "./view.ts";
 import type { TaskGraphService } from "./service.ts";
@@ -63,4 +64,19 @@ export function publishTaskGraphChanged(
       capacity:view.capacity,budget:view.budget,criticalPath:view.criticalPath,
     },
   });
+}
+
+/** List stored run summaries without publishing historical state as live updates. */
+export function taskGraphHistory(service: TaskGraphService, workItemId: string): TaskGraphRunSummary[] {
+  const rows = service.options.db.prepare(`SELECT r.id, r.status, r.paused, r.created_at, r.updated_at,
+    json_extract(v.spec_json, '$.objective') AS title
+    FROM task_graph_runs r JOIN task_graph_revisions v ON v.id=r.revision_id
+    WHERE r.work_item_id=? ORDER BY r.created_at DESC,r.id DESC`).all(workItemId) as Record<string, unknown>[];
+  return rows.map(row => taskGraphRunSummarySchema.parse({
+    graphRunId: row.id, title: row.title,
+    status: ["completed", "failed", "cancelled", "blocked"].includes(String(row.status))
+      ? row.status : row.paused ? "paused" : row.status === "quiescent" ? "quiescent" : "running",
+    createdAt: new Date(Number(row.created_at)).toISOString(),
+    updatedAt: new Date(Number(row.updated_at)).toISOString(),
+  }));
 }

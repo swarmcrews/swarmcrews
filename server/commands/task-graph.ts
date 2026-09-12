@@ -81,6 +81,11 @@ export const taskGraphCommand: CommandHandler = async (ctx,cmd,ws) => {
     let result: unknown;
     let directSnapshot: import("../../shared/task-graph-view-contracts.ts").TaskGraphSnapshotView | null | undefined;
     switch (cmd.type) {
+      case "get_task_graph_history":
+        if (cmd.runId) service.assertWorkItem(cmd.runId,cmd.workItemId!);
+        result = { runs: service.historyForWorkItem(cmd.workItemId!),
+          snapshot: cmd.runId ? service.viewSnapshot(cmd.runId) : null };
+        break;
       case "get_task_graph_plan": {
         const detail=await ctx.workItems?.get(cmd.workItemId!);
         const currentRunKey=detail?.workItem.currentRunKey ?? null;

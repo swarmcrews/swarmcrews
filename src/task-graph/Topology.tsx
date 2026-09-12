@@ -54,15 +54,16 @@ export function Topology({
       .filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
       .map((edge) => edge.id),
   );
-  const rootTargets = layout.positioned.filter(({ node }) => !projection.edges.some((edge) => edge.target === node.id));
+  const canonicalIncoming = new Set(snapshot.edges.map((edge) => edge.target));
+  const rootTargets = layout.positioned.filter(({ node }) => !canonicalIncoming.has(node.id));
   const rootY = Math.max(PADDING_Y, (layout.height - NODE_HEIGHT) / 2);
 
   return (
     <div className="tg-flow" aria-label="Relational task graph flow">
       <div className="tg-topology__notice">
         <span>Showing {projection.nodes.length} logical nodes and {projection.edges.length} visible edges.</span>
-        {projection.hiddenNodeCount > 0 ? <span>{projection.hiddenNodeCount} nodes aggregated.</span> : null}
-        {projection.hiddenEdgeCount > 0 ? <span>{projection.hiddenEdgeCount} edges hidden until focus.</span> : null}
+        {projection.hiddenNodeCount > 0 ? <span>{projection.hiddenNodeCount} nodes aggregated; not shown by the current limit or filter.</span> : null}
+        {projection.hiddenEdgeCount > 0 ? <span>{projection.hiddenEdgeCount} dependencies not shown by the current limit or filter.</span> : null}
         {focusedPlanTaskId && !hasPlanFocus ? <span className="tg-notice-attention">Selected plan item has no exact runtime projection.</span> : null}
       </div>
       <div className="tg-flow-controls" role="group" aria-label="Graph zoom controls">
@@ -147,7 +148,7 @@ export function Topology({
 
             <div className="tg-flow-layer tg-flow-layer--nodes">
               <article className="tg-flow-root" style={{ left: PADDING_X, top: rootY }}>
-                <span className="tg-role-label">Leader · graph run</span>
+                <span className="tg-role-label">Leader · run membership</span>
                 <strong title={snapshot.title}>{snapshot.title}</strong>
                 <small>rev {snapshot.revision} · {snapshot.status}</small>
               </article>

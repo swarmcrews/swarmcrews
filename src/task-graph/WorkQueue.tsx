@@ -1,17 +1,34 @@
-import { useState, type UIEvent } from "react";
+import { useEffect, useRef, useState, type UIEvent } from "react";
 import { getVirtualRange, whyNotRunning, WORK_QUEUE_ROW_HEIGHT } from "./model.ts";
 import { NodeState } from "./NodeState.tsx";
 import type { TaskGraphNodeView } from "./types.ts";
 
-const VIEWPORT_HEIGHT = 348;
-
-export function WorkQueue({ nodes, onSelect }: { nodes: TaskGraphNodeView[]; onSelect: (id: string) => void }) {
+export function WorkQueue({ nodes, onSelect, onClearFilter }: { nodes: TaskGraphNodeView[]; onSelect: (id: string) => void; onClearFilter?: () => void }) {
   const [scrollTop, setScrollTop] = useState(0);
-  const range = getVirtualRange(nodes.length, scrollTop, VIEWPORT_HEIGHT);
+  const [viewportHeight, setViewportHeight] = useState(348);
+  const queueRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = queueRef.current;
+    if (!element) return;
+    const update = () => setViewportHeight(Math.max(WORK_QUEUE_ROW_HEIGHT, element.clientHeight));
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(element);
+    return () => observer?.disconnect();
+  }, []);
+  useEffect(() => {
+    const element = queueRef.current;
+    if (!element) return;
+    const maxScroll = Math.max(0, nodes.length * WORK_QUEUE_ROW_HEIGHT - viewportHeight);
+    if (element.scrollTop > maxScroll) element.scrollTop = maxScroll;
+    setScrollTop(element.scrollTop);
+  }, [nodes.length, viewportHeight]);
+  const range = getVirtualRange(nodes.length, scrollTop, viewportHeight);
   const visible = nodes.slice(range.start, range.end);
   const onScroll = (event: UIEvent<HTMLDivElement>) => setScrollTop(event.currentTarget.scrollTop);
   return (
-    <div className="tg-queue" role="region" aria-label="Windowed work queue" style={{ height: VIEWPORT_HEIGHT }} onScroll={onScroll}>
+    <div ref={queueRef} className="tg-queue" role="region" aria-label="Windowed work queue" onScroll={onScroll}>
+      {nodes.length === 0 ? <div className="tg-queue__empty"><strong>{onClearFilter ? "No tasks match this filter." : "No tasks in this graph yet."}</strong>{onClearFilter ? <button type="button" className="tg-button" onClick={onClearFilter}>Clear filter</button> : null}</div> : null}
       <div style={{ height: range.totalHeight, position: "relative" }}>
         <div style={{ transform: `translateY(${range.offset}px)` }}>
           {visible.map((node) => (

@@ -99,6 +99,7 @@ export const COMMAND_TABLE = {
   create_task_graph_revision: taskGraphCommand,
   start_task_graph_run: taskGraphCommand,
   get_task_graph_snapshot: taskGraphCommand,
+  get_task_graph_history: taskGraphCommand,
   pause_task_graph_run: taskGraphCommand,
   resume_task_graph_run: taskGraphCommand,
   cancel_task_graph_run: taskGraphCommand,

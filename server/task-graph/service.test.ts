@@ -75,6 +75,28 @@ function setup() {
 }
 
 describe("TaskGraphService central wiring",() => {
+  it("lists persisted graph history across leader iterations in newest-first order", () => {
+    const db = setup(); const { bus } = fakeBus();
+    const options = { db, bus, children: { startChildRun: vi.fn() } };
+    const service = new TaskGraphService(options);
+    service.createRevision(revision(), 3);
+    const insert = db.prepare(`INSERT INTO task_graph_runs
+      (id,work_item_id,primary_run_key,revision_id,source_snapshot_id,status,paused,revision,max_active_attempts,created_at,updated_at)
+      VALUES(?,?,?,'revision','source',?,?,0,2,?,?)`);
+    insert.run("past", "work", "previous-primary", "completed", 0, 4, 5);
+    insert.run("current", "work", "primary", "active", 1, 6, 7);
+    insert.run("unrelated", "another-work", "other-primary", "failed", 0, 8, 9);
+    // A fresh service must discover history without an in-memory cache or current-run lookup.
+    const restored = new TaskGraphService(options);
+    expect(restored.historyForWorkItem("work")).toEqual([
+      { graphRunId: "current", title: "Ship the graph", status: "paused",
+        createdAt: new Date(6).toISOString(), updatedAt: new Date(7).toISOString() },
+      { graphRunId: "past", title: "Ship the graph", status: "completed",
+        createdAt: new Date(4).toISOString(), updatedAt: new Date(5).toISOString() },
+    ]);
+    expect(restored.historyForWorkItem("missing")).toEqual([]);
+    db.close();
+  });
   it("dispatches and persists a compact context while preserving constraints and output obligations", async () => {
     const db = setup(); const { bus } = fakeBus();
     const children: Array<Record<string, unknown>> = [];

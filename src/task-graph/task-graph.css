@@ -133,9 +133,9 @@
 .tg-summary__identity { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .tg-summary__identity > div { min-width: 0; }
 .tg-summary__identity strong,
-.tg-summary__identity span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-summary__identity > div > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tg-summary__identity strong { font-size: 12px; }
-.tg-summary__identity span { margin-top: 2px; color: var(--text-muted); font: 8px var(--font-mono); }
+.tg-summary__identity > div > span { margin-top: 2px; color: var(--text-muted); font: 8px var(--font-mono); }
 
 .tg-summary__leader-mark {
   display: grid;
@@ -229,7 +229,7 @@
 
 .tg-summary__copy { min-width: 0; }
 .tg-summary--graph .tg-summary__identity strong {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.25;
 }
 
@@ -241,12 +241,13 @@
   overflow: hidden;
   margin-top: 4px;
   color: var(--text-muted);
-  font: 7px/1.2 var(--font-mono);
-  white-space: nowrap;
+  font: 10px/1.4 var(--font-sans);
+  flex-wrap: wrap;
+  white-space: normal;
 }
 
 .tg-summary__metric,
-.tg-summary__signal { flex: 0 0 auto; }
+.tg-summary__signal { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .tg-summary__metric b { color: var(--text-secondary); font-weight: 700; }
 .tg-summary__signal::before {
   content: "";
@@ -281,7 +282,7 @@
   min-height: 28px;
   flex: 0 0 auto;
   padding: 5px 8px;
-  font-size: 8px;
+  font-size: 10px;
   white-space: nowrap;
 }
 
@@ -305,7 +306,7 @@
   .tg-summary--graph .tg-summary__identity { gap: 0; }
   .tg-summary__signals { gap: 4px; }
   .tg-summary__signal--running,
-  .tg-summary__signal--attention { max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
+  .tg-summary__signal--attention { max-width: 100%; }
   .tg-summary__open { width: 28px; overflow: hidden; color: transparent; }
   .tg-summary__open span { display: block; margin: 0; color: var(--text-on-accent); }
 }
@@ -741,9 +742,9 @@ button.tg-task-chip,
 .tg-queue-row__main strong,
 .tg-queue-row__main small,
 .tg-queue-row__meta small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tg-queue-row__main strong { font-size: 10px; }
-.tg-queue-row small { margin-top: 3px; color: var(--text-muted); font: 8px var(--font-mono); }
-.tg-queue-row__meta { font: 8px var(--font-mono); }
+.tg-queue-row__main strong { font-size: 12px; line-height: 1.4; }
+.tg-queue-row small { margin-top: 3px; color: var(--text-secondary); font: 10px/1.4 var(--font-sans); }
+.tg-queue-row__meta { font: 10px/1.4 var(--font-mono); }
 
 .tg-timeline { margin: 0; padding: 0; list-style: none; }
 .tg-timeline li { display: grid; grid-template-columns: 82px 82px 1fr; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border-default); font-size: 9px; }
@@ -767,8 +768,8 @@ button.tg-task-chip,
 .tg-detail--empty p { max-width: 230px; margin: 5px 0; font-size: 9px; line-height: 1.45; }
 .tg-detail-status { display: inline-block; padding: 3px 6px; border: 1px solid currentColor; border-radius: 999px; font: 7px var(--font-mono); text-transform: capitalize; }
 .tg-detail section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-default); }
-.tg-detail h4 { color: var(--text-muted); font: 600 8px var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; }
-.tg-detail p { margin: 5px 0; color: var(--text-secondary); font-size: 9px; line-height: 1.45; }
+.tg-detail h4 { color: var(--text-muted); font: 600 10px var(--font-sans); letter-spacing: 0.05em; text-transform: uppercase; }
+.tg-detail p { margin: 6px 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
 .tg-retry-feedback { overflow-wrap: anywhere; }
 .tg-retry-feedback--error {
   display: flex;
@@ -894,3 +895,121 @@ button.tg-task-chip,
   .tg-flow-node,
   .tg-flow-edge { transition: none; }
 }
+
+/* Readable operational context and viewport-bounded proposal review. */
+.tg-inspector .tg-eyebrow { font-size: 9px; }
+.tg-mission-bar { flex-wrap: wrap; gap: 8px 20px; }
+.tg-mission-copy { flex: 1 1 200px; }
+.tg-mission-copy__heading { display: flex; align-items: center; gap: 12px; }
+.tg-objective-toggle { min-height: 24px; padding: 2px 0; border: 0; background: transparent; color: var(--accent); font: 11px var(--font-sans); cursor: pointer; }
+.tg-objective-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.tg-mission-copy p { font-size: 12px; line-height: 1.5; }
+.tg-mission-copy.is-expanded p { max-width: none; max-height: 24vh; overflow: auto; white-space: normal; overflow-wrap: anywhere; }
+.tg-mission-stats { font-size: 10px; gap: 12px; }
+.tg-stale-notice { display: flex; flex: 1 0 100%; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 10px; border-left: 3px solid var(--warning-color); background: color-mix(in srgb, var(--warning-color) 8%, var(--bg-surface)); color: var(--text-primary); font-size: 12px; line-height: 1.4; }
+.tg-stale-notice .tg-button { min-height: 24px; margin-left: auto; }
+.tg-detail header h3 { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+.tg-detail__objective { font-size: 12px; line-height: 1.5; }
+.tg-queue__empty { display: grid; min-height: 200px; place-content: center; gap: 12px; padding: 24px; color: var(--text-secondary); text-align: center; font-size: 12px; }
+.tg-backdrop--proposal { place-items: center; padding: 16px; }
+.tg-plan-dialog { max-height: calc(100dvh - 32px); border: 1px solid var(--border-default); border-radius: var(--radius-panel, 10px); }
+.tg-plan-dialog__identity { display: flex; min-width: 0; align-items: flex-start; gap: 12px; }
+.tg-plan-dialog__identity > div { min-width: 0; }
+.tg-plan-dialog__identity h2 { margin: 0; font-size: 16px; line-height: 1.3; }
+.tg-plan-dialog__identity p { max-height: 18vh; overflow: auto; margin: 5px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.tg-plan-dialog__body { min-height: 0; font-size: 12px; line-height: 1.5; }
+.tg-plan-dialog__body small { font-size: 10px; line-height: 1.4; }
+.tg-plan-dialog__body .tg-plan-proposal__review, .tg-plan-dialog__body .tg-plan-proposal__warning { font-size: 11px; }
+.tg-plan-dialog__actions { flex: 0 0 auto; }
+
+.tg-graph-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px 10px;
+  container-type: inline-size;
+}
+.tg-graph-row:empty { display: none; }
+.tg-graph-row > .tg-summary { flex: 1; min-width: 0; margin: 0; }
+.tg-graph-row > .tg-history {
+  flex: 0 1 240px;
+  max-width: 32%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.tg-graph-row > .tg-history:only-child { flex: 1; max-width: 100%; }
+.tg-graph-row .tg-history__trigger { min-height: 56px; }
+@container (max-width: 540px) {
+  .tg-graph-row .tg-history__trigger-meta > .tg-run-status { display: none; }
+  .tg-graph-row .tg-history__trigger { gap: 4px; padding-inline: 4px; }
+}
+
+.tg-history {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.tg-history__switcher { flex: 1 1 220px; min-width: 0; }
+.tg-history .tg-history__trigger { max-width: 520px; text-align: left; }
+.tg-history__trigger > svg { flex-shrink: 0; color: var(--text-muted); }
+.tg-history__trigger-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.tg-history__trigger-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.tg-history__eyebrow {
+  color: var(--text-muted);
+  font: 500 var(--text-size-caption)/1.4 var(--font-sans);
+}
+.tg-history .tg-history__menu { position: fixed; inset: auto; margin: 0; padding: 0; z-index: 10001; }
+.tg-history__menu .project-switcher__list { max-height: 400px; }
+.tg-history__context { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-muted); font-size: var(--text-size-caption); }
+.tg-history__date { color: var(--text-muted); font: 400 var(--text-size-caption)/1.4 var(--font-sans); }
+.tg-history__menu .tg-run-status, .tg-history__trigger .tg-run-status { flex-shrink: 0; font-size: 10px; text-transform: capitalize; }
+.tg-history__note { opacity: .75; }
+.tg-history__past-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.tg-history--compact { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 2px; }
+.tg-history--compact .tg-history__switcher { grid-column: 1; grid-row: 1; }
+.tg-history--compact > .tg-history__retry { grid-column: 3; grid-row: 1; }
+.tg-history--compact .tg-history__past-actions { grid-column: 2; grid-row: 1; }
+.tg-history--compact .tg-history__trigger-meta { flex-wrap: nowrap; overflow: hidden; }
+.tg-history--compact .tg-history__trigger-meta > .tg-run-status { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tg-history--compact .tg-history__eyebrow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-history__warning { color: var(--warning-color); }
+.tg-history__loading { color: var(--text-muted); }
+.tg-history__retry {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.tg-history__retry:hover { background: var(--bg-elevated); border-color: var(--border-default); color: var(--text-primary); }
+.tg-history__retry:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tg-history__feedback {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  background: var(--warning-bg);
+  color: var(--warning-color);
+}
+.tg-history__feedback > svg { flex-shrink: 0; }
+.tg-history__feedback > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

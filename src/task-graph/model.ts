@@ -58,17 +58,19 @@ export function projectTopology(snapshot: TaskGraphSnapshotView, filter: GraphFi
   const ranked = candidates.toSorted((a, b) => Number(b.criticalPath) - Number(a.criticalPath) || b.priority - a.priority || a.id.localeCompare(b.id));
   const nodes = ranked.slice(0, MAX_TOPOLOGY_NODES);
   const visible = new Set(nodes.map((node) => node.id));
-  const showOrdinaryEdges = nodes.length <= 36;
-  const semanticEdges = snapshot.edges.filter((edge) =>
-    visible.has(edge.source) && visible.has(edge.target) &&
-    (showOrdinaryEdges || edge.state !== "ordinary" || edge.source === selectedNodeId || edge.target === selectedNodeId),
-  );
-  const edges = semanticEdges.slice(0, MAX_TOPOLOGY_EDGES);
+  const semanticEdges = snapshot.edges.filter((edge) => visible.has(edge.source) && visible.has(edge.target));
+  const edges = semanticEdges
+    .toSorted((left, right) => Number(right.source === selectedNodeId || right.target === selectedNodeId)
+      - Number(left.source === selectedNodeId || left.target === selectedNodeId)
+      || left.id.localeCompare(right.id))
+    .slice(0, MAX_TOPOLOGY_EDGES);
   return {
     nodes,
     edges,
     hiddenNodeCount: Math.max(0, candidates.length - nodes.length),
-    hiddenEdgeCount: Math.max(0, semanticEdges.length - edges.length),
+    // Include dependencies omitted because either endpoint did not fit the current view,
+    // not only the final edge cap. A projected graph must never imply those edges vanished.
+    hiddenEdgeCount: Math.max(0, snapshot.edges.length - edges.length),
   };
 }
 
@@ -124,5 +126,6 @@ export function summarizeGraph(snapshot: TaskGraphSnapshotView) {
     blocked: nodes.filter((n) => n.blocker && n.blocker.category !== "none").length,
     verified: nodes.filter((n) => n.verification.state === "passed" || n.verification.state === "waived").length,
     unverified: nodes.filter((n) => ["pending", "failed", "stale"].includes(n.verification.state)).length,
+    attention: nodes.filter((n) => matchesGraphFilter(n, "attention")).length,
   };
 }

@@ -140,6 +140,16 @@ export const taskGraphSnapshotViewSchema = z.object({
   }),
 });
 
+export const taskGraphRunSummarySchema = taskGraphSnapshotViewSchema.pick({
+  graphRunId: true, title: true, status: true, updatedAt: true,
+}).extend({ createdAt: z.iso.datetime() });
+export type TaskGraphRunSummary = z.infer<typeof taskGraphRunSummarySchema>;
+
+export const taskGraphHistoryViewSchema = z.object({
+  runs: z.array(taskGraphRunSummarySchema),
+  snapshot: taskGraphSnapshotViewSchema.nullable(),
+});
+
 /** Safe metadata projection; immutable artifact bytes and server paths are never returned. */
 export const taskGraphArtifactViewSchema=z.object({
   id:idSchema,graphRunId:idSchema,nodeId:idSchema,producerAttemptId:idSchema,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createGraphFixture } from "./fixtures.ts";
-import { filterNodes, getVirtualRange, MAX_TOPOLOGY_EDGES, MAX_TOPOLOGY_NODES, nodesForPlanItem, projectTopology, runtimeRole, whyNotRunning } from "./model.ts";
+import { filterNodes, getVirtualRange, MAX_TOPOLOGY_EDGES, MAX_TOPOLOGY_NODES, nodesForPlanItem, projectTopology, runtimeRole, summarizeGraph, whyNotRunning } from "./model.ts";
 
 describe("task graph projections", () => {
   it("bounds topology independently of snapshot size", () => {
@@ -8,6 +8,18 @@ describe("task graph projections", () => {
     expect(projected.nodes.length).toBeLessThanOrEqual(MAX_TOPOLOGY_NODES);
     expect(projected.edges.length).toBeLessThanOrEqual(MAX_TOPOLOGY_EDGES);
     expect(projected.hiddenNodeCount).toBe(1_000 - MAX_TOPOLOGY_NODES);
+  });
+
+  it("retains ordinary dependency edges below the edge cap and reports omitted edges honestly", () => {
+    const snapshot = createGraphFixture(40);
+    const projection = projectTopology(snapshot, "all", null);
+    expect(projection.edges).toHaveLength(snapshot.edges.length);
+    expect(projection.hiddenEdgeCount).toBe(0);
+  });
+
+  it("counts attention tasks once even when their signals overlap", () => {
+    const snapshot = createGraphFixture(20);
+    expect(summarizeGraph(snapshot).attention).toBe(filterNodes(snapshot.nodes, "attention").length);
   });
 
   it("bounds work queue ranges with overscan", () => {

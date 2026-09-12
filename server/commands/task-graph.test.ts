@@ -1,11 +1,47 @@
 import { describe,expect,it,vi } from "vitest";
 import { taskGraphResponseEnvelopeSchema } from "../../shared/task-graph-view-contracts.ts";
 import { setup } from "../../tests/support/server-command-harness.ts";
-import { TaskGraphConflictError } from "../task-graph/errors.ts";
+import { TaskGraphConflictError, TaskGraphValidationError } from "../task-graph/errors.ts";
 import { dispatchCommand } from "./index.ts";
 import { validateWsCommand } from "./schemas.ts";
 
 describe("task-graph command dispatcher",() => {
+  it("returns correlated historical reads without publishing them as live snapshots", async () => {
+    const h = setup();
+    const snapshot = { graphRunId: "past-run", title: "Previous graph" };
+    const service = { assertWorkItem: vi.fn(), historyForWorkItem: vi.fn(() => [{ graphRunId: "past-run" }]),
+      viewSnapshot: vi.fn(() => snapshot) };
+    h.ctx.taskGraphs = service as never;
+    const command = { type: "get_task_graph_history" as const, requestId: "history-request", workItemId: "work", runId: "past-run" };
+    expect(validateWsCommand(command).ok).toBe(true);
+    dispatchCommand(h.ctx, command, h.ws);
+    await vi.waitFor(() => expect(h.wsSent).toHaveLength(1));
+    expect(service.assertWorkItem).toHaveBeenCalledWith("past-run", "work");
+    expect(service.historyForWorkItem).toHaveBeenCalledWith("work");
+    expect(h.wsSent[0]).toMatchObject({ type: "task_graph_response", topic: "work-item:work",
+      command: "get_task_graph_history", requestId: "history-request", success: true,
+      result: { runs: [{ graphRunId: "past-run" }], snapshot } });
+  });
+
+  it("rejects historical reads from another work item before loading a snapshot", async () => {
+    const h = setup();
+    const service = { assertWorkItem: vi.fn(() => { throw new TaskGraphValidationError("graph run not found"); }),
+      historyForWorkItem: vi.fn(), viewSnapshot: vi.fn() };
+    h.ctx.taskGraphs = service as never;
+    dispatchCommand(h.ctx, { type: "get_task_graph_history", requestId: "request", workItemId: "other", runId: "past-run" }, h.ws);
+    await vi.waitFor(() => expect(h.wsSent).toHaveLength(1));
+    expect(h.wsSent[0]).toMatchObject({ success: false, code: "validation_failed" });
+    expect(service.viewSnapshot).not.toHaveBeenCalled();
+    expect(service.historyForWorkItem).not.toHaveBeenCalled();
+  });
+
+  it("lists stored graphs without requiring a current leader iteration", async () => {
+    const h = setup();
+    h.ctx.taskGraphs = { historyForWorkItem: vi.fn(() => []) } as never;
+    dispatchCommand(h.ctx, { type: "get_task_graph_history", requestId: "request", workItemId: "work" }, h.ws);
+    await vi.waitFor(() => expect(h.wsSent).toHaveLength(1));
+    expect(h.wsSent[0]).toMatchObject({ success: true, result: { runs: [], snapshot: null } });
+  });
   it("reads only the current WorkItem iteration's planning projection",async() => {
     const h=setup();
     const snapshot={proposalId:"proposal",revision:3};

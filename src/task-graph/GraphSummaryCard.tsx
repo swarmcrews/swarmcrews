@@ -17,7 +17,7 @@ export function GraphSummaryCard({
   const summary = summarizeGraph(snapshot);
   const remaining = snapshot.budget.limitUsd == null ? null : Math.max(0, snapshot.budget.limitUsd - snapshot.budget.spentUsd);
   const progress = summary.total ? (summary.succeeded / summary.total) * 100 : 0;
-  const attention = summary.blocked + summary.logicalFailed;
+  const attention = summary.attention;
   const budget = remaining == null
     ? `$${snapshot.budget.spentUsd.toFixed(2)} spent`
     : `$${remaining.toFixed(2)} left`;
@@ -30,14 +30,14 @@ export function GraphSummaryCard({
           <div className="tg-summary__copy">
             <strong title={snapshot.title}>{snapshot.title}</strong>
             <div className="tg-summary__signals">
+              {stale ? <span className="tg-summary__signal tg-summary__signal--stale" role="status"><span>Reconnecting</span> · showing cached state</span> : null}
+              {attention > 0 ? <span className="tg-summary__signal tg-summary__signal--attention">{attention} need attention</span> : null}
               <span className={`tg-run-status tg-run-status--${snapshot.status}`}>{snapshot.status}</span>
               <span className="tg-summary__metric" aria-label={`${summary.succeeded} of ${summary.total} logical tasks succeeded`}>
                 <b>{summary.succeeded}/{summary.total}</b> succeeded
               </span>
               {summary.running > 0 ? <span className="tg-summary__signal tg-summary__signal--running">{summary.running} running</span> : null}
-              {attention > 0 ? <span className="tg-summary__signal tg-summary__signal--attention">{attention} need attention</span> : null}
-              {summary.running === 0 && attention === 0 ? <span className="tg-summary__signal">All clear</span> : null}
-              {stale ? <span className="tg-summary__signal tg-summary__signal--stale">Reconnecting</span> : null}
+              {summary.running === 0 && attention === 0 && !stale ? <span className="tg-summary__signal">All clear</span> : null}
             </div>
           </div>
         </div>

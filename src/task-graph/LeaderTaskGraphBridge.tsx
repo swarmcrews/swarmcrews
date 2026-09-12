@@ -1,5 +1,6 @@
 import { GraphInspector } from "./GraphInspector.tsx";
 import { GraphSummaryCard } from "./GraphSummaryCard.tsx";
+import { GraphHistoryNav, GraphHistoryLoadingDialog } from "./GraphHistoryNav.tsx";
 import { GraphPlanProposalCard, GraphPlanProposalDialog } from "./GraphPlanProposal.tsx";
 import type { LeaderTaskGraphController } from "./use-leader-task-graph-controller.ts";
 import type { GraphPlanItem } from "./types.ts";
@@ -17,7 +18,12 @@ export function LeaderTaskGraphBridge({
 }: LeaderTaskGraphBridgeProps) {
   const { snapshot, planSnapshot, controlsEnabled, planControlsEnabled, stale,
     sendAction, approvePlan, rejectPlan, open, openInspector, closeInspector } = controller;
-  if (!snapshot && !planSnapshot) return null;
+  const { history } = controller;
+  if (!snapshot && !planSnapshot && !history.runs.length && !history.error) return null;
+  const historical = history.selectedRunId !== null;
+  const inspectedSnapshot = historical ? history.snapshot : snapshot;
+  const navigation = <GraphHistoryNav history={history} currentRunId={snapshot?.graphRunId ?? null}
+    onSelect={controller.inspectRun} compact={!open} />;
   const displayedPlan: readonly GraphPlanItem[] = plan.length ? plan
     : planSnapshot?.steps.map((step) => ({
       taskId: step.nodeId ?? step.key,
@@ -31,17 +37,26 @@ export function LeaderTaskGraphBridge({
     onStart: approvePlan, onAdjust, onReject: rejectPlan, onOpen: openInspector } : null;
 
   return <>
-    {snapshot ? <GraphSummaryCard snapshot={snapshot} goal={goal} plan={displayedPlan}
-      onOpen={openInspector} stale={stale} />
-      : planSnapshot && proposalActions
-        ? <GraphPlanProposalCard snapshot={planSnapshot} actions={proposalActions} /> : null}
-    {open && snapshot ? <GraphInspector snapshot={snapshot} goal={goal} plan={displayedPlan}
+    <div className="tg-graph-row">
+      {!open ? navigation : null}
+      {snapshot ? <GraphSummaryCard snapshot={snapshot} goal={goal} plan={displayedPlan}
+        onOpen={openInspector} stale={stale} />
+        : planSnapshot && proposalActions
+          ? <GraphPlanProposalCard snapshot={planSnapshot} actions={proposalActions} /> : null}
+    </div>
+    {open && !inspectedSnapshot && (historical || !planSnapshot)
+      ? <GraphHistoryLoadingDialog navigation={navigation} onClose={closeInspector} noCurrentGraph={!historical} /> : null}
+    {open && inspectedSnapshot ? <GraphInspector key={inspectedSnapshot.graphRunId}
+      snapshot={inspectedSnapshot} goal={historical ? inspectedSnapshot.title : goal}
+      plan={historical ? [] : displayedPlan} navigation={navigation}
       initialSelectedNodeId={controller.initialSelectedNodeId}
-      retryReceipts={controller.retryReceipts} onRefresh={controller.refetch}
-      controlsEnabled={controlsEnabled && !stale} onClose={closeInspector} onAction={sendAction} /> : null}
-    {open && !snapshot && planSnapshot && proposalActions
+      retryReceipts={historical ? {} : controller.retryReceipts}
+      onRefresh={historical ? history.refresh : controller.refetch}
+      controlsEnabled={!historical && controlsEnabled && !stale} stale={!historical && stale}
+      onClose={closeInspector} onAction={action => { if (!historical) sendAction(action); }} /> : null}
+    {open && !snapshot && !historical && planSnapshot && proposalActions
       ? <GraphPlanProposalDialog snapshot={planSnapshot} actions={proposalActions}
-        onClose={closeInspector} /> : null}
+        onClose={closeInspector} navigation={navigation} /> : null}
   </>;
 }
 

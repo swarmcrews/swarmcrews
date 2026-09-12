@@ -57,6 +57,7 @@ export type WsCommandType =
   | "create_task_graph_revision"
   | "start_task_graph_run"
   | "get_task_graph_snapshot"
+  | "get_task_graph_history"
   | "pause_task_graph_run"
   | "resume_task_graph_run"
   | "cancel_task_graph_run"
