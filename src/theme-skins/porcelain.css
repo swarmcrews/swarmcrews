@@ -1,45 +1,136 @@
 /* ── Porcelain skin ───────────────────────────────────────
-   Soft-UI neumorphism: warm off-white, borderless cards, tactile
-   extruded surfaces from paired light/dark shadows and generous radii.
+   Soft-UI neumorphism: pale ceramic, softly raised surfaces and recessed
+   fields. Light comes from the upper left; depth follows component purpose.
    Palette lives in src/themes.ts (id "porcelain"); the extrusion shadows
    are supplied there as --shadow-sm/md/lg. */
 
 :root[data-theme="porcelain"] {
   --font-display: "Plus Jakarta Sans Variable", "Segoe UI", system-ui, sans-serif;
   --radius-node: 20px;
-  --radius-panel: 20px;
-  --radius-control: 14px;
+  --radius-panel: 16px;
+  --radius-control: 10px;
   --radius-pill: 999px;
-  --border-width: 0px;
+  --border-width: 1px;
   --surface-blur: none;
+  --porcelain-rim: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --porcelain-inset:
+    inset 2px 2px 5px rgba(145, 154, 176, 0.2),
+    inset -2px -2px 5px rgba(255, 255, 255, 0.65);
 }
 
 /* Soft ambient light across the canvas. */
 :root[data-theme="porcelain"] body,
 :root[data-theme="porcelain"] .canvas-root {
   background-image:
-    radial-gradient(85% 60% at 50% -5%, rgba(255, 255, 255, 0.65), transparent 70%);
+    radial-gradient(85% 60% at 15% -5%, rgba(255, 255, 255, 0.4), transparent 70%);
 }
 
 /* Extruded node cards — the signature neumorphic lift. */
 :root[data-theme="porcelain"] .canvas-node-card {
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--porcelain-rim), var(--shadow-lg);
 }
 
-/* Pillowed controls that press in on click. Preserve component borders so
-   focus, validation and destructive states keep their semantic colors. */
+/* Keep component geometry: icon buttons, tabs, checkboxes and menu rows
+   should not become identical raised pills. */
 :root[data-theme="porcelain"] button,
 :root[data-theme="porcelain"] input,
 :root[data-theme="porcelain"] textarea,
 :root[data-theme="porcelain"] select {
-  border-radius: var(--radius-control) !important;
-  box-shadow: var(--shadow-sm);
   font-family: var(--font-display);
 }
-:root[data-theme="porcelain"] button:active {
-  box-shadow:
-    inset 3px 3px 7px rgba(163, 170, 190, 0.55),
-    inset -3px -3px 7px rgba(255, 255, 255, 0.9);
+
+/* Lift the enclosing surface once, rather than its nested click targets.
+   Activity selection/attention shadows remain owned by their components. */
+:root[data-theme="porcelain"] :is(
+  .project-list-card,
+  .act-session-feature,
+  .leader-launch-primary
+) {
+  border-radius: var(--radius-panel);
+  box-shadow: var(--porcelain-rim), var(--shadow-md);
+}
+
+:root[data-theme="porcelain"] :is(.act-card, .act-triage-row) {
+  border-radius: 12px;
+}
+
+:root[data-theme="porcelain"] .act-card:not(.act-card--selected, .act-card--checked, .act-card--attention),
+:root[data-theme="porcelain"] .act-triage-row:not(.act-triage-row--selected, .act-triage-row--checked) {
+  box-shadow: var(--porcelain-rim), var(--shadow-sm);
+}
+
+/* Only standalone actions rise from the surface. Disabled controls rest;
+   enabled controls press inward without shifting their position. */
+:root[data-theme="porcelain"] :is(
+  .act-launch-btn,
+  .act-session-home__new,
+  .act-session-home__open,
+  .act-mini-btn--primary,
+  .act-composer-actions > button,
+  .leader-prompt-bar__submit,
+  .workspace-picker-trigger
+) {
+  border-radius: var(--radius-control);
+  box-shadow: var(--porcelain-rim), var(--shadow-sm);
+}
+
+:root[data-theme="porcelain"] :is(
+  .act-launch-btn,
+  .act-session-home__new,
+  .act-session-home__open,
+  .act-mini-btn--primary,
+  .act-composer-actions > button,
+  .leader-prompt-bar__submit,
+  .workspace-picker-trigger
+):active:not(:disabled) {
+  box-shadow: var(--porcelain-inset);
+  transform: none;
+}
+
+:root[data-theme="porcelain"] :is(
+  .act-launch-btn,
+  .act-session-home__new,
+  .act-session-home__open,
+  .act-mini-btn--primary,
+  .act-composer-actions > button,
+  .leader-prompt-bar__submit,
+  .workspace-picker-trigger
+):disabled {
+  box-shadow: none;
+}
+
+/* Recess whole fields, including composite editors/search. Their inner
+   textarea/input stays flat so there is never a second nested bevel. */
+:root[data-theme="porcelain"] :is(
+  .act-scope-select,
+  .act-composer textarea,
+  .leader-launch-field > input,
+  .leader-launch-field > select,
+  .leader-launch-prompt,
+  .leader-prompt-bar__surface,
+  .workspace-picker-search,
+  .workspace-picker-create input
+) {
+  border-radius: var(--radius-control);
+  box-shadow: var(--porcelain-inset);
+}
+
+:root[data-theme="porcelain"] :is(
+  .act-scope-select,
+  .act-composer textarea,
+  .leader-launch-field > input,
+  .leader-launch-field > select,
+  .leader-launch-prompt,
+  .leader-prompt-bar__surface,
+  .workspace-picker-search,
+  .workspace-picker-create input
+):focus-within {
+  box-shadow: var(--porcelain-inset), 0 0 0 3px var(--selection-bg);
+}
+
+:root[data-theme="porcelain"] .leader-launch-prompt .leader-prompt-bar__surface,
+:root[data-theme="porcelain"] .leader-launch-prompt .leader-prompt-bar__surface:focus-within {
+  box-shadow: none;
 }
 
 /* Rounded display headings. */
@@ -52,13 +143,14 @@
 
 /* Soft, inset-looking scrollbars. */
 :root[data-theme="porcelain"] ::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
 }
 :root[data-theme="porcelain"] ::-webkit-scrollbar-thumb {
   background: var(--border-hover);
   border-radius: 999px;
-  border: 4px solid var(--bg-primary);
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }
 :root[data-theme="porcelain"] ::-webkit-scrollbar-track {
   background: transparent;
