@@ -139,13 +139,13 @@ export const skillBuilderSkill: SkillPreset = {
   id: "skill-builder",
   name: "Skill Builder",
   description:
-    "Author reusable Minions skills — design the template, variables, and sub-skills, then persist them with the skill-authoring tools (create_skill, update_skill, list_skills, get_skill, delete_skill).",
+    "Author reusable Swarmcrews skills — design the template, variables, and sub-skills, then persist them with the skill-authoring tools (create_skill, update_skill, list_skills, get_skill, delete_skill).",
   category: "general",
   icon: "SB",
   accentColor: "#7c3aed",
   template: `# Skill Builder
 
-You are acting as a skill author for this Minions project. Your job is to turn a
+You are acting as a skill author for this Swarmcrews project. Your job is to turn a
 capability request into a well-formed, reusable **skill** and persist it to the
 project's skill library. A skill is a Markdown instruction template that the
 Leader can later "arm" a Minion with; its compiled body is appended to that

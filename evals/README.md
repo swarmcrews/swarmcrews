@@ -2,7 +2,7 @@
 
 `agent-evals` prepares fixtures, runs participants, persists lifecycle and usage,
 freezes submissions, executes graders, and builds offline reports. It runs as a
-separate package and process. Minions adapters communicate with dedicated server
+separate package and process. Swarmcrews adapters communicate with dedicated server
 processes through the application's HTTP/WS protocol; there are no application
 runtime imports.
 
@@ -43,7 +43,7 @@ restarts a finalized participant. Cancel persists an admission stop, stops owned
 processes and descendants, and preserves partial results. Grading uses frozen
 files without starting participants and preserves grade revisions. Reports write
 new analysis directories, include planned but unlaunched cells, and work with
-participants and Minions shut down. Filters share the same tested arithmetic as
+participants and Swarmcrews shut down. Filters share the same tested arithmetic as
 JSON/CSV exports. Chart SVG downloads contain the displayed plotted data.
 
 ## Six-task oracle verification
@@ -113,7 +113,7 @@ comparisons** and does not hide the host filesystem from participants.
 
 For `minion-single` or `minion-graph`, supply absolute `appRoot` and
 `codexExecutable` in settings. Use `modeSettings` to override settings by adapter
-ID in a mixed profile. The controller creates fresh Minions/Codex state, installs
+ID in a mixed profile. The controller creates fresh Swarmcrews/Codex state, installs
 a delegation-disabling wrapper, starts a dedicated server per run, assigns its
 endpoint, persists a detached supervisor, reconnects through current app commands,
 and shuts the server down after evidence collection. Do not supply an endpoint
@@ -125,7 +125,7 @@ existing user app databases and Codex state are not reused.
 For Docker, set `settings.isolation` to `docker` and a profile `imageDigest` to
 `repository@sha256:<64 hex>` or a local `sha256:<64 hex>` image ID. Prepare images
 before planning: the runner never pulls. An image must contain Node and the
-selected adapter runtime; Minions images also need the prepared app at `appRoot`
+selected adapter runtime; Swarmcrews images also need the prepared app at `appRoot`
 and Codex at `codexExecutable`. Browser images must have pinned Playwright under
 `/opt/evals-runtime/node_modules` and matching Chromium/system dependencies;
 preparation probes them before launch and graders use that trusted tooling. Commands and protocol requests enter the owned

@@ -20,7 +20,7 @@ export async function createWorktree(
   const worktreeBase = ownedWorktreeRoot(projectPath);
   const worktreePath = join(worktreeBase, leaderSessionKey);
   if (!isOwnedWorktreePath(projectPath, worktreePath)) {
-    throw new Error("refusing to create a worktree outside a real Minions-owned root");
+    throw new Error("refusing to create a worktree outside a real Swarmcrews-owned root");
   }
   await mkdir(worktreeBase, { recursive: true });
   if (!isSafeOwnedWorktreeRoot(worktreeBase)
@@ -53,7 +53,7 @@ export async function provisionPlannedWorktree(plan: PlannedWorktree,
     .find((root) => isOwnedWorktreePath(projectPath, worktreePath)
       && worktreePath.startsWith(`${resolve(root)}${sep}`));
   if (!base) {
-    throw new Error("planned worktree path must be a child of a Minions-owned worktree root");
+    throw new Error("planned worktree path must be a child of a Swarmcrews-owned worktree root");
   }
   const branch = plan.branch.startsWith("refs/heads/")
     ? plan.branch.slice("refs/heads/".length) : plan.branch;
@@ -99,7 +99,7 @@ export async function removeWorktree(worktreePath: string, projectPath?: string,
   // Use explicit projectPath if provided, otherwise fall back to derivation.
   const resolvedProjectPath = projectPath ?? join(worktreePath, "..", "..");
   if (!isOwnedWorktreePath(resolvedProjectPath, worktreePath)) {
-    throw new Error("refusing to remove a worktree outside Minions-owned roots");
+    throw new Error("refusing to remove a worktree outside Swarmcrews-owned roots");
   }
 
   await exec(["worktree", "remove", "--force", worktreePath], resolvedProjectPath);

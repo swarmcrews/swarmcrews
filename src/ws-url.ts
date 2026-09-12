@@ -1,5 +1,5 @@
 /**
- * Build the WebSocket URL for the Minions backend from the page origin.
+ * Build the WebSocket URL for the Swarmcrews backend from the page origin.
  *
  * The frontend is always served by Vite (dev, or `vite preview` for a built
  * app), which proxies both `/api` and `/ws` to the backend on port 3141. By

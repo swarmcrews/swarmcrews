@@ -3,7 +3,7 @@ import { subscribeSocketTopic, type SocketSubscribeLike } from "../../use-socket
 import type { ContextItem } from "../../types.ts";
 import { DEFAULT_THINKING_CONFIG } from "../../types.ts";
 import { randomUuid } from "../../random-id.ts";
-import { buildContextBlock } from "../../connected-context.ts";
+import { uniqueContextSources } from "../../../shared/connected-context.ts";
 import { diffContextDelivery, buildContextUpdateBlock } from "../../context-delivery.ts";
 import { buildFrozenLeaderFollowUpPrompt, freezeLeaderSystemPrompt, type FrozenLeaderPrompt } from "./frozen-prompt.ts";
 import { applyCanvasWorkItemSnapshot, detailFromWorkItemResponse, WorkItemCommandError } from "./work-item.ts";
@@ -17,6 +17,7 @@ type Input = Pick<ReturnType<typeof useCanvasWorkItem>, "requestWorkItem" | "sen
   socketSend: ((data: unknown) => void) | undefined;
   socketSubscribe?: SocketSubscribeLike;
   getContextForNode: (() => ContextItem[]) | undefined;
+  publishCanvasContext?: (sessionKey: string, items: ContextItem[]) => void;
   frozenPromptRef: MutableRefObject<FrozenLeaderPrompt | null>;
 };
 
@@ -112,12 +113,13 @@ export function useCanvasDelivery(options: Input) {
     if (Object.values(current.messageDelivery ?? {}).some((receipt) =>
       receipt.state === "sending" || (receipt.state === "unconfirmed" && receipt.text.trim() === text.trim()))) return false;
     const id = randomUuid();
-    const contextItems = getContextForNode?.() ?? [];
-    const attachments = [...contextItems, ...promptContextItems].flatMap((item) => item.attachments ?? []);
+    const contextItems = uniqueContextSources(getContextForNode?.() ?? []);
     const { newItems, updates, nextLedger } = diffContextDelivery(
       contextItems, current.contextDelivery ?? {}, Date.now());
-    const prompt = [buildContextUpdateBlock(updates), buildContextBlock([...newItems, ...promptContextItems]), text]
-      .filter(Boolean).join("\n\n");
+    const additions = uniqueContextSources([...newItems, ...promptContextItems]);
+    const changes = [...updates, ...additions.map(item => ({ ...item, kind: "add" as const }))];
+    const attachments = changes.flatMap(item => item.attachments ?? []);
+    const prompt = [buildContextUpdateBlock(changes), text].filter(Boolean).join("\n\n");
     const frozen = frozenPromptRef.current ?? freezeLeaderSystemPrompt({
       skillIds: current.skillIds ?? [], skillValues: current.skillValues ?? {},
       systemPromptPrefix: current.systemPromptPrefix,
@@ -125,7 +127,7 @@ export function useCanvasDelivery(options: Input) {
     });
     frozenPromptRef.current = frozen;
     const followUp = buildFrozenLeaderFollowUpPrompt({ frozen, current, prompt });
-    const extras = { systemPrompt: followUp.systemPrompt,
+    const extras = { displayPrompt: text, systemPrompt: followUp.systemPrompt,
       thinkingConfig: current.thinkingConfig ?? DEFAULT_THINKING_CONFIG,
       skillIds: current.skillIds ?? [], skillValues: current.skillValues ?? {},
       ...(attachments.length ? { attachments } : {}) };
@@ -136,6 +138,11 @@ export function useCanvasDelivery(options: Input) {
       let submitted = false;
       update(id, { state: "sending", text });
       void (async () => {
+        // Publish the COMPLETE snapshot before its incremental turn, using the
+        // shared publisher to avoid resending an already-published snapshot.
+        if (options.publishCanvasContext) options.publishCanvasContext(current.sessionKey!, contextItems);
+        else socketSend({ type: "canvas_context", sessionKey: current.sessionKey,
+          items: contextItems.map(({ blocks: _blocks, ...item }) => item) });
         if (!current.workItemId && !current.workItemSnapshot) {
           const requestId = randomUuid();
           const receipt: DeliveryReceipt = { state: "sending", text, requestId, sessionKey: current.sessionKey! };
@@ -180,7 +187,7 @@ export function useCanvasDelivery(options: Input) {
     attempt();
     return true;
   }, [dataRef, emitUpdate, socketSend, getContextForNode, frozenPromptRef,
-    requestWorkItem, sendCanonicalPrompt, update]);
+    requestWorkItem, sendCanonicalPrompt, update, options.publishCanvasContext]);
   const retry = useCallback((id: string) => {
     if (dataRef.current.messageDelivery?.[id]?.state !== "failed") return;
     if (Object.values(dataRef.current.messageDelivery ?? {}).some((r) =>

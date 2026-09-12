@@ -43,7 +43,7 @@ an evaluator-authored solution plan or privileged reference information.
 
 ## Proposed comparison
 
-Use raw Codex, single Minion, and graph Minions with the same resolved model,
+Use raw Codex, single Minion, and graph Swarmcrews with the same resolved model,
 reasoning effort, starting tree, requirements, tools, and test visibility.
 Run three repetitions per arm (nine runs), randomizing arm order within each
 repetition. Keep calibration attempts separate and lock the whole cohort before

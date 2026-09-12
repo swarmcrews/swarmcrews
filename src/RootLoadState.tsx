@@ -1,3 +1,4 @@
+import { Brand } from "./components/Brand.tsx";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 const shellStyle = {
@@ -16,7 +17,7 @@ export function RootLoadingScreen() {
   return (
     <div role="status" aria-live="polite" style={shellStyle}>
       <div>
-        <strong style={{ display: "block", fontSize: 18 }}>Minions</strong>
+        <div style={{ width: 240, margin: "0 auto 18px" }}><Brand /></div>
         <span style={{ display: "block", marginTop: 8, color: "var(--text-secondary, #aab3c5)" }}>
           Loading workspace…
         </span>
@@ -40,7 +41,7 @@ export class RootErrorBoundary extends Component<
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("Minions failed to load", error, info.componentStack);
+    console.error("Swarmcrews failed to load", error, info.componentStack);
   }
 
   override render(): ReactNode {
@@ -49,7 +50,7 @@ export class RootErrorBoundary extends Component<
     return (
       <main role="alert" style={shellStyle}>
         <div style={{ maxWidth: 360 }}>
-          <strong style={{ display: "block", fontSize: 18 }}>Minions couldn’t load</strong>
+          <strong style={{ display: "block", fontSize: 18 }}>Swarmcrews couldn’t load</strong>
           <p style={{ margin: "10px 0 18px", color: "var(--text-secondary, #aab3c5)", lineHeight: 1.5 }}>
             The app files may have changed while this page was open. Reload to get the latest version.
           </p>

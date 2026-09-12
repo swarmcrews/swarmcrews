@@ -9,7 +9,7 @@ suggested_tests: [ src/ProjectList.test.tsx, src/mobile/ProjectsScreen.test.tsx,
 steps:
   - Check whether the source root belongs to a Git worktree; for a non-Git source, require an explicit choice to initialize and create the first commit or continue after a reliability warning.
   - Canonicalize an explicitly opened source root, including mounted-volume paths, and bind it to a stable UUID.
-  - Preserve one unambiguous legacy UUID and non-destructively import a legacy .minions sidecar into MINIONS_HOME/workspaces/<uuid> on first registration.
+  - Preserve one unambiguous legacy UUID and non-destructively import a legacy .minions sidecar into SWARMCREWS_HOME/workspaces/<uuid> on first registration.
   - Rebind a moved source to its existing UUID, or explicitly attach a copied source; copies otherwise receive a new UUID.
   - Load nodes, graph, transform, settings, skills, and project knowledge from the bound state root.
   - Connect WebSocket services using the opaque workspace UUID and issue list_sessions, list_work_items, and list_worktree_lineages.

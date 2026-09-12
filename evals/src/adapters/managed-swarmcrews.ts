@@ -13,13 +13,13 @@ import { dedicatedInstanceRecipe } from './factory.js';
 import { DurableProcessRun } from './codex-process.js';
 import { supervisorSource } from './supervisor.js';
 import { command, executionCommand, executionDescriptor, type ExecutionDescriptor } from './execution.js';
-import { WebSocketMinionsProtocolClient, type MinionsClientConfiguration } from './minions-client.js';
-import { MinionSingleAdapter, MinionGraphAdapter } from './minions.js';
+import { WebSocketSwarmcrewsProtocolClient, type SwarmcrewsClientConfiguration } from './swarmcrews-client.js';
+import { MinionSingleAdapter, MinionGraphAdapter } from './swarmcrews.js';
 import { report } from './protocol.js';
 
-interface Instance { processRoot:string; client:MinionsClientConfiguration; run:ParticipantRunSpec; }
+interface Instance { processRoot:string; client:SwarmcrewsClientConfiguration; run:ParticipantRunSpec; }
 /** Owns one dedicated server per run; the participant deadline includes server startup. */
-export class ManagedMinionsAdapter implements ExecutionAdapter {
+export class ManagedSwarmcrewsAdapter implements ExecutionAdapter {
   readonly version='1.0.0';
   readonly id:string;
   constructor(readonly config:AdapterConfig) { this.id=config.adapterId; }
@@ -27,8 +27,8 @@ export class ManagedMinionsAdapter implements ExecutionAdapter {
   async preflight(config:AdapterConfig) {
     resolveTreatment(config.settings);
     const s={...this.config.settings,...config.settings};
-    if (s.endpoint) throw new Error('controller owns the Minions endpoint; configure appRoot and codexExecutable');
-    if (![s.appRoot,s.codexExecutable,s.stateRoot].every(x=>typeof x==='string'&&isAbsolute(x))) throw new Error('Minions requires absolute appRoot, codexExecutable and controller stateRoot');
+    if (s.endpoint) throw new Error('controller owns the Swarmcrews endpoint; configure appRoot and codexExecutable');
+    if (![s.appRoot,s.codexExecutable,s.stateRoot].every(x=>typeof x==='string'&&isAbsolute(x))) throw new Error('Swarmcrews requires absolute appRoot, codexExecutable and controller stateRoot');
     // Image contents are checked in the prepared container before a participant starts.
     if (s.isolation !== 'docker') {
       await readFile(join(String(s.appRoot),'server/index.ts'));
@@ -50,7 +50,7 @@ export class ManagedMinionsAdapter implements ExecutionAdapter {
     return handle;
   }
   private adapter(instance:Instance) {
-    const client=new WebSocketMinionsProtocolClient(instance.client);
+    const client=new WebSocketSwarmcrewsProtocolClient(instance.client);
     return this.id==='minion-single'?new MinionSingleAdapter(client):new MinionGraphAdapter(client);
   }
   async start(run:ParticipantRunSpec):Promise<RunHandle> {
@@ -72,9 +72,9 @@ export class ManagedMinionsAdapter implements ExecutionAdapter {
     if (execution.kind==='local') recipe=await dedicatedInstanceRecipe({stateRoot:join(root,'state'),appRoot,codexExecutable,port});
     else {
       const state='/state/eval-server'; const wrapper=state+'/codex-no-delegation';
-      const script=`const fs=require('node:fs');fs.mkdirSync(${JSON.stringify(state+'/codex-home')},{recursive:true});fs.mkdirSync(${JSON.stringify(state+'/minions-home')},{recursive:true});fs.writeFileSync(${JSON.stringify(wrapper)},${JSON.stringify('#!/bin/sh\nexec '+quote(codexExecutable)+' --disable multi_agent --disable multi_agent_v2 "$@"\n')},{mode:448});`;
+      const script=`const fs=require('node:fs');fs.mkdirSync(${JSON.stringify(state+'/codex-home')},{recursive:true});fs.mkdirSync(${JSON.stringify(state+'/swarmcrews-home')},{recursive:true});fs.writeFileSync(${JSON.stringify(wrapper)},${JSON.stringify('#!/bin/sh\nexec '+quote(codexExecutable)+' --disable multi_agent --disable multi_agent_v2 "$@"\n')},{mode:448});`;
       await command('docker',['exec',execution.containerName!,'node','-e',script]);
-      recipe={executable:'node',args:['--import','tsx','server/index.ts'],cwd:appRoot,environment:{MINIONS_HOME:state+'/minions-home',DB_PATH:state+'/canvas.db',CODEX_HOME:state+'/codex-home',CODEX_PATH:wrapper,PORT:String(port)},client:{endpoint:`ws://127.0.0.1:${port}`,stateRoot:root,codexExecutable:wrapper}};
+      recipe={executable:'node',args:['--import','tsx','server/index.ts'],cwd:appRoot,environment:{SWARMCREWS_HOME:state+'/swarmcrews-home',DB_PATH:state+'/canvas.db',CODEX_HOME:state+'/codex-home',CODEX_PATH:wrapper,PORT:String(port)},client:{endpoint:`ws://127.0.0.1:${port}`,stateRoot:root,codexExecutable:wrapper}};
     }
     const processRoot=join(root,'server'); await mkdir(processRoot);
     instance={processRoot,client:{...recipe.client,stateRoot:root,execution},run};
@@ -95,12 +95,12 @@ export class ManagedMinionsAdapter implements ExecutionAdapter {
     const adapter=this.adapter(instance); let error:unknown;
     const deadline=Date.now()+Math.min(30000,run.limits.executionTimeoutMs);
     do {
-      if ((await new DurableProcessRun(processRoot).inspect()).terminal) throw new Error('dedicated Minions server exited; inspect retained server/stderr.log');
+      if ((await new DurableProcessRun(processRoot).inspect()).terminal) throw new Error('dedicated Swarmcrews server exited; inspect retained server/stderr.log');
       try { const probe=await adapter.preflight(this.config); if (!probe.supported) throw new Error(probe.limitations.join('; ')); return await adapter.start(run); }
       catch (e) { error=e; }
       await delay(100);
     } while(Date.now()<deadline);
-    await this.shutdown(run.runId);throw new Error(`dedicated Minions startup failed: ${String(error)}`);
+    await this.shutdown(run.runId);throw new Error(`dedicated Swarmcrews startup failed: ${String(error)}`);
   }
   async *observe(handle:RunHandle,after?:number):AsyncIterable<RunEvent> {
     const failure=await this.failure(handle.runId);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { MinionsIcon } from "../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "../../components/SwarmcrewsIcon.tsx";
 import { ConfirmModal } from "../../components/ConfirmModal.tsx";
 import type { ContextItem } from "../../types.ts";
 import { subscribeSocketTopic, type SocketSubscribe } from "../../use-socket.ts";
@@ -58,8 +58,8 @@ export function ConfigFooter({
   const isWorktreeMode = changeMode === "worktree";
   const changeModeLocked = hasSession || !!data.workItemSnapshot;
   // Distinct artwork for direct edits and an isolated branch.
-  const LIVE_ICON = <MinionsIcon name="live" size={13} />;
-  const WORKTREE_ICON = <MinionsIcon name="worktree" size={13} />;
+  const LIVE_ICON = <SwarmcrewsIcon name="live" size={13} />;
+  const WORKTREE_ICON = <SwarmcrewsIcon name="worktree" size={13} />;
   const modeIcon = isWorktreeMode ? WORKTREE_ICON : LIVE_ICON;
   const modeLabel = isWorktreeMode ? "Worktree" : "Live";
   const integration = useWorktreeIntegration({
@@ -222,8 +222,8 @@ export function ConfigFooter({
               }}
             >
               {hasSession
-                ? <MinionsIcon name="lock" size={10} />
-                : <MinionsIcon name="attachment" size={10} />}
+                ? <SwarmcrewsIcon name="lock" size={10} />
+                : <SwarmcrewsIcon name="attachment" size={10} />}
               {contextCount}
             </span>
           )}
@@ -373,7 +373,7 @@ export function ConfigFooter({
                     title="Change mode is fixed once the work item is created"
                     style={{ fontSize: 10, color: "var(--text-muted)" }}
                   >
-                    <MinionsIcon name="lock" size={12} /> fixed
+                    <SwarmcrewsIcon name="lock" size={12} /> fixed
                   </span>
                 )}
               </div>
@@ -414,7 +414,7 @@ export function ConfigFooter({
                   opacity: hasSession ? 0.7 : 1,
                 }}
               >
-                <MinionsIcon name={hasSession ? "lock" : "attachment"} size={12} /> {contextCount} context source
+                <SwarmcrewsIcon name={hasSession ? "lock" : "attachment"} size={12} /> {contextCount} context source
                 {contextCount !== 1 ? "s" : ""}
                 {hasSession ? " (locked)" : " connected"}
               </div>

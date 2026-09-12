@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/minions-logo.png" alt="Minions" width="720">
+  <img src="./assets/swarmcrews-logo.svg" alt="Swarmcrews" width="720">
 </p>
 
 <p align="center">
@@ -15,7 +15,7 @@ spawns parallel Minion agents that collaborate in real time.
 
 ## What This Is
 
-Minions gives you a spatial interface for orchestrating coding agents:
+Swarmcrews gives you a spatial interface for orchestrating coding agents:
 
 - **Infinite canvas** — drag, zoom, arrange nodes visually
 - **Leader/Minion orchestration** — give a Leader a complex task, and it spawns Minion agents, wires them up, and tracks progress through a live task board
@@ -30,7 +30,7 @@ You need all of the following installed before starting:
 
 | Requirement | Why |
 |---|---|
-| **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. OpenCode and Pi are discovered on `PATH` (or via `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Minions derives model choices from each ready harness. |
+| **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. OpenCode and Pi are discovered on `PATH` (or via `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
 | **Node.js ≥ 22** | Required by the agent SDKs and modern runtime features |
 | **pnpm** | Package manager (`npm install -g pnpm` if you don't have it) |
 | **git** | Used for repository access and optional worktree isolation |
@@ -48,13 +48,13 @@ prints controlled remediation for the others.
 
 ## Quick Start
 
-**New to Minions?** Follow the [Getting Started guide](./docs/getting-started.md)
+**New to Swarmcrews?** Follow the [Getting Started guide](./docs/getting-started.md)
 for a complete first-project walkthrough, screenshots, copyable prompts, and
-help with Minions, task graphs, dashboards, context, and reviewing changes.
+help with Swarmcrews, task graphs, dashboards, context, and reviewing changes.
 
 ```bash
-git clone https://github.com/hipsterusername/minions.git
-cd minions
+git clone https://github.com/hipsterusername/minions.git swarmcrews
+cd swarmcrews
 pnpm install
 pnpm preflight
 pnpm start
@@ -62,7 +62,7 @@ pnpm start
 
 `pnpm start` launches the backend and Vite together as a background service and
 returns the terminal to you immediately. It opens the browser, writes logs to
-`.run/minions.log`, and keeps running until you `pnpm stop`. Use `pnpm status`
+`.run/swarmcrews.log`, and keeps running until you `pnpm stop`. Use `pnpm status`
 to check on it. It never configures Tailscale unless you pass `-- --tailscale`.
 
 If you'd rather run in the foreground and stream logs (stopping both on
@@ -77,7 +77,7 @@ That's it. No environment variables, no database setup, no Docker — SQLite han
 The separately installable [`evals/`](./evals/README.md) package validates task
 fixtures, plans explicit adapter runs, grades frozen submissions, accounts for
 usage coverage, and generates offline performance reports. It is not part of
-the Minions application runtime and does not run during normal app startup.
+the Swarmcrews application runtime and does not run during normal app startup.
 
 ## Usage
 
@@ -115,7 +115,7 @@ All optional — sane defaults are provided:
 | `CLAUDE_CODE_PATH` | SDK discovery | Optional Claude executable override |
 | `CODEX_PATH` | SDK discovery | Optional Codex executable override |
 | `CODEX_API_KEY` / `OPENAI_API_KEY` | Codex CLI login | Optional Codex API credentials |
-| `MINIONS_HOME` | `~/.minions` | Central registry, project state, and Minions-owned worktrees |
+| `SWARMCREWS_HOME` | `~/.swarmcrews` | Central registry, project state, and Swarmcrews-owned worktrees |
 
 Set them as environment variables:
 
@@ -130,10 +130,10 @@ and assigns it a stable workspace UUID. The UUID is the public identity; the
 server owns the mapping to the source folder, so projects on mounted volumes are
 supported without treating every path on the host as authorized.
 
-New Minions state is kept outside the repository:
+New Swarmcrews state is kept outside the repository:
 
 ```text
-$MINIONS_HOME/
+$SWARMCREWS_HOME/
 ├── server.db                           # global sessions and orchestration state
 ├── artifacts/                          # session-scoped generated artifacts
 ├── recent-projects.json
@@ -148,7 +148,12 @@ $MINIONS_HOME/
         └── worktrees/                # execution worktrees
 ```
 
-`MINIONS_HOME` defaults to `~/.minions`. Do not hand-edit `registry.json` or
+`SWARMCREWS_HOME` defaults to `~/.swarmcrews` for fresh installs. If that directory
+does not exist but `~/.minions` does, Swarmcrews continues using the legacy home.
+Explicit `SWARMCREWS_HOME` takes precedence over the supported `MINIONS_HOME`
+alias; if both default directories exist, `~/.swarmcrews` wins. Nothing is moved
+or merged automatically. See [rebrand compatibility](./docs/rebrand-compatibility.md).
+Do not hand-edit `registry.json` or
 derive a source path from a UUID. Registration canonicalizes paths and the file
 APIs continue to reject traversal and symlink escapes outside the registered
 source root.
@@ -157,19 +162,19 @@ Existing projects migrate non-destructively:
 
 1. Back up the repository and its existing `.minions/` and
    `.canvas-worktrees/` directories if they contain work you need.
-2. Open the existing source folder in Minions. On first registration, a single
+2. Open the existing source folder in Swarmcrews. On first registration, a single
    valid legacy project UUID is preserved; otherwise a UUID is assigned. Regular
    files from `.minions/` are copied into the new UUID state root without
    overwriting destination files or following symlinks.
 3. Verify project settings, skills, session history, and pending work. New state
-   and new worktrees are created under `$MINIONS_HOME/workspaces/<uuid>/`.
+   and new worktrees are created under `$SWARMCREWS_HOME/workspaces/<uuid>/`.
 4. Keep the legacy directories until you have completed or discarded old
-   worktrees and verified the migrated state. Minions recognizes legacy
+   worktrees and verified the migrated state. Swarmcrews recognizes legacy
    in-repository worktree paths during the transition and does not
    automatically delete either legacy directory.
 
-Changing `MINIONS_HOME` selects a different registry and state collection. Move
-that directory as a unit while Minions is stopped if you need to relocate it.
+Changing `SWARMCREWS_HOME` selects a different registry and state collection. Move
+that directory as a unit while Swarmcrews is stopped if you need to relocate it.
 
 Moving a repository does not create new state: explicitly rebind its workspace
 UUID to the new source folder (`POST /api/projects/rebind`). A copied repository
@@ -203,7 +208,7 @@ scope in project defaults or before launching a new Leader; it persists across
 resumes and restarts. Running processes retain their launch policy.
 
 Codex enforces both sandbox axes. Harnesses that cannot enforce an axis
-report it as `unmanaged`; Minions does not claim that Claude, OpenCode, or Pi
+report it as `unmanaged`; Swarmcrews does not claim that Claude, OpenCode, or Pi
 enforce these provider-neutral sandbox guarantees. Treat requested policy and
 effective policy as different values, and use OS-level isolation when an
 unmanaged axis is unacceptable.
@@ -314,7 +319,7 @@ repository content, or local transcripts in public issues.
 
 ### Harness terms and assumption of risk
 
-Minions is an independent orchestration layer. It operates through locally
+Swarmcrews is an independent orchestration layer. It operates through locally
 installed and authenticated agent harnesses; it does not provide, resell, or
 grant access to their underlying model services. You are responsible for
 ensuring that how you install, authenticate, configure, and use each harness
@@ -322,22 +327,22 @@ complies with the provider's then-current terms, policies, plan or billing
 conditions, and any rules imposed by your organization. Review the
 [Anthropic legal terms](https://www.anthropic.com/legal) and
 [OpenAI policies](https://openai.com/policies/) that apply to your account and
-use case. Minions does not alter or supersede those terms, and references to
+use case. Swarmcrews does not alter or supersede those terms, and references to
 provider products do not imply provider endorsement.
 
-Minions is provided on an "AS IS" basis, without warranties or conditions of
-any kind, as set out in the [Apache License 2.0](./LICENSE). You use Minions at
+Swarmcrews is provided on an "AS IS" basis, without warranties or conditions of
+any kind, as set out in the [Apache License 2.0](./LICENSE). You use Swarmcrews at
 your own risk. Coding agents can read and modify files, run commands, create
 worktrees, contact configured services, and consume paid provider capacity with
 the permissions and credentials you give them. Review permission settings,
 protect credentials, keep recoverable backups, and supervise consequential
 actions.
 
-Run Minions only on a trusted local machine or private tailnet. Worktrees are
+Run Swarmcrews only on a trusted local machine or private tailnet. Worktrees are
 coordination boundaries, not process sandboxes. Codex can enforce the displayed
 filesystem, approval, and network policy; unsupported axes on other harnesses
 are explicitly `unmanaged`, and local MCP processes may retain the permissions
-of the account that started Minions. Review the effective policy and the
+of the account that started Swarmcrews. Review the effective policy and the
 workspace-owned `mcp-servers.json` before launching unattended sessions.
 
 ## Architecture
@@ -389,11 +394,11 @@ Install Claude Code and sign in: https://docs.anthropic.com/en/docs/claude-code
 Make sure `claude` works on its own first — run `claude` in your terminal to verify authentication.
 
 **Codex sessions report missing credentials**
-Run `codex login`, or start Minions with `CODEX_API_KEY` or `OPENAI_API_KEY`
+Run `codex login`, or start Swarmcrews with `CODEX_API_KEY` or `OPENAI_API_KEY`
 available in the server environment.
 
 **OpenCode or Pi does not appear with models**
-Run `opencode models` or `pi --list-models` in the project directory. Minions
+Run `opencode models` or `pi --list-models` in the project directory. Swarmcrews
 shows the effective catalog returned by that command. Set `OPENCODE_PATH` or
 `PI_PATH` when the executable is not on the server's `PATH`.
 
@@ -404,13 +409,13 @@ Another instance may be running. Kill it or use a different port: `PORT=3142 pnp
 `better-sqlite3` 13 bundles native binaries for supported platforms, including Windows x64. The project's pnpm configuration skips its unnecessary implicit `node-gyp rebuild`; `esbuild` remains allowed to run its install script. If an older checkout fails while looking for Visual Studio or a C++ compiler, update the checkout and run `pnpm install` again.
 
 **Cannot find package `tsx`**
-Run `pnpm install` successfully before starting Minions or running `pnpm preflight`. This error usually means dependencies have not been installed yet.
+Run `pnpm install` successfully before starting Swarmcrews or running `pnpm preflight`. This error usually means dependencies have not been installed yet.
 
 Startup commands now check for missing local dependencies and print `Run pnpm install` before launching. The Windows CI job runs a frozen-lockfile install with native compilation disabled, then checks startup diagnostics and SQLite database creation, writes, and reads. Run those checks locally with `pnpm test:install` and `pnpm test:sqlite`.
 
 ## License
 
-Minions is licensed under the [Apache License 2.0](./LICENSE).
+Swarmcrews is licensed under the [Apache License 2.0](./LICENSE).
 
 ---
 

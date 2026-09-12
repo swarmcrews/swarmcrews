@@ -1,3 +1,4 @@
+import { Brand } from "./components/Brand.tsx";
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Activity, Check, ChevronDown, Folder, FolderKanban, LayoutGrid, Pencil } from "lucide-react";
 import { CrewIcon } from "./components/CrewIcon.tsx";
@@ -265,8 +266,7 @@ export function ProjectHeader({
         aria-label="All projects"
         title="All projects"
       >
-        <span className="project-header-logo__layer project-header-logo__base" aria-hidden="true" />
-        <span className="project-header-logo__layer project-header-logo__crown" aria-hidden="true" />
+        <Brand decorative />
       </button>
 
       {editing ? (

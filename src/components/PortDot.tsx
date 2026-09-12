@@ -105,7 +105,7 @@ export const PortDot = memo(function PortDot({
       ? "Connect a context source here before starting the session."
       : protocol === "task-assignment"
         ? "Drag to a Minion’s task input to connect it to this leader."
-        : "Drag to another leader’s context input to share this dashboard.";
+        : "Share dashboard or conversation context. Drag to another leader’s context input, or onto the canvas to create a connected leader.";
   const color = PROTOCOL_COLORS[protocol] ?? "var(--text-muted)";
 
   const side = direction === "output" ? "right" : "left";

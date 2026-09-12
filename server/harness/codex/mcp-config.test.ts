@@ -41,11 +41,11 @@ describe("renderBridgeServers", () => {
     expect(config).toEqual({
       "mcp_servers.task-manager": {
         url: "http://127.0.0.1:9999/mcp/session-a/task-manager",
-        bearer_token_env_var: "MINIONS_BRIDGE_TOKEN_TASK_MANAGER",
+        bearer_token_env_var: "SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER",
       },
       "mcp_servers.render-dashboard": {
         url: "http://127.0.0.1:9999/mcp/session-a/render-dashboard",
-        bearer_token_env_var: "MINIONS_BRIDGE_TOKEN_RENDER_DASHBOARD",
+        bearer_token_env_var: "SWARMCREWS_BRIDGE_TOKEN_RENDER_DASHBOARD",
       },
     });
   });
@@ -54,7 +54,7 @@ describe("renderBridgeServers", () => {
     const reg = fakeRegistration({ bearerToken: "secret-xyz" });
     const { config, env } = renderBridgeServers(reg, ["task-manager"]);
 
-    expect(env).toEqual({ MINIONS_BRIDGE_TOKEN_TASK_MANAGER: "secret-xyz" });
+    expect(env).toEqual({ SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER: "secret-xyz" });
     // The token must not leak into any config value.
     const configJson = JSON.stringify(config);
     expect(configJson).not.toContain("secret-xyz");
@@ -69,7 +69,7 @@ describe("renderBridgeServers", () => {
     const reg = fakeRegistration();
     const { config, env } = renderBridgeServers(reg, ["task-manager", "task-manager"]);
     expect(Object.keys(config)).toEqual(["mcp_servers.task-manager"]);
-    expect(Object.keys(env)).toEqual(["MINIONS_BRIDGE_TOKEN_TASK_MANAGER"]);
+    expect(Object.keys(env)).toEqual(["SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER"]);
   });
 
   it("uses urlFor() from the registration for each entry", () => {
@@ -97,12 +97,12 @@ describe("renderBridgeServers", () => {
 
 describe("bearerTokenEnvVar", () => {
   it("uppercases and replaces hyphens with underscores", () => {
-    expect(bearerTokenEnvVar("task-manager")).toBe("MINIONS_BRIDGE_TOKEN_TASK_MANAGER");
-    expect(bearerTokenEnvVar("minion-status")).toBe("MINIONS_BRIDGE_TOKEN_MINION_STATUS");
+    expect(bearerTokenEnvVar("task-manager")).toBe("SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER");
+    expect(bearerTokenEnvVar("minion-status")).toBe("SWARMCREWS_BRIDGE_TOKEN_MINION_STATUS");
   });
 
   it("leaves alphanumeric/underscore names alone (apart from upper-casing)", () => {
-    expect(bearerTokenEnvVar("simple")).toBe("MINIONS_BRIDGE_TOKEN_SIMPLE");
-    expect(bearerTokenEnvVar("with_underscores")).toBe("MINIONS_BRIDGE_TOKEN_WITH_UNDERSCORES");
+    expect(bearerTokenEnvVar("simple")).toBe("SWARMCREWS_BRIDGE_TOKEN_SIMPLE");
+    expect(bearerTokenEnvVar("with_underscores")).toBe("SWARMCREWS_BRIDGE_TOKEN_WITH_UNDERSCORES");
   });
 });

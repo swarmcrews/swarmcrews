@@ -35,8 +35,8 @@ describe("project Git initialization", () => {
       ["init"],
       ["add", "-A"],
       [
-        "-c", "user.name=Minions",
-        "-c", "user.email=minions@localhost",
+        "-c", "user.name=Swarmcrews",
+        "-c", "user.email=swarmcrews@localhost",
         "-c", "commit.gpgSign=false",
         "commit", "--allow-empty", "--no-verify", "-m", "Initial commit",
       ],

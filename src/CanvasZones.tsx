@@ -17,7 +17,7 @@ function ZoneDialog({ controller: c }: { controller: CanvasZonesController }) {
   const deleteZone = dialog.kind === "delete" ? c.zones.find(zone => zone.id === dialog.zoneId) : undefined;
   const [value, setValue] = useState(dialog.kind === "name" ? c.zones.find(z => z.id === dialog.zoneId)?.data.name ?? "" : "");
   const [query, setQuery] = useState("");
-  const [icon, setIcon] = useState(dialog.kind !== "choose" ? c.zones.find(zone => zone.id === dialog.zoneId)?.data.icon ?? "minions:folder" : "minions:folder");
+  const [icon, setIcon] = useState(dialog.kind !== "choose" ? c.zones.find(zone => zone.id === dialog.zoneId)?.data.icon ?? "swarmcrews:folder" : "swarmcrews:folder");
   const iconPicker = <SkillIconPicker value={icon} onChange={setIcon} category="general" accentColor="var(--accent)"
     description="Identify this workspace in the switcher and destination lists." allowCustomBadge={false} />;
   useLayoutEffect(() => {
@@ -62,7 +62,7 @@ function ZoneDialog({ controller: c }: { controller: CanvasZonesController }) {
     {dialog.kind === "icon" ? <>
       {iconPicker}
       <div className="canvas-zone-actions"><button type="button" onClick={c.dismissDialog}>Cancel</button>
-        <button type="button" onClick={() => setIcon("minions:folder")}>Reset to default</button>
+        <button type="button" onClick={() => setIcon("swarmcrews:folder")}>Reset to default</button>
         <button type="button" className="zone-primary" onClick={() => c.saveIcon(icon)}>Save icon</button></div>
     </> : dialog.kind === "delete" ? <>
       <p>{dialog.ids.length ? <>This workspace contains {dialog.ids.length} node{dialog.ids.length === 1 ? "" : "s"}. Move its content to Global, or delete the workspace and everything in it.</> : "This workspace is empty."}</p>

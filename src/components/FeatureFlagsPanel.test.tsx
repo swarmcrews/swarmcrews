@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe("FeatureFlagsPanel", () => {
   it("does not offer a workspace toggle even with a stale override", () => {
-    localStorage.setItem("minions:feature-flags", JSON.stringify({ "canvas-zones": false }));
+    localStorage.setItem("swarmcrews:feature-flags", JSON.stringify({ "canvas-zones": false }));
     render(<FeatureFlagsPanel onClose={() => {}} onDisableDebug={() => {}} />);
     expect(screen.queryByLabelText(/canvas workspaces/i)).toBeNull();
   });

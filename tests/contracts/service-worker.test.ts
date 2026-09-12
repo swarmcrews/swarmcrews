@@ -20,7 +20,7 @@ function loadWorker(windowClients: WindowClient[] = []) {
     openWindow,
   };
   const self = {
-    location: { origin: "https://minions.example.test" },
+    location: { origin: "https://swarmcrews.example.test" },
     skipWaiting: vi.fn(),
     clients,
     registration: { showNotification },
@@ -55,14 +55,14 @@ describe("mobile service worker", () => {
       body: "Review",
       data: { sessionKey: "s1", url: "/m?session=s1" },
       tag: "s1",
-      icon: "/icons/leader-active.svg",
+      icon: "/icons/favicon.svg",
       badge: "/icons/favicon.svg",
     });
   });
 
   it("focuses an existing mobile client and posts a same-origin route", async () => {
     const client: WindowClient = {
-      url: "https://minions.example.test/m",
+      url: "https://swarmcrews.example.test/m",
       focus: vi.fn(async () => undefined),
       postMessage: vi.fn(),
     };

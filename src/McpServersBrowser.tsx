@@ -1,6 +1,6 @@
 /**
  * Floating panel for browsing, adding, editing, and deleting MCP server
- * entries stored in `.minions/mcp-servers.json`. Mirrors the design
+ * entries stored in `$SWARMCREWS_HOME/workspaces/<uuid>/mcp-servers.json`. Mirrors the design
  * and placement style of SkillsBrowser.
  */
 

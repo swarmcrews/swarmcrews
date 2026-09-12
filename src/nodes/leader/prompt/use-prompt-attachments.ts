@@ -18,7 +18,7 @@ async function readAttachment(file: File, id: string): Promise<Partial<DraftAtta
   if (IMAGE_TYPES.has(file.type)) {
     const image = await loadImageFromFile(file);
     const data = image.src.slice(image.src.indexOf(",") + 1);
-    if (data.length > 6 * 1024 * 1024) throw new Error("Image is too large. Paste a smaller image.");
+    if (data.length > 6 * 1024 * 1024) throw new Error("Image is too large. Choose a smaller image.");
     return { preview: image.src, item: {
       nodeId: id, nodeType: "image", label: file.name || "Pasted image",
       content: `Attached image: ${file.name || "Pasted image"}`,
@@ -45,6 +45,17 @@ export function usePromptAttachments() {
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const remove = (ids: string[]) => setDrafts(current => current.filter(draft => !ids.includes(draft.id)));
+  const addFiles = (files: File[]) => {
+    const pending = files.map(file => ({ id: randomUuid(), filename: file.name || "Pasted image" }));
+    setDrafts(current => [...current, ...pending]);
+    files.forEach((file, index) => {
+      const draft = pending[index]!;
+      void readAttachment(file, draft.id).catch((error: unknown) => ({
+        error: error instanceof Error ? error.message : "Could not read this attachment.",
+      })).then(result => setDrafts(current => current.map(entry => entry.id === draft.id
+        ? { ...entry, ...result } : entry)));
+    });
+  };
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const clipboard = event.clipboardData;
     const files = Array.from(clipboard.files ?? []);
@@ -59,17 +70,16 @@ export function usePromptAttachments() {
     // Keep native insertion for accompanying text, but do not spawn canvas nodes.
     if (!clipboard.getData("text/plain")) event.preventDefault();
     event.stopPropagation();
-    const pending = files.map(file => ({ id: randomUuid(), filename: file.name || "Pasted image" }));
-    setDrafts(current => [...current, ...pending]);
-    files.forEach((file, index) => {
-      const draft = pending[index]!;
-      void readAttachment(file, draft.id).catch((error: unknown) => ({
-        error: error instanceof Error ? error.message : "Could not read this attachment.",
-      })).then(result => setDrafts(current => current.map(entry => entry.id === draft.id
-        ? { ...entry, ...result } : entry)));
-    });
+    addFiles(files);
   };
-  return { drafts, onPaste, remove,
+  const restore = (items: ContextItem[]) => setDrafts(current => [
+    ...items.filter(item => !current.some(draft => draft.id === item.nodeId)).map(item => {
+      const image = item.attachments?.[0];
+      return { id: item.nodeId, filename: item.label, item,
+        ...(image ? { preview: `data:${image.mediaType};base64,${image.data}` } : {}) };
+    }), ...current,
+  ]);
+  return { drafts, onPaste, addFiles, restore, remove,
     items: drafts.flatMap(draft => draft.item ? [draft.item] : []),
     blocked: drafts.some(draft => !draft.item),
     // Submission also checks the ref, protecting keyboard sends during decoding.

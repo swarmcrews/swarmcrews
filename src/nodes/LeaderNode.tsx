@@ -1,5 +1,6 @@
 import { ChatLinkScope } from "../components/ChatLink.tsx";
 import { LiveChangesPanel } from "../LiveChangesPanel.tsx";
+import { StatusMessage } from "../components/StatusMessage.tsx";
 import { FormSubmissionProvider } from "./render/FormSubmissionProvider.tsx";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import { Maximize2, Square, Zap } from "lucide-react";
@@ -829,7 +830,7 @@ export function LeaderNodeRenderer({
     promptTextareaRef.current?.focus({ preventScroll: true });
   }, [node.id]);
 
-  const delivery = useCanvasDelivery({ dataRef, emitUpdate, socketSend, socketSubscribe,
+  const delivery = useCanvasDelivery({ dataRef, emitUpdate, socketSend, socketSubscribe, publishCanvasContext,
     getContextForNode, frozenPromptRef, requestWorkItem, sendCanonicalPrompt });
   const handleSend = useCallback(() => {
     if (!promptAttachments.canSubmit()) return;
@@ -1316,7 +1317,7 @@ export function LeaderNodeRenderer({
           changesSlot={selectCanvasChangeMode(data) === "live"
             ? data.sessionKey ? <LiveChangesPanel sessionKey={data.sessionKey}
               send={socketSend} subscribe={socketSubscribe} />
-              : <p>Start a session to inspect changes.</p>
+              : <StatusMessage>Start a session to inspect changes.</StatusMessage>
             : undefined}
           contextItems={getContextForNode?.()}
           dashboardSlot={<DashboardSurface renderState={data.renderState ?? emptyRenderState()} payloadError={renderPayloadError}

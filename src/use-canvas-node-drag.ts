@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { canvasScale } from "./canvas-scale.ts";
 import type { CanvasNode, Position } from "./types.ts";
 
@@ -8,10 +9,11 @@ interface Options {
   onSelect: (id: string, additive: boolean) => void;
   onMove: (id: string, position: Position, cancelled?: boolean) => void;
   onDragStart?: ((id: string, event?: MouseEvent) => void) | undefined;
+  onDragMove?: ((id: string, event: MouseEvent) => void) | undefined;
   onDragEnd?: ((id: string, event?: MouseEvent) => void) | undefined;
 }
 
-export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragStart, onDragEnd }: Options) {
+export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragStart, onDragMove, onDragEnd }: Options) {
   const [pointer, setPointer] = useState<Position | null>(null);
   const cleanup = useRef<(() => void) | null>(null);
   useEffect(() => () => cleanup.current?.(), []);
@@ -29,6 +31,20 @@ export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragSt
     const cursor = document.body.style.cursor;
     document.body.style.userSelect = "none";
     let started = false;
+    let frame: number | null = null;
+    let pending: MouseEvent | null = null;
+    const applyMove = () => {
+      frame = null;
+      const e = pending;
+      pending = null;
+      if (!e) return;
+      setPointer({ x: e.clientX, y: e.clientY });
+      onDragMove?.(node.id, e);
+      onMove(node.id, {
+        x: origin.x + (e.clientX - start.x) / canvasScale.current,
+        y: origin.y + (e.clientY - start.y) / canvasScale.current,
+      });
+    };
     const move = (e: MouseEvent) => {
       const dx = e.clientX - start.x, dy = e.clientY - start.y;
       if (!started) {
@@ -37,10 +53,13 @@ export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragSt
         document.body.style.cursor = "grabbing";
         onDragStart?.(node.id, e);
       }
-      setPointer({ x: e.clientX, y: e.clientY });
-      onMove(node.id, { x: origin.x + dx / canvasScale.current, y: origin.y + dy / canvasScale.current });
+      pending = e;
+      if (frame === null) frame = requestAnimationFrame(applyMove);
     };
     const detach = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      frame = null;
+      pending = null;
       document.body.style.userSelect = userSelect;
       document.body.style.cursor = cursor;
       window.removeEventListener("mousemove", move);
@@ -50,6 +69,12 @@ export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragSt
       cleanup.current = null;
     };
     const end = (e?: MouseEvent) => {
+      // Drop handlers read the rendered canvas through refs. Commit the last
+      // queued movement before they resolve snapping, companions, and zones.
+      if (e && pending) {
+        if (frame !== null) cancelAnimationFrame(frame);
+        flushSync(applyMove);
+      }
       detach(); setPointer(null);
       if (started) {
         if (!e) onMove(node.id, origin, true);
@@ -65,6 +90,6 @@ export function useCanvasNodeDrag({ node, isSelected, onSelect, onMove, onDragSt
     window.addEventListener("blur", cancel);
     window.addEventListener("keydown", key, true);
     cleanup.current = detach;
-  }, [node.id, node.type, node.position, isSelected, onSelect, onMove, onDragStart, onDragEnd]);
+  }, [node.id, node.position, isSelected, onSelect, onMove, onDragStart, onDragMove, onDragEnd]);
   return { pointer, onMouseDown };
 }

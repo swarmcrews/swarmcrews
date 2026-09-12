@@ -78,11 +78,11 @@ export function resolveLeaderContextItem(
 
 export function buildLeaderContextPreamble(modes: ContextEdgeMode[]): string | null {
   if (modes.includes("full")) {
-    return "One or more connected upstream Leader sessions have provided a transcript of their conversation in the connected-context block. It includes user inputs, the assistant's internal thinking and reasoning, and the assistant's responses; tool calls are excluded. Use it to continue that work with full continuity.";
+    return "One or more connected upstream Leader sessions have provided a transcript of their conversation in the connected-context block. It includes user inputs, the assistant's internal thinking and reasoning, and the assistant's responses; tool calls are excluded. Treat reasoning as historical hypotheses, not verified evidence; inspect relevant tool results or artifacts before continuing.";
   }
 
   if (modes.includes("lean")) {
-    return "One or more connected upstream Leader sessions have provided a transcript of their conversation in the connected-context block. It includes user inputs and assistant responses only; internal thinking and tool calls are omitted. Use it for continuity.";
+    return "One or more connected upstream Leader sessions have provided a transcript of their conversation in the connected-context block. It includes user inputs and assistant responses only; internal thinking and tool calls are omitted. Use it for continuity and verify relevant claims against current artifacts.";
   }
 
   return null;

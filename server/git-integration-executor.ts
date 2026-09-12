@@ -68,7 +68,7 @@ async function integrate(repo: string, op: GitIntegrationOperation, targetSha: s
   await exec(["worktree", "add", "--detach", temp, targetSha], repo);
   try {
     await exec(["merge", "--no-ff", "--no-edit", sourceRef,
-      "-m", `minions: ${op.kind} ${op.id}`], temp);
+      "-m", `swarmcrews: ${op.kind} ${op.id}`], temp);
     return { resultSha: (await exec(["rev-parse", "HEAD"], temp)).stdout.trim() };
   } catch (error) {
     const conflicts = await conflictFiles(temp);

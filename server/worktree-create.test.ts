@@ -112,7 +112,7 @@ describe("createWorktree", () => {
     );
   });
 
-  it("creates registered workspace worktrees beneath central Minions state", async () => {
+  it("creates registered workspace worktrees beneath central Swarmcrews state", async () => {
     const workspace = registerWorkspace(projectDir)!;
     queue.push({ expected: null, result: { ok: true } });
 
@@ -128,7 +128,7 @@ describe("createWorktree", () => {
     const outside = mkdtempSync(join(tmpdir(), "wt-outside-"));
     symlinkSync(outside, join(workspace.stateRoot, "worktrees"), "junction");
     try {
-      await expect(createWorktree(projectDir, "escaped")).rejects.toThrow(/real Minions-owned root/);
+      await expect(createWorktree(projectDir, "escaped")).rejects.toThrow(/real Swarmcrews-owned root/);
       expect(observed).toHaveLength(0);
       expect(existsSync(join(outside, "escaped"))).toBe(false);
     } finally {
@@ -189,7 +189,7 @@ describe("removeWorktree", () => {
   it("rejects explicit removal outside central and legacy owned roots", async () => {
     const outside = join(projectDir, "ordinary-folder");
     mkdirSync(outside);
-    await expect(removeWorktree(outside, projectDir)).rejects.toThrow(/outside Minions-owned roots/);
+    await expect(removeWorktree(outside, projectDir)).rejects.toThrow(/outside Swarmcrews-owned roots/);
     expect(observed).toHaveLength(0);
   });
 
@@ -200,7 +200,7 @@ describe("removeWorktree", () => {
     symlinkSync(outside, join(base, "linked"), "junction");
     try {
       await expect(removeWorktree(join(base, "linked"), projectDir)).rejects.toThrow(
-        /outside Minions-owned roots/,
+        /outside Swarmcrews-owned roots/,
       );
       expect(observed).toHaveLength(0);
     } finally {

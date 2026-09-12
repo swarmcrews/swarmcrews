@@ -163,11 +163,15 @@ function ContextGroupRenderer({
         </div>
 
         <input
+          aria-label="Context group name"
           value={data.name}
           onChange={(e) => update({ name: e.target.value })}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
-            flex: 1,
+            // Leave the rest of the header available for dragging the group.
+            flex: "0 1 auto",
+            width: `${Math.max(13, Math.min(data.name.length + 2, 28))}ch`,
+            maxWidth: "50%",
             background: "transparent",
             border: "none",
             color: isDropTarget ? ACCENT_ACTIVE : "var(--text-primary)",
@@ -188,6 +192,7 @@ function ContextGroupRenderer({
             alignItems: "center",
             gap: 6,
             flexShrink: 0,
+            marginLeft: "auto",
           }}
         >
           {contextItems.length > 0 && (

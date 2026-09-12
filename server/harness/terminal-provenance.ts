@@ -10,7 +10,7 @@ import { claimRunInvocationTerminal } from "../work-item-invocations.ts";
 type DoneEvent = Extract<NormalizedEvent, { kind: "done" }>;
 
 const provenance = new WeakMap<object, InvocationTerminalSource>();
-export const HARNESS_DRAIN = Symbol("minions.harnessDrain");
+export const HARNESS_DRAIN = Symbol("swarmcrews.harnessDrain");
 export type DrainableHarnessControl = HarnessRunControl & {
   [HARNESS_DRAIN]?: Promise<void>;
 };

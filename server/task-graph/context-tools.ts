@@ -28,11 +28,11 @@ const previewSchema = z.object({
   }),
   workPacketId: z.string().min(1).optional(),
   includePrompts: z.boolean().default(false)
-    .describe("Opt in to the composed Minions system/task text. Default returns size accounting, selected sources, and warnings only."),
+    .describe("Opt in to the composed Swarmcrews system/task text. Default returns size accounting, selected sources, and warnings only."),
 });
 
 const limitations = [
-  "Only composed Minions context is measured. Provider base instructions, native tool schemas, skills/plugins, environment, server launch addenda, and message framing are excluded and may remain substantial.",
+  "Only composed Swarmcrews context is measured. Provider base instructions, native tool schemas, skills/plugins, environment, server launch addenda, and message framing are excluded and may remain substantial.",
   "Approximate tokens use ceil(characters / 4), not the provider tokenizer or billed usage. Cached tokens still occupy input context.",
   "Preview does not create a graph, launch a child, freeze sources, or approve policy. Submission revalidates authority and freezes the selected sources.",
   "Runtime adds real attempt/source IDs, resolved artifact inputs, steering, recovery, and moderation when applicable. Provider-thread resumes also retain previous context.",
@@ -122,14 +122,14 @@ export function createMinionContextTools(input: {
       const systemPrompt = composed.systemPrompt ?? buildMinionSystemPrompt();
       const taskPrompt = composed.prompt;
       const warnings: string[] = [];
-      if (step.skillIds === undefined && ids.length) warnings.push("skillIds omitted: Leader-selected skills are inherited. Use [] when no optional Minions playbook is needed.");
+      if (step.skillIds === undefined && ids.length) warnings.push("skillIds omitted: Leader-selected skills are inherited. Use [] when no optional Swarmcrews playbook is needed.");
       if (step.contextSelectors.some(selector => selector.startsWith("repo:"))) warnings.push("repo: selectors do not inject file contents; supply focused reference excerpts or let the Minion read permitted paths.");
       if (step.dependsOn.length || Object.keys(step.inputBindings).length) warnings.push("Artifact dependencies are not resolved in this preview.");
       if (step.sessionAffinity) warnings.push("Provider-thread history is retained; a compact profile does not clear previous context.");
       if (step.context?.profile === "compact" && (node.ownershipRequest.some(scope => scope.mode === "write")
         || step.completionMode === "verification")) warnings.push("This task writes files or performs structured verification; consider standard for its fuller operating guidance.");
       const total = measure(systemPrompt + taskPrompt);
-      if (total.characters > 24_000) warnings.push("Composed Minions context exceeds 24,000 characters. Narrow selectors, skills, or reference excerpts.");
+      if (total.characters > 24_000) warnings.push("Composed Swarmcrews context exceeds 24,000 characters. Narrow selectors, skills, or reference excerpts.");
       return jsonResult({ profile: step.context?.profile ?? "standard", resolvedSkillIds: ids,
         blocks: [
           { id: "system", ...measure(systemPrompt) },

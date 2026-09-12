@@ -217,7 +217,7 @@ export function useCanvasWorkItem(input: Input) {
       input.emitUpdate(applyCanvasWorkItemSnapshot(input.dataRef.current, item));
     }
     const promptResult = await sendCanonicalPrompt(item, run.prompt, {
-      systemPrompt: run.systemPrompt, skillIds: input.dataRef.current.skillIds ?? [],
+      displayPrompt: run.userPrompt, systemPrompt: run.systemPrompt, skillIds: input.dataRef.current.skillIds ?? [],
       skillValues: input.dataRef.current.skillValues ?? {},
       model: input.dataRef.current.model,
       thinkingConfig: input.dataRef.current.thinkingConfig ?? DEFAULT_THINKING_CONFIG,

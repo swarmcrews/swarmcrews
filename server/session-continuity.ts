@@ -1,3 +1,4 @@
+import { captureTurnAttachments, seedContinuityAttachments } from "./continuity-attachments.ts";
 import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ImageAttachment } from "./session-host-types.ts";
@@ -14,6 +15,8 @@ export interface SessionContinuity {
   /** Undefined means never supplied; null is an explicit cleared snapshot. */
   canvasContext?: string | null;
   attachments?: ImageAttachment[];
+  canvasAttachments?: ImageAttachment[];
+  promptAttachments?: ImageAttachment[];
 }
 export interface ContinuitySnapshot {
   continuity: SessionContinuity;
@@ -29,8 +32,9 @@ export function captureSessionContinuity(host: SessionHost, opts: StartSessionOp
     : opts.userDirectives ?? inheritedUserDirectives(opts.prompt);
   const incoming = [...inherited, text].filter(Boolean);
   host.continuity.directives = retainUserDirectives([...host.continuity.directives, ...incoming]);
-  const connected = opts.prompt.match(/<connected-context>[\s\S]*?<\/connected-context>/)?.[0] ?? opts.planningContext;
-  if (opts.attachments !== undefined) host.continuity.attachments = opts.attachments;
+  const connected = opts.planningContext ?? opts.prompt.match(/<connected-context>[\s\S]*?<\/connected-context>/)?.[0];
+  seedContinuityAttachments(host.continuity, opts);
+  if (opts.attachments !== undefined) captureTurnAttachments(host.continuity, opts.attachments);
   if (connected) host.setCanvasContext(connected);
   const db = persistenceDb();
   if (db && incoming.length) db.transaction(() => {
@@ -73,6 +77,7 @@ export function restoreSessionContinuity(host: SessionHost): void {
   host.skillValues = saved?.skillValues ?? config.skillValues ?? {};
   host.continuity = saved?.continuity ?? { directives: config.userDirectives ?? [],
     attachments: config.attachments, canvasContext: config.planningContext };
+  seedContinuityAttachments(host.continuity, config);
   // Older snapshots did not distinguish a fallback from a selected name.
   // Preserve their existing label; explicit null still permits first selection.
   if (host.continuity.canonicalTaskName === undefined) {

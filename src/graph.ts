@@ -102,7 +102,7 @@ export const LEADER_CONTRACT: NodeInterfaceContract = {
       // it can still feed another Leader — preserving the old render node's
       // context-out capability.
       id: "context-out",
-      label: "Dashboard",
+      label: "Share context",
       direction: "output",
       protocol: "context",
       maxConnections: 10,

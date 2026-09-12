@@ -26,7 +26,7 @@ try {
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     const json = pathname === "/api/projects" ? [{
-      id: "guide-project", name: "Minions Playground", path: "/home/you/projects/minions-playground",
+      id: "guide-project", name: "Swarmcrews Playground", path: "/home/you/projects/swarmcrews-playground",
       lastOpened: "2026-09-04T12:00:00Z", hasSidecar: false,
     }] : pathname === "/api/readiness" ? { ready: true, harnesses: [] }
       : pathname === "/api/auth/token" ? { token: "documentation-fixture" } : {};
@@ -40,8 +40,8 @@ try {
     await page.goto(`${origin}/docs/screenshots/index.html?scene=${scene}`);
     await page.locator(scene === "projects" ? ".project-list-card" : scene === "graph" ? '[role="dialog"]' : ".guide-heading").first().waitFor();
     if (scene === "projects") {
-      await page.getByPlaceholder("/path/to/existing/project...").fill("/home/you/projects/minions-playground");
-      await page.getByText("Minions Playground", { exact: true }).waitFor();
+      await page.getByPlaceholder("/path/to/existing/project...").fill("/home/you/projects/swarmcrews-playground");
+      await page.getByText("Swarmcrews Playground", { exact: true }).waitFor();
     }
     if (scene === "launch") await page.getByText("Ready to launch", { exact: true }).waitFor();
     if (scene === "dashboard") await page.getByLabel("When no name is supplied", { exact: false }).waitFor();

@@ -11,8 +11,9 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUp, X } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 import "./leader-prompt.css";
+import { PromptAttachmentList, PromptAttachmentPicker } from "./PromptAttachmentControls.tsx";
 import { PromptAttachmentsContext } from "./use-prompt-attachments.ts";
 import { AutoTextarea } from "../../../components/AutoTextarea.tsx";
 import { LeaderSlashMenu } from "./LeaderSlashMenu.tsx";
@@ -195,20 +196,7 @@ export function LeaderPromptBar({
       style={isOverlay ? { paddingTop: 10 + overlayMenuSpace } : undefined}
     >
       <div className="leader-prompt-bar__surface">
-        {attachments && attachments.drafts.length > 0 && (
-          <ul className="leader-prompt-bar__attachments" aria-label="Attached context">
-            {attachments.drafts.map(draft => (
-              <li key={draft.id}>
-                {draft.preview && <img src={draft.preview} alt={draft.filename} />}
-                <span>{draft.filename}{!draft.item && !draft.error ? " — Loading…" : ""}
-                  {draft.error && <span role="alert">{draft.error}</span>}
-                </span>
-                <button type="button" aria-label={`Remove ${draft.filename}`}
-                  onClick={() => attachments.remove([draft.id])}><X size={14} /></button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {attachments && <PromptAttachmentList attachments={attachments} />}
         <div className="leader-prompt-bar__input-wrap" ref={inputWrapRef}>
           {menuOpen && (() => {
             const menu = (
@@ -266,6 +254,7 @@ export function LeaderPromptBar({
           />
         </div>
         <div className="leader-prompt-bar__toolbar">
+          {attachments && <PromptAttachmentPicker attachments={attachments} />}
           <span className="leader-prompt-bar__hint" aria-hidden="true">
             {availableSlashCommands?.length ? <span>/ commands</span> : null}
             {onSkillSelect && <span>@ skills</span>}

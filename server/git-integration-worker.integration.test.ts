@@ -15,7 +15,7 @@ const roots: string[] = [];
 function repository(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minions-git-worker-")); roots.push(root);
   git(root, "init", "-b", "main"); git(root, "config", "user.name", "Minions Test");
-  git(root, "config", "user.email", "minions@example.test");
+  git(root, "config", "user.email", "swarmcrews@example.test");
   // Mirror production: worktree dirs live under an ignored path so they never
   // register as uncommitted changes in the target checkout's status.
   fs.writeFileSync(path.join(root, ".gitignore"), ".canvas-worktrees/\n");
@@ -79,7 +79,7 @@ describe.runIf(canGit())("persisted Git integration worker", () => {
     expect(git(repo, "show", "lineage:one.txt")).toBe("one");
     expect(git(repo, "show", "lineage:two.txt")).toBe("two");
     expect(git(repo, "log", "--first-parent", "--format=%s", "-2", "lineage").split("\n"))
-      .toEqual(["minions: integrate_contribution two", "minions: integrate_contribution one"]);
+      .toEqual(["swarmcrews: integrate_contribution two", "swarmcrews: integrate_contribution one"]);
   });
 
   it("reruns gates after a moved target and preserves the external commit", async () => {

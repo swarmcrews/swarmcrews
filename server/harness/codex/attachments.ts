@@ -4,7 +4,7 @@
  * Materialises base64 image attachments to disk so the Codex SDK's
  * `local_image` UserInput variant (which requires file paths) can reference
  * them. Each session gets its own scratch directory under
- * `<tmpdir>/minions-codex-attachments/<sessionKey>/`.
+ * `<tmpdir>/swarmcrews-codex-attachments/<sessionKey>/`.
  */
 
 import { promises as fs } from "node:fs";
@@ -13,7 +13,7 @@ import * as path from "node:path";
 import type { UserInput } from "@openai/codex-sdk";
 import type { NormalizedAttachment } from "../types.ts";
 
-const SCRATCH_ROOT = "minions-codex-attachments";
+const SCRATCH_ROOT = "swarmcrews-codex-attachments";
 
 /**
  * Session keys must be safe for use as a single directory-name component.

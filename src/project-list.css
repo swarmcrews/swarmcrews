@@ -18,29 +18,8 @@
 }
 
 .project-list-brand {
-  position: relative;
-  width: min(300px, 72vw);
-  aspect-ratio: 2170 / 725;
-  margin-bottom: 30px;
-}
-
-.project-list-brand__layer {
-  position: absolute;
-  inset: 0;
-  background: var(--text-primary);
-  -webkit-mask-image: url("../assets/minions-logo.png");
-  mask-image: url("../assets/minions-logo.png");
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-.project-list-brand__crown {
-  background: var(--accent);
-  clip-path: inset(25% 63.5% 60% 27.5%);
+  width: min(340px, 80vw);
+  margin-bottom: 34px;
 }
 
 .project-list-heading > span {

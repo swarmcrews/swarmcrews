@@ -142,7 +142,7 @@ function MobileHeader({ connected, reconnectState, selectedProject, activeTab, o
       </button> : null}
       <div className="mob-app-title">
         <span>{selectedProject ? atHome ? "Project" : activeTab === "launch" ? "New task" : "Settings" : "Projects"}</span>
-        <strong title={selectedProject?.path}>{selectedProject?.name ?? "Minions"}</strong>
+        <strong title={selectedProject?.path}>{selectedProject?.name ?? "Swarmcrews"}</strong>
       </div>
     </div>
     <div className="mob-app-header-actions">
@@ -274,7 +274,7 @@ export default function MobileApp() {
     const notice: ActivityNotice = {
       title: "Session limit reached",
       message:
-        "Minions already has 50 non-stopped sessions. Open an idle or errored session and tap Stop, or remove old sessions on desktop, then launch again.",
+        "Swarmcrews already has 50 non-stopped sessions. Open an idle or errored session and tap Stop, or remove old sessions on desktop, then launch again.",
       onDismiss: dismissActivityNotice,
     };
     if (sessionToStopForLimit) {

@@ -149,7 +149,7 @@ describe("diffContextDelivery", () => {
     ]);
   });
 
-  it("drops removed sources from the next ledger without re-sending", () => {
+  it("withdraws removed sources once and drops their ledger entries", () => {
     const ledger = seedContextDelivery([plainItem("n1", "a"), plainItem("n2", "b")], T0);
     const { newItems, updates, nextLedger } = diffContextDelivery(
       [plainItem("n1", "a")],
@@ -157,7 +157,8 @@ describe("diffContextDelivery", () => {
       T1,
     );
     expect(newItems).toHaveLength(0);
-    expect(updates).toHaveLength(0);
+    expect(updates).toEqual([expect.objectContaining({ nodeId: "n2", kind: "remove" })]);
+    expect(diffContextDelivery([plainItem("n1", "a")], nextLedger, T1).updates).toEqual([]);
     expect(nextLedger).not.toHaveProperty("n2");
   });
 
@@ -213,15 +214,14 @@ describe("buildContextUpdateBlock", () => {
       update({ kind: "append" }),
       update({ nodeId: "n1", nodeType: "markdown", label: "Spec", kind: "replace", content: "v2" }),
     ])!;
-    expect(block).toContain('<context-group title="Upstream" update="append">');
-    expect(block).toContain('<context-group title="Spec" update="replace">');
+    expect(block).toMatch(/source-id="l1"[^>]*title="Upstream"[^>]*update="append"/);
+    expect(block).toMatch(/source-id="n1"[^>]*title="Spec"[^>]*update="replace"/);
   });
 
-  it("omits the title attribute when label equals nodeType", () => {
+  it("retains identity for default labels", () => {
     const block = buildContextUpdateBlock([
       update({ nodeType: "markdown", label: "Markdown", kind: "replace" }),
     ])!;
-    expect(block).toContain('<context-group update="replace">');
-    expect(block).not.toContain("title=");
+    expect(block).toMatch(/source-id="l1"[^>]*title="Markdown"[^>]*update="replace"/);
   });
 });

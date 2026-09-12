@@ -117,6 +117,9 @@ export interface StartSessionOptions {
   thinkingConfig?: ThinkingConfig | null | undefined;
   /** Multimodal attachments riding on the first user message. */
   attachments?: ImageAttachment[] | undefined;
+  /** Server-owned full recovery media; turn attachments may be only a delta. */
+  canvasAttachments?: ImageAttachment[] | undefined;
+  promptAttachments?: ImageAttachment[] | undefined;
   /** Durable user-authored instructions inherited from earlier iterations. */
   userDirectives?: string[];
   /** Server-owned fallback if launch readiness changes the selected provider. */

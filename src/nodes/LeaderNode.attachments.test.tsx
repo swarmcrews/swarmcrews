@@ -90,7 +90,9 @@ describe("Leader pasted context", () => {
 
   it("attaches from the new-leader launch form through the canonical start command", async () => {
     const test = setup({}, true, true);
-    paste();
+    fireEvent.change(screen.getByLabelText("Image or text attachments"), { target: {
+      files: [new File(["pixels"], "shot.png", { type: "image/png" })],
+    } });
     await readyImage();
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
     for (const type of ["create_work_item", "attach_work_item_surface"]) {

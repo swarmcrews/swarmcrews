@@ -1,7 +1,7 @@
 id: capability.project_workspace
 type: capability
 name: Project workspace lifecycle
-summary: Users can register, rebind, or explicitly attach a source folder by stable workspace identity, explicitly initialize Git or acknowledge the risks of continuing without it, keep all Minions state and worktrees centrally, recover persisted state, and reconnect without duplicating work.
+summary: Users can register, rebind, or explicitly attach a source folder by stable workspace identity, explicitly initialize Git or acknowledge the risks of continuing without it, keep all Swarmcrews state and worktrees centrally, recover persisted state, and reconnect without duplicating work.
 constraints: []
 decisions: [ decision.typed_event_bus, decision.canonical_work_item_lifecycle, decision.portable_workspace_roots ]
 risks:
@@ -9,7 +9,7 @@ risks:
   - risk.legacy_workspace_root_overlap
 suggested_files: [ src/ProjectList.tsx, src/ProjectGitWarning.tsx, src/App.tsx, src/ProjectHeader.tsx, src/ProjectPanel.tsx, src/api.ts, src/use-autosave.ts, server/project-git.ts, server/workspace-registry.ts, server/project-store.ts, server/routes/projects/core.ts, server/routes/projects/git.ts, server/routes/projects/workspace-lifecycle.ts ]
 suggested_tests: [ src/ProjectList.test.tsx, src/mobile/ProjectsScreen.test.tsx, src/App.dom.test.tsx, src/api.test.ts, src/use-autosave.test.tsx, src/canvas-work-item-reconcile.test.ts, server/project-git.test.ts, server/workspace-registry.test.ts, server/project-store.test.ts, tests/contracts/projects-core-routes.test.ts ]
-keywords: [ project, workspace, uuid, source_root, state_root, MINIONS_HOME, mounted_volume, open, create, recover, migration, sidecar, readiness, git, initial_commit ]
+keywords: [ project, workspace, uuid, source_root, state_root, SWARMCREWS_HOME, mounted_volume, open, create, recover, migration, sidecar, readiness, git, initial_commit ]
 entry_points:
   - surface: surface.canvas
     summary: Open, load, save, and recover the desktop spatial project shell.

@@ -23,7 +23,7 @@ export function getSkill(id: string): SkillTemplate | undefined {
 /**
  * Project skills only — the persistence source of truth. `persistToServer`
  * and `exportUserSkills` build on this, so built-ins are never written to
- * `.minions/skills.json`.
+ * `$SWARMCREWS_HOME/workspaces/<uuid>/skills.json`.
  */
 export function getAllSkills(): SkillTemplate[] {
   return Array.from(registry.values());

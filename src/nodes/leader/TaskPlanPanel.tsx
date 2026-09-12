@@ -1,5 +1,5 @@
 import { AgentMessageText } from "../../components/AgentMessageText.tsx";
-import { MinionsIcon, type MinionsIconName } from "../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon, type SwarmcrewsIconName } from "../../components/SwarmcrewsIcon.tsx";
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { timeAgo } from "../leader-message-helpers.ts";
@@ -18,7 +18,7 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: "var(--streaming-color)",
 };
 
-const TASK_STATUS_ICON: Record<TaskPlanItem["status"], MinionsIconName> = {
+const TASK_STATUS_ICON: Record<TaskPlanItem["status"], SwarmcrewsIconName> = {
   planned: "planned",
   starting: "active",
   running: "active",
@@ -250,7 +250,7 @@ export function TaskPlanPanel({
                     fontFamily: "var(--font-mono)",
                   }}
                 >
-                  <MinionsIcon name={TASK_STATUS_ICON[task.status]} size={13} label={task.status.replaceAll("_", " ")} />
+                  <SwarmcrewsIcon name={TASK_STATUS_ICON[task.status]} size={13} label={task.status.replaceAll("_", " ")} />
                 </span>
 
                 <span

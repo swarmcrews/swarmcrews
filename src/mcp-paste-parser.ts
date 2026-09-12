@@ -218,7 +218,7 @@ function parseClaudeAddCommand(input: string): PasteParseResult {
       continue;
     }
     if (tok === "--scope" || tok === "-s") {
-      // Scope is not relevant on import — Minions has its own scope model.
+      // Scope is not relevant on import — Swarmcrews has its own scope model.
       i += 2;
       continue;
     }

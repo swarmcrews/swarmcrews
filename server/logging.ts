@@ -17,10 +17,10 @@ export function createServerLogger(options: ServerLoggerOptions = {}): Logger {
   const target = options.target ?? globalThis.console;
   return createLogger({
     scope: "server",
-    level: parseLogLevel(env["MINIONS_LOG_LEVEL"], "info"),
+    level: parseLogLevel((env["SWARMCREWS_LOG_LEVEL"] ?? env["MINIONS_LOG_LEVEL"]), "info"),
     sink: createConsoleSink(target),
-    includePrivateFields: env["MINIONS_LOG_PRIVATE"] === "1",
-    includeStacks: env["MINIONS_LOG_STACKS"] === "1",
+    includePrivateFields: (env["SWARMCREWS_LOG_PRIVATE"] ?? env["MINIONS_LOG_PRIVATE"]) === "1",
+    includeStacks: (env["SWARMCREWS_LOG_STACKS"] ?? env["MINIONS_LOG_STACKS"]) === "1",
     ...(options.now ? { now: options.now } : {}),
   });
 }

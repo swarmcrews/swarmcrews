@@ -46,7 +46,7 @@ export function wrapTools(serverName: string, defs: NormalizedToolDef[]): McpSer
 /**
  * Extract the ZodRawShape from a NormalizedToolDef's inputSchema.
  *
- * All current Minions tools use z.object({...}) as their input schema, so
+ * All current Swarmcrews tools use z.object({...}) as their input schema, so
  * `shape` is always present. Future tools with non-object schemas (ZodUnion,
  * ZodDiscriminatedUnion, etc.) would need a different approach — update this
  * function when that need arises.

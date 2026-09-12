@@ -1,3 +1,4 @@
+import { replaceCanvasAttachments } from "./continuity-attachments.ts";
 import { HistoryBuffer } from "./history-cache.ts";
 import { historyFactsForHost, recordHistoryEvent } from "./session-history-host.ts";
 import { assertSessionIdentity } from "./leader-identity.ts";
@@ -200,7 +201,7 @@ export class SessionHost {
     this.canvasContext = canvasContext;
     setSessionCanvasContext(this.id, canvasContext);
     this.continuity.canvasContext = canvasContext;
-    if (attachments !== undefined || canvasContext === null) this.continuity.attachments = attachments ?? [];
+    if (attachments !== undefined || canvasContext === null) replaceCanvasAttachments(this.continuity, attachments ?? []);
     this.persist();
   }
 

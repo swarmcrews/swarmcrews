@@ -19,31 +19,8 @@ interface CanvasContextItem {
   }>;
 }
 
-export function buildCanvasContextBlock(
-  items: readonly CanvasContextItem[],
-): string | null {
-  if (items.length === 0) return null;
-
-  const attachments = items.flatMap((item) => item.attachments ?? []);
-  const contextBlock = items
-    .map((item) => {
-      const isDefault = item.label.toLowerCase() === item.nodeType.toLowerCase();
-      const openTag = isDefault
-        ? "<context-group>"
-        : `<context-group title="${item.label}">`;
-      return `${openTag}\n${item.content}\n</context-group>`;
-    })
-    .join("\n");
-
-  const attachmentHint =
-    attachments.length > 0
-      ? `\n\nThe user has also attached ${attachments.length} image${
-          attachments.length === 1 ? "" : "s"
-        } - see the image block${attachments.length === 1 ? "" : "s"} in this turn.`
-      : "";
-
-  return `<connected-context>\nThe following context has been provided by the user via connected canvas nodes:\n\n${contextBlock}${attachmentHint}\n</connected-context>`;
-}
+export { buildConnectedContextBlock as buildCanvasContextBlock } from "../../shared/connected-context.ts";
+import { buildConnectedContextBlock as buildCanvasContextBlock, uniqueContextSources } from "../../shared/connected-context.ts";
 
 function isCanvasContextItem(value: unknown): value is CanvasContextItem {
   if (typeof value !== "object" || value === null) return false;
@@ -81,5 +58,5 @@ export const canvasContext: CommandHandler = (ctx, cmd, ws) => {
     return;
   }
 
-  host.setCanvasContext(buildCanvasContextBlock(cmd.items), sanitizeAttachments(cmd.items.flatMap(item => item.attachments ?? [])) ?? []);
+  host.setCanvasContext(buildCanvasContextBlock(cmd.items), sanitizeAttachments(uniqueContextSources(cmd.items).flatMap(item => item.attachments ?? [])) ?? []);
 };

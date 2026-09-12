@@ -28,7 +28,7 @@ it("offers a full reload when the root app fails to render", () => {
     </RootErrorBoundary>,
   );
 
-  expect(screen.getByRole("alert")).toHaveTextContent("Minions couldn’t load");
+  expect(screen.getByRole("alert")).toHaveTextContent("Swarmcrews couldn’t load");
   fireEvent.click(screen.getByRole("button", { name: "Reload" }));
   expect(reload).toHaveBeenCalledOnce();
 });

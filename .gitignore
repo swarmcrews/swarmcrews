@@ -25,6 +25,7 @@ dist/
 # Local documentation work, except published guides and feature documentation
 /docs/*
 !/docs/getting-started.md
+!/docs/rebrand-compatibility.md
 !/docs/progressive-system-model-retrieval.md
 !/docs/testing-strategy.md
 # Session audit records stay local; publish only sanitized, portable guidance.
@@ -66,7 +67,7 @@ data/
 *.sqlite3-shm
 *.sqlite3-wal
 
-# Minions runtime data
+# Legacy runtime data
 .canvas-worktrees/
 .minions/
 .run/
@@ -111,3 +112,7 @@ reports/
 coverage/
 playwright-report/
 test-results/
+
+# Swarmcrews runtime state (legacy .minions exclusions remain above)
+.swarmcrews/
+.swarmcrews-*/

@@ -17,7 +17,7 @@ describe("buildCodexConfig", () => {
     const bridgeConfig = {
       "mcp_servers.task-manager": {
         url: "http://127.0.0.1/mcp",
-        bearer_token_env_var: "MINIONS_BRIDGE_TOKEN_TASK_MANAGER",
+        bearer_token_env_var: "SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER",
       },
     };
 

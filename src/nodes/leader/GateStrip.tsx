@@ -1,4 +1,4 @@
-import { MinionsIcon, type MinionsIconName } from "../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon, type SwarmcrewsIconName } from "../../components/SwarmcrewsIcon.tsx";
 import { useMemo, useState } from "react";
 import "../../gate-strip.css";
 
@@ -28,7 +28,7 @@ interface GateStripProps {
 
 const STATUS_META: Record<
   GateStatus,
-  { glyph: MinionsIconName; label: string; verification: string }
+  { glyph: SwarmcrewsIconName; label: string; verification: string }
 > = {
   not_required: { glyph: "minus", label: "Not required", verification: "not required" },
   required_pending: { glyph: "warning", label: "Pending", verification: "pending" },
@@ -66,7 +66,7 @@ export function GateStrip({ gates, sessionKey, socketSend }: GateStripProps) {
                 onClick={() => setExpandedGateId(expanded ? null : gate.id)}
               >
                 <span className="gate-strip__glyph" aria-hidden="true">
-                  <MinionsIcon name={meta.glyph} size={13} />
+                  <SwarmcrewsIcon name={meta.glyph} size={13} />
                 </span>
                 <span className="gate-strip__name">{gate.name}</span>
                 <span className="gate-strip__status">{meta.label}</span>

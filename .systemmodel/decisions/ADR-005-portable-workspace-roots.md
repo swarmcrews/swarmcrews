@@ -10,7 +10,7 @@ evidence: [server/workspace-registry.ts, server/project-store.ts, server/worktre
 
 ## Context
 
-Encoding a repository path as project identity tied persisted state to one host layout, wrote Minions metadata into repositories, and excluded legitimate mounted-volume sources. Git worktrees also answer a different question from process sandboxing: they separate change sets but do not constrain what an agent process can read, write, approve, or reach over the network.
+Encoding a repository path as project identity tied persisted state to one host layout, wrote Swarmcrews metadata into repositories, and excluded legitimate mounted-volume sources. Git worktrees also answer a different question from process sandboxing: they separate change sets but do not constrain what an agent process can read, write, approve, or reach over the network.
 
 ## Decision
 
@@ -24,7 +24,7 @@ Git change mode and process sandbox policy remain separate. Sandbox requests alw
 
 ## Consequences and tradeoffs
 
-- Repositories and mounted sources remain portable and free of newly created Minions state.
+- Repositories and mounted sources remain portable and free of newly created Swarmcrews state.
 - Stable UUID routes no longer expose or depend on source path encoding.
 - Central state needs backup and retention handling separate from source repositories.
 - During migration, central and legacy roots coexist, so ownership checks must accept only the two known roots and must never delete legacy data merely because import succeeded.

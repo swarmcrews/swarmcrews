@@ -41,7 +41,7 @@ describe("ProjectHeader project navigation", () => {
     vi.mocked(listProjects).mockResolvedValue(projects);
   });
 
-  it("uses the Minions logo to return to all projects", () => {
+  it("uses the Swarmcrews logo to return to all projects", () => {
     const props = renderHeader();
 
     fireEvent.click(screen.getByRole("button", { name: "All projects" }));

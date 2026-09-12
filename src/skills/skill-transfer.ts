@@ -10,8 +10,8 @@
 import type { SkillTemplate, SkillVariable } from "./types.ts";
 import { sanitizeSkillAttachments } from "../../shared/skill-attachments.ts";
 
-/** Marker identifying a Minions skills bundle. */
-export const SKILL_TRANSFER_FORMAT = "minions-skills";
+/** Marker identifying a Swarmcrews skills bundle. */
+export const SKILL_TRANSFER_FORMAT = "swarmcrews-skills";
 /** Current transfer schema version. Bump on breaking shape changes. */
 export const SKILL_TRANSFER_VERSION = 1;
 

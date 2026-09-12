@@ -408,7 +408,7 @@ function SettingsPopover({
               <SettingsHeading
                 eyebrow="Personalize"
                 title="General"
-                description="Choose how Minions looks while you work."
+                description="Choose how Swarmcrews looks while you work."
               />
               <SettingsCard
                 title="Appearance"
@@ -659,7 +659,7 @@ function SettingsPopover({
               />
               <SettingsCard
                 title="System model"
-                description="Compile repository knowledge into Context Packs for Minions."
+                description="Compile repository knowledge into Context Packs for Swarmcrews."
               >
                 <div className="settings-mode-grid" role="radiogroup" aria-label="System model mode">
                   {([

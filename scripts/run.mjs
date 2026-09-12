@@ -23,7 +23,8 @@ if (mode === "preview" && !existsSync(join(root, "dist"))) {
 }
 
 const env = { ...process.env, HOST: host };
-const logger = process.env.MINIONS_LAUNCH_LOG ? boundedLog(process.env.MINIONS_LAUNCH_LOG) : null;
+const launchLog = process.env.SWARMCREWS_LAUNCH_LOG ?? process.env.MINIONS_LAUNCH_LOG;
+const logger = launchLog ? boundedLog(launchLog) : null;
 const children = new Set();
 const backendGroups = new Set();
 let stopping = false;
@@ -73,7 +74,7 @@ async function stop(code = 0) {
   }
 }
 function fail(error) {
-  diagnostic(`Minions stopped after a service failure; automatic crash restart is disabled: ${error.message}`);
+  diagnostic(`Swarmcrews stopped after a service failure; automatic crash restart is disabled: ${error.message}`);
   void stop(1);
 }
 function launch(args, backend = false) {
@@ -111,7 +112,7 @@ supervise(() => launch([tsx, "server/index.ts"], true), {
 if (!stopping) {
   const args = mode === "preview"
     ? ["preview", "--host", host, "--port", vitePort, "--strictPort"]
-    : ["--host", host, "--port", vitePort, "--strictPort", ...(process.env.MINIONS_NO_OPEN === "1" ? [] : ["--open"])];
+    : ["--host", host, "--port", vitePort, "--strictPort", ...((process.env.SWARMCREWS_NO_OPEN ?? process.env.MINIONS_NO_OPEN) === "1" ? [] : ["--open"])];
   frontend = launch([vite, ...args]);
   frontend.once("error", fail);
   frontend.once("exit", code => { if (!stopping) fail(new Error(`Frontend exited (${code})`)); });

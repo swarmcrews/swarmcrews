@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from "react";
 import { AtSign, Slash, CornerDownLeft, ArrowDownUp } from "lucide-react";
-import { MinionsIcon } from "../../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "../../../components/SwarmcrewsIcon.tsx";
 import { dashboardActionIcon } from "../../../dashboard-leader-actions.ts";
 import type { SlashCommand } from "./slash-commands.ts";
 
@@ -249,7 +249,7 @@ export function LeaderSlashMenu({
                     : "var(--accent)",
                 }}
               >
-                {kind === "skills" ? <MinionsIcon name="skill" size={15} /> : <Icon size={15} strokeWidth={2} />}
+                {kind === "skills" ? <SwarmcrewsIcon name="skill" size={15} /> : <Icon size={15} strokeWidth={2} />}
               </span>
               <span
                 style={{

@@ -25,7 +25,7 @@ import { reviewLifecycleToColumns, type SessionReviewLifecycle } from "./session
 import { ensureWorkItemSchema } from "./work-item-schema.ts";
 import { backfillLegacyWorkItems } from "./work-item-migration.ts";
 import { removeSessionPersistence } from "./session-persist-remove.ts";
-import { getMinionsHome } from "./workspace-registry.ts";
+import { getSwarmcrewsHome } from "./workspace-registry.ts";
 import {
   hydrateLeaderTaskState,
   persistLeaderTaskState,
@@ -41,10 +41,9 @@ let persistenceUnavailable = false;
 let retryAfter = 0;
 
 function defaultDbPath(): string {
-  if (process.env["MINIONS_SERVER_DB"]) {
-    return process.env["MINIONS_SERVER_DB"]!;
-  }
-  const dir = getMinionsHome();
+  const override = process.env["SWARMCREWS_SERVER_DB"] ?? process.env["MINIONS_SERVER_DB"];
+  if (override) return override;
+  const dir = getSwarmcrewsHome();
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {
     fs.chmodSync(dir, 0o700);

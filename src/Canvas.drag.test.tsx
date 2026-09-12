@@ -1,5 +1,6 @@
+import { mockAnimationFrames } from "../tests/helpers/animation-frames.ts";
 import { useReducer, useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { Canvas } from "./Canvas.tsx";
 import { DockProvider } from "./BottomRightDock.tsx";
@@ -8,12 +9,16 @@ import { canvasReducer } from "./canvas-state.ts";
 import { canvasScale } from "./canvas-scale.ts";
 import { resetFeatureFlags } from "./feature-flags.ts";
 import { createZone } from "./canvas-zones.ts";
-import type { CanvasNode } from "./types.ts";
+import type { CanvasAction, CanvasNode } from "./types.ts";
 import type { ProjectSettings } from "./api.ts";
 
+const advanceFrame = mockAnimationFrames();
+
+const leaderRender = vi.fn(() => <div>Drag this leader<input aria-label="Live draft" defaultValue="Keep me" /></div>);
 registerNodeType({ type: "leader", label: "Leader", defaultSize: { width: 300, height: 200 },
-  render: () => <div>Drag this leader<input aria-label="Live draft" defaultValue="Keep me" /></div> });
+  render: leaderRender });
 registerNodeType({ type: "note", label: "Note", defaultSize: { width: 300, height: 200 }, render: () => <span>Obstacle</span> });
+registerNodeType({ type: "image", label: "Image", defaultSize: { width: 300, height: 200 }, render: () => <span>Annotated image</span> });
 registerNodeType({ type: "minion", label: "Minion", defaultSize: { width: 200, height: 100 }, render: () => <span>Attached minion</span> });
 const initial: CanvasNode[] = [
   { id: "leader", type: "leader", data: { taskName: "Ship drag polish", status: "running" }, position: { x: 0, y: 0 }, size: { width: 300, height: 200 } },
@@ -21,11 +26,16 @@ const initial: CanvasNode[] = [
   createZone("release", "Release prep"),
 ];
 let current: CanvasNode[];
-function Harness({ initialNodes = initial, settings = {} }: { initialNodes?: CanvasNode[]; settings?: ProjectSettings }) {
+let currentDispatch: React.Dispatch<CanvasAction>;
+const defaultSettings: ProjectSettings = {};
+const graph = { edges: [] };
+const graphDispatch = vi.fn();
+function Harness({ initialNodes = initial, settings = defaultSettings }: { initialNodes?: CanvasNode[]; settings?: ProjectSettings }) {
   const [nodes, dispatch] = useReducer(canvasReducer, initialNodes);
   const [transform, setTransform] = useState({ x: 80, y: 60, scale: .5 });
   current = nodes;
-  return <DockProvider><Canvas nodes={nodes} dispatch={dispatch} graph={{ edges: [] }} graphDispatch={vi.fn()}
+  currentDispatch = dispatch;
+  return <DockProvider><Canvas nodes={nodes} dispatch={dispatch} graph={graph} graphDispatch={graphDispatch}
     transform={transform} setTransform={setTransform} projectSettings={settings} /></DockProvider>;
 }
 beforeEach(() => {
@@ -39,8 +49,10 @@ it("snaps by default, holds through small movements, and commits the exact previ
   const { container } = render(<Harness initialNodes={snapScene} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 }); // raw (30,108), top aligns to 100
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 100 });
   fireEvent.mouseMove(window, { clientX: 106, clientY: 140 }); // 20 screen px away: still held
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 32, y: 100 });
   expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ left: "32px", top: "100px" });
   fireEvent.mouseUp(window, { clientX: 106, clientY: 140 });
@@ -51,19 +63,53 @@ it("releases to raw movement beyond the threshold and can snap again", () => {
   render(<Harness initialNodes={snapScene} settings={{ tidyLayout: false }} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position.y).toBe(100);
   fireEvent.mouseMove(window, { clientX: 105, clientY: 146 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 152 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position.y).toBe(100);
   fireEvent.keyDown(window, { key: "Escape" });
   expect(current[0]!.position).toEqual(snapScene[0]!.position);
+});
+
+it.each([
+  ["note", true], ["image", true], ["note", false], ["image", false],
+] as const)("keeps leader collision handling after snapping past a %s (tidy: %s)", (type, tidyLayout) => {
+  const obstacle: CanvasNode = { ...initial[0]!, id: "other-leader",
+    position: { x: 1000, y: 100 }, size: { width: 300, height: 300 } };
+  const { container } = render(<Harness initialNodes={[
+    snapScene[0]!, { ...snapScene[1]!, type }, obstacle,
+  ]} settings={{ tidyLayout }} />);
+  fireEvent.mouseDown(screen.getAllByText("Drag this leader")[0]!, { button: 0, clientX: 90, clientY: 70 });
+  fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
+  expect(current[0]!.position).toEqual({ x: 30, y: 100 });
+
+  // Cross the context node, then overlap another leader after breaking the snap.
+  fireEvent.mouseMove(window, { clientX: 610, clientY: 150 });
+  advanceFrame();
+  expect(current[0]!.position).toEqual({ x: 1040, y: 160 });
+  const footprint = container.querySelector<HTMLElement>(".leader-drop-footprint")!;
+  const preview = { x: parseFloat(footprint.style.left), y: parseFloat(footprint.style.top) };
+  if (tidyLayout) {
+    expect(preview.x + 300 + 16 <= 1000 || preview.x >= 1316 ||
+      preview.y + 200 + 16 <= 100 || preview.y >= 416).toBe(true);
+  } else {
+    expect(preview).toEqual({ x: 1040, y: 160 });
+  }
+  fireEvent.mouseUp(window, { clientX: 610, clientY: 150 });
+  expect(current[0]!.position).toEqual(preview);
+  expect(current[2]!.position).toEqual(obstacle.position);
 });
 
 it("respects disabled drag snapping independently of tidy layout", () => {
   render(<Harness initialNodes={snapScene} settings={{ snapWhileDragging: false, tidyLayout: false }} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 108 });
   fireEvent.mouseUp(window, { clientX: 105, clientY: 124 });
   expect(current[0]!.position).toEqual({ x: 30, y: 108 });
@@ -74,8 +120,10 @@ it("keeps free placement after breaking away with default settings, then resets 
   const leader = screen.getByText("Drag this leader");
   fireEvent.mouseDown(leader, { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 100 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 146 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 152 });
   expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ left: "30px", top: "152px" });
   fireEvent.mouseUp(window, { clientX: 105, clientY: 146 });
@@ -84,6 +132,7 @@ it("keeps free placement after breaking away with default settings, then resets 
   // A fresh drag that never acquires a magnetic alignment still uses tidy layout.
   fireEvent.mouseDown(leader, { button: 0, clientX: 105, clientY: 146 });
   fireEvent.mouseMove(window, { clientX: 85, clientY: 146 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: -10, y: 152 });
   fireEvent.mouseUp(window, { clientX: 85, clientY: 146 });
   expect(current[0]!.position).toEqual({ x: 0, y: 144 });
@@ -95,6 +144,7 @@ it("snaps an attached cluster as one box and restores its original offsets on ca
   render(<Harness initialNodes={[...snapScene, minion]} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 100 });
   expect(current[2]!.position).toEqual({ x: 30, y: 340 });
   fireEvent.blur(window);
@@ -106,6 +156,7 @@ it("aligns ordinary nodes during dragging and preserves the alignment on drop", 
   render(<Harness initialNodes={snapScene} />);
   fireEvent.mouseDown(screen.getByText("Obstacle"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 95, clientY: 24 }); // raw (410,8) -> top at 0
+  advanceFrame();
   expect(current[1]!.position).toEqual({ x: 410, y: 0 });
   fireEvent.mouseUp(window, { clientX: 95, clientY: 24 });
   expect(current[1]!.position).toEqual({ x: 410, y: 0 });
@@ -121,6 +172,7 @@ it("aligns a multi-selection without changing offsets or snapping to itself", ()
   }
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 105, clientY: 124 });
+  advanceFrame();
   expect(current[0]!.position).toEqual({ x: 30, y: 100 });
   expect(current[1]!.position).toEqual({ x: 30, y: 340 });
   expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ left: "30px", top: "100px", height: "340px" });
@@ -142,6 +194,7 @@ it.each(["Drag this leader", "Obstacle"])("hides the full mixed selection and pr
   expect(note).toBeVisible();
   fireEvent.mouseDown(screen.getByText(origin), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 190, clientY: 100 });
+  advanceFrame();
   expect(leader).not.toBeVisible();
   expect(note).not.toBeVisible();
   expect(input.closest(".canvas-node-card")).toHaveAttribute("inert");
@@ -166,6 +219,7 @@ it("includes attached minions in the hidden group and restores every member on c
   const { container } = render(<Harness initialNodes={[...initial, minion]} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 130, clientY: 100 });
+  advanceFrame();
   expect(screen.getByText("Attached minion")).not.toBeVisible();
   expect(screen.getByText("Obstacle")).toBeVisible();
   expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ width: "300px", height: "360px" });
@@ -188,10 +242,12 @@ it("keeps both selected leaders hidden over a zone and restores the group on Esc
   });
   fireEvent.mouseDown(leaders[0]!, { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 190, clientY: 100 });
+  advanceFrame();
   expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ width: "700px", height: "200px" });
   const chip = document.querySelector('[data-zone-target="release"]');
   vi.mocked(document.elementFromPoint).mockReturnValue(chip);
   fireEvent.mouseMove(window, { clientX: 900, clientY: 100 });
+  advanceFrame();
   for (const leader of leaders) expect(leader).not.toBeVisible();
   expect(screen.getByText("Release into Release prep")).toBeVisible();
   expect(container.querySelector(".leader-drop-footprint")).toBeNull();
@@ -204,7 +260,7 @@ it("keeps both selected leaders hidden over a zone and restores the group on Esc
   expect(document.querySelector(".leader-drag-card")).toBeNull();
 });
 
-it("previews and commits the nearby upper-right opening around an upper-left neighbor", () => {
+it.each([true, false])("commits the nearby upper-right opening with a rendered preview: %s", previewRendered => {
   const initialNodes: CanvasNode[] = [
     { ...initial[0]!, size: { width: 200, height: 100 } },
     { id: "anchor", type: "note", data: {}, position: { x: 400, y: 0 }, size: { width: 400, height: 200 } },
@@ -213,8 +269,11 @@ it("previews and commits the nearby upper-right opening around an upper-left nei
   const { container } = render(<Harness initialNodes={initialNodes} />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 340, clientY: 40 });
-  expect(current.find(n => n.id === "leader")?.position).toEqual({ x: 500, y: -60 });
-  expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ left: "566px", top: "-116px" });
+  if (previewRendered) {
+    advanceFrame();
+    expect(current.find(n => n.id === "leader")?.position).toEqual({ x: 500, y: -60 });
+    expect(container.querySelector(".leader-drop-footprint")).toHaveStyle({ left: "566px", top: "-116px" });
+  }
   fireEvent.mouseUp(window, { clientX: 340, clientY: 40 });
   expect(current.find(n => n.id === "leader")?.position).toEqual({ x: 566, y: -116 });
 });
@@ -225,6 +284,7 @@ it("previews the actual tidy drop at zoom while preserving full node size and dr
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   expect(container.querySelector(".leader-drop-footprint")).toBeNull();
   fireEvent.mouseMove(window, { clientX: 310, clientY: 80 });
+  advanceFrame();
   const footprint = container.querySelector<HTMLElement>(".leader-drop-footprint")!;
   expect(footprint).toHaveStyle({ width: "300px", height: "200px" });
   const preview = { x: parseFloat(footprint.style.left), y: parseFloat(footprint.style.top) };
@@ -244,19 +304,73 @@ it("switches between canvas footprint and zone cue, then cancels without moving 
   const { container } = render(<Harness />);
   fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
   fireEvent.mouseMove(window, { clientX: 200, clientY: 80 });
+  advanceFrame();
   expect(container.querySelector(".leader-drop-footprint")).not.toBeNull();
   const chip = document.querySelector('[data-zone-target="release"]');
   vi.mocked(document.elementFromPoint).mockReturnValue(chip);
   fireEvent.mouseMove(window, { clientX: 900, clientY: 100 });
+  advanceFrame();
   expect(container.querySelector(".leader-drop-footprint")).toBeNull();
   expect(screen.getByText("Release into Release prep")).toBeVisible();
   expect(chip).toHaveAttribute("data-target", "true");
   vi.mocked(document.elementFromPoint).mockReturnValue(null);
   fireEvent.mouseMove(window, { clientX: 200, clientY: 80 });
+  advanceFrame();
   expect(container.querySelector(".leader-drop-footprint")).not.toBeNull();
   expect(chip).toHaveAttribute("data-target", "false");
   fireEvent.keyDown(window, { key: "Escape" });
   expect(current.find(n => n.id === "leader")?.position).toEqual({ x: 0, y: 0 });
   expect(screen.getByLabelText("Live draft")).toBeVisible();
   expect(container.querySelector(".leader-drop-footprint")).toBeNull();
+});
+
+it("coalesces a burst of mouse events and skips live leader renders between drag frames", () => {
+  const stationary = { ...initial[0]!, id: "stationary", position: { x: 3000, y: 0 } };
+  render(<Harness initialNodes={[...initial, stationary]} settings={{ snapWhileDragging: false, tidyLayout: false }} />);
+  fireEvent.mouseDown(screen.getAllByText("Drag this leader")[0]!, { button: 0, clientX: 90, clientY: 70 });
+  fireEvent.mouseMove(window, { clientX: 100, clientY: 80 });
+  advanceFrame();
+  const rendered = leaderRender.mock.calls.length;
+  const before = current;
+  vi.mocked(document.elementFromPoint).mockClear();
+  for (let i = 1; i <= 100; i++) fireEvent.mouseMove(window, { clientX: 100 + i, clientY: 80 + i });
+  expect(current).toBe(before);
+  expect(document.elementFromPoint).not.toHaveBeenCalled();
+  expect(leaderRender).toHaveBeenCalledTimes(rendered);
+  advanceFrame();
+  expect(current[0]!.position).toEqual({ x: 220, y: 220 });
+  expect(document.elementFromPoint).toHaveBeenCalledTimes(1);
+  expect(leaderRender).toHaveBeenCalledTimes(rendered);
+  // Live session updates must still reach the hidden renderer.
+  act(() => currentDispatch({ type: "UPDATE_NODE_DATA", id: "leader", data: { status: "waiting" } }));
+  expect(leaderRender).toHaveBeenCalledTimes(rendered + 1);
+  fireEvent.mouseUp(window, { clientX: 200, clientY: 180 });
+});
+
+it("flushes a pending cluster movement before resolving a quick drop", () => {
+  const minion: CanvasNode = { id: "minion", type: "minion", data: { leaderId: "leader" },
+    position: { x: 0, y: 260 }, size: { width: 200, height: 100 } };
+  render(<Harness initialNodes={[...initial, minion]} settings={{ snapWhileDragging: false, tidyLayout: false }} />);
+  fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
+  fireEvent.mouseMove(window, { clientX: 130, clientY: 100 });
+  fireEvent.mouseUp(window, { clientX: 130, clientY: 100 });
+  expect(current.find(n => n.id === "leader")?.position).toEqual({ x: 80, y: 60 });
+  expect(current.find(n => n.id === "minion")?.position).toEqual({ x: 80, y: 320 });
+  advanceFrame();
+  expect(current.find(n => n.id === "minion")?.position).toEqual({ x: 80, y: 320 });
+  expect(screen.queryByText("Release to place on canvas")).toBeNull();
+});
+
+it.each(["Escape", "blur"])("discards queued movement on %s", cancellation => {
+  render(<Harness />);
+  fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
+  fireEvent.mouseMove(window, { clientX: 130, clientY: 100 });
+  advanceFrame();
+  fireEvent.mouseMove(window, { clientX: 180, clientY: 150 });
+  if (cancellation === "Escape") fireEvent.keyDown(window, { key: "Escape" });
+  else fireEvent.blur(window);
+  advanceFrame();
+  expect(current[0]!.position).toEqual(initial[0]!.position);
+  expect(screen.getByLabelText("Live draft")).toBeVisible();
+  expect(document.body.style.cursor).not.toBe("grabbing");
 });

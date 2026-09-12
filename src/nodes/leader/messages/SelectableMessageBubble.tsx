@@ -19,6 +19,7 @@ import {
   MessageSelectionGroup,
 } from "./MessageSelection.tsx";
 import { browserLogger } from "../../../logging.ts";
+import { useSelectionToolbarPosition } from "./useSelectionToolbarPosition.ts";
 import "./message-selection.css";
 
 const log = browserLogger.child("selectable-message-bubble");
@@ -80,6 +81,9 @@ export const SelectableMessageBubble = memo(
       [chunks, selectedIds],
     );
     const selectedCount = selectedIds.size;
+    const { toolbarRef, controlsRef } = useSelectionToolbarPosition(
+      containerRef, isActive, selectedIds, msg.content,
+    );
 
     const updateSelectedIds = useCallback(
       (nextIds: string[], anchorChunkId: string | null) => {
@@ -250,6 +254,7 @@ export const SelectableMessageBubble = memo(
           <MessageTimestamp timestamp={msg.timestamp} />
         </div>
         <div
+          ref={toolbarRef}
           data-testid={isActive ? "leader-message-selection-toolbar" : undefined}
           aria-hidden={!isActive}
           inert={!isActive}
@@ -257,6 +262,7 @@ export const SelectableMessageBubble = memo(
           className="message-selection-toolbar"
         >
           <div
+            ref={controlsRef}
             className="message-selection-toolbar__controls"
             onClick={handleToolbarClick}
           >

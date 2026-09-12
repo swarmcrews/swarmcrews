@@ -1,9 +1,14 @@
-import type { MinionsIconName } from "../components/MinionsIcon.tsx";
+import type { SwarmcrewsIconName } from "../components/SwarmcrewsIcon.tsx";
 
-export const SKILL_ICON_PREFIX = "minions:";
+export const SKILL_ICON_PREFIX = "swarmcrews:";
+export const LEGACY_SKILL_ICON_PREFIX = "minions:";
+export function normalizeSkillIcon(value: string): string {
+  return value.startsWith(LEGACY_SKILL_ICON_PREFIX)
+    ? SKILL_ICON_PREFIX + value.slice(LEGACY_SKILL_ICON_PREFIX.length) : value;
+}
 
 export interface SkillIconEntry {
-  name: MinionsIconName;
+  name: SwarmcrewsIconName;
   label: string;
   group: string;
   keywords: string;
@@ -11,7 +16,7 @@ export interface SkillIconEntry {
 
 // Stable IDs travel in the existing icon string through save, import and export.
 // Keep the catalog explicit: no remote assets or dynamically imported icon packs.
-const groups: { group: string; keywords: string; names: MinionsIconName[] }[] = [
+const groups: { group: string; keywords: string; names: SwarmcrewsIconName[] }[] = [
   { group: "Code", keywords: "development programming software engineering", names: [
     "code", "terminal", "brackets", "variables", "branch", "merge", "commit", "worktree", "database", "api", "package", "puzzle", "cpu", "regex",
   ] },
@@ -38,7 +43,7 @@ const groups: { group: string; keywords: string; names: MinionsIconName[] }[] = 
   ] },
 ];
 
-const labels: Partial<Record<MinionsIconName, string>> = {
+const labels: Partial<Record<SwarmcrewsIconName, string>> = {
   appearance: "Palette", api: "API", cpu: "Processor", regex: "Regular expression",
   devops: "Servers", analysis: "Research", testing: "Test tube", live: "Lightning",
   subskills: "Sub-skills", compaction: "Focus", waived: "Cycle", planned: "Circle",

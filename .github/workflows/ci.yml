@@ -47,7 +47,7 @@ jobs:
         # makes an accidental node-gyp rebuild fail even on those runners.
         run: pnpm install --frozen-lockfile
         env:
-          NODE_GYP_FORCE_PYTHON: C:\minions-no-python\python.exe
+          NODE_GYP_FORCE_PYTHON: C:\swarmcrews-no-python\python.exe
       - name: Test startup dependency checks
         run: pnpm test:install
       - name: Test SQLite native binary

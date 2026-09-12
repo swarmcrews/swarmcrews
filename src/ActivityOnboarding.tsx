@@ -16,7 +16,7 @@ const LEADER_CAPABILITIES = [
 /** First-run guidance presented in the same header pattern as the New leader workspace. */
 export function ActivityOnboarding() {
   return (
-    <header className="act-launch-head act-onboarding" aria-label="Getting started with Minions">
+    <header className="act-launch-head act-onboarding" aria-label="Getting started with Swarmcrews">
       <div className="act-onboarding__intro">
         <span className="act-launch-eyebrow">Your first leader</span>
         <h2>What should it do?</h2>

@@ -29,7 +29,7 @@ import {
 
 const assignTaskInputSchema = z.object({
   context: minionContextSchema.optional()
-    .describe("Task-scoped Minions instruction profile, role, operating instructions, and reference data. For minimal handoffs also set inheritSkills=false and include_canvas_context=false."),
+    .describe("Task-scoped Swarmcrews instruction profile, role, operating instructions, and reference data. For minimal handoffs also set inheritSkills=false and include_canvas_context=false."),
   taskId: z
     .string()
     .describe(

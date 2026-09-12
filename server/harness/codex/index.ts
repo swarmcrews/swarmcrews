@@ -1,6 +1,6 @@
 /** Codex SDK adapter: normalizes Thread.runStreamed events via ./translate.ts.
  * Tools use the HTTP MCP bridge; ./mcp-config.ts supplies config and env-only tokens.
- * Images become local_image inputs under os.tmpdir()/minions-codex-attachments/<sessionKey>/.
+ * Images become local_image inputs under os.tmpdir()/swarmcrews-codex-attachments/<sessionKey>/.
  */
 
 import { Codex } from "@openai/codex-sdk";
@@ -325,7 +325,7 @@ class CodexHarness implements AgentHarness {
 
 /**
  * Build the ThreadOptions consumed by Codex.startThread / resumeThread.
- * Maps Minions normalized options onto Codex's native shape.
+ * Maps Swarmcrews normalized options onto Codex's native shape.
  */
 function buildThreadOptions(opts: HarnessStartOptions): ThreadOptions {
   const out: ThreadOptions = {

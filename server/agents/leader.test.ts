@@ -218,7 +218,7 @@ describe("leader agent wiring", () => {
     ]) {
       expect(prompt).toContain(required);
     }
-    expect(prompt).toContain('wake_on: "any_terminal"');
+    expect(prompt).toContain("callable schemas define arguments and behavior");
   });
 
   it("assembles the canonical core before server skills and the user prefix", () => {

@@ -93,7 +93,7 @@ export function buildTaskSpawnPrompt(args: TaskSpawnPromptArgs): string {
   if (args.projectContext) {
     const projectContext = renderSourceExcerpt(args.projectContext, PROJECT_CONTEXT_CHAR_LIMIT,
       args.projectContextSourceRef, PROJECT_CONTEXT_TRUNCATED_MARKER);
-    lines.push("", "## Minions project context", "", projectContext);
+    lines.push("", "## Swarmcrews project context", "", projectContext);
   }
 
   if (args.contextPack) {

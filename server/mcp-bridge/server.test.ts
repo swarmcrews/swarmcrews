@@ -145,7 +145,7 @@ describe("MCP bridge HTTP server", () => {
     };
     expect(result.protocolVersion).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(result.capabilities.tools).toBeDefined();
-    expect(result.serverInfo.name).toBe("minions-bridge");
+    expect(result.serverInfo.name).toBe("swarmcrews-bridge");
   });
 
   it("tools/list returns the registered tools for the correct group", async () => {

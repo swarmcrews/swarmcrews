@@ -62,7 +62,7 @@ import type { SettingsSaveState } from "./ContextActionsSettings.tsx";
 const WS_URL = buildWsUrl();
 const log = browserLogger.child("app");
 const PROJECT_HEADER_HEIGHT = 44;
-const DEFAULT_DOCUMENT_TITLE = "Minions";
+const DEFAULT_DOCUMENT_TITLE = "Swarmcrews";
 
 const SkillEditor = lazy(() =>
   import("./SkillEditor.tsx").then(({ SkillEditor: Component }) => ({ default: Component })),
@@ -96,7 +96,7 @@ function ModalLoadingFallback({ label }: { label: string }) {
 
 export function formatProjectDocumentTitle(projectName: string): string {
   const name = projectName.trim();
-  return name ? `${name} (Minions)` : DEFAULT_DOCUMENT_TITLE;
+  return name ? `${name} (Swarmcrews)` : DEFAULT_DOCUMENT_TITLE;
 }
 
 /**
@@ -303,7 +303,7 @@ function ProjectView({
     [transform, workspaceNodes],
   );
 
-  // Spawn a Leader node to explore the project and populate Minions context.
+  // Spawn a Leader node to explore the project and populate Swarmcrews context.
   const handleSpawnContextExplorer = useCallback(() => {
     const typeDef = getAllNodeTypes().find((t) => t.type === "leader");
     if (!typeDef) return undefined;
@@ -781,14 +781,14 @@ function ProjectView({
                   workItemRuns={workItemState.runs}
                   runNextCursor={workItemState.runNextCursor}
                   onLoadRuns={workItemState.loadRuns}
-                  onPromptWorkItem={(workItemId, prompt) => {
+                  onPromptWorkItem={(workItemId, prompt, contextItems) => {
                     const item = workItemState.items[workItemId];
                     if (!item) return false;
                     if (item.lifecycle.runtimeState === "waiting"
                       && item.waitKind === "decision" && item.currentRunKey) {
-                      workItemState.reply(item, prompt);
+                      workItemState.reply(item, prompt, contextItems);
                     } else {
-                      workItemState.start(item, prompt);
+                      workItemState.start(item, prompt, contextItems);
                     }
                     return true;
                   }}

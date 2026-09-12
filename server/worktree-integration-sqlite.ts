@@ -102,7 +102,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
       const lineage = repo.getLineage(this.db, resolution.lineage_id); if (!lineage) return;
       const headSha = await this.collectContribution({ repositoryPath: lineage.repository_path,
         worktreePath: lineage.integration_worktree_path, sourceRef: lineage.integration_ref,
-        message: `minions: resolve lineage ${lineage.id}` });
+        message: `swarmcrews: resolve lineage ${lineage.id}` });
       completeLineageResolutionRun(this.db, { runKey, expectedRunRevision: resolution.revision,
         expectedLineageRevision: lineage.revision, integrationHeadSha: headSha,
         actor: "runtime", at: this.now() }); this.refresh(lineage.id, "lineage_conflict_resolved"); return;
@@ -112,7 +112,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
     const lineage = repo.getLineage(this.db, row.lineage_id); if (!lineage) return;
     const headSha = await this.collectContribution({ repositoryPath: lineage.repository_path,
       worktreePath: row.worktree_path, sourceRef: row.branch_name,
-      message: `minions: collect ${row.work_item_id} ${runKey}` });
+      message: `swarmcrews: collect ${row.work_item_id} ${runKey}` });
     const changed = repo.setContributionHead(this.db, { contributionId: row.id, headSha,
       expectedRevision: row.revision, at: this.now(), actor: "runtime" });
     this.publish(this.state(changed.lineage_id), "contribution_ready");
@@ -138,7 +138,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
     return this.command(input.requestId, "create_lineage", input, () => { repo.createLineage(this.db,
       { id: lineageId, projectId: item.project_id, repositoryPath: item.project_path,
         targetRef: base.targetRef, baseSha: base.baseSha,
-        integrationRef: `refs/heads/minions/integration/${lineageId}`,
+        integrationRef: `refs/heads/swarmcrews/integration/${lineageId}`,
         integrationWorktreePath: path.join(ownedWorktreeRoot(item.project_path), `integration-${lineageId}`),
         at: this.now(), actor: "user" });
       joinWorkItemLineage(this.db, { lineageId, workItemId: item.id,
@@ -197,7 +197,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
         repo.createLineage(this.db, { id: lineageId, projectId: item.project_id,
           repositoryPath: legacy.worktree_project_path ?? item.project_path,
           targetRef: base.targetRef, baseSha: base.baseSha,
-          integrationRef: `refs/heads/minions/integration/${lineageId}`,
+          integrationRef: `refs/heads/swarmcrews/integration/${lineageId}`,
           integrationWorktreePath: path.join(ownedWorktreeRoot(item.project_path), `integration-${lineageId}`),
           at: this.now(), actor: "migration" });
         joinWorkItemLineage(this.db, { lineageId, workItemId: item.id,
@@ -235,7 +235,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
     if (!lineage) { const created = await this.createLineage({ requestId: `auto:${input.runKey}`, workItemId: item.id });
       lineage = repo.getLineage(this.db, created.id); }
     if (!lineage) throw new Error("open lineage allocation failed");
-    const contributionId = id("contribution", input.runKey); const branch = `minions/contribution/${contributionId}`;
+    const contributionId = id("contribution", input.runKey); const branch = `swarmcrews/contribution/${contributionId}`;
     const worktreePath = path.join(ownedWorktreeRoot(lineage.repository_path), contributionId);
     const row = repo.addContribution(this.db, { id: contributionId, lineageId: lineage.id,
       workItemId: item.id, runKey: input.runKey, branchName: branch, worktreePath,
@@ -360,7 +360,7 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
         sourceRef: row.branch_name, targetRef: lineage.integration_ref, strategy: input.strategy });
       const headSha = input.strategy === "manual" ? null : await this.collectContribution({
         repositoryPath: lineage.repository_path, worktreePath: row.worktree_path,
-        sourceRef: row.branch_name, message: `minions: resolve ${row.id} with ${input.strategy}` });
+        sourceRef: row.branch_name, message: `swarmcrews: resolve ${row.id} with ${input.strategy}` });
       return this.command(input.requestId, "resolve_conflict", input, () => {
         const current = repo.getContribution(this.db, row.id);
         if (!current || current.revision !== input.expectedRevision) throw new Error("stale contribution revision");

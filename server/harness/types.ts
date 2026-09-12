@@ -1,7 +1,7 @@
 /**
  * Core types for the AgentHarness abstraction.
  *
- * Defines the seam between Minions and any LLM agent harness:
+ * Defines the seam between Swarmcrews and any LLM agent harness:
  * the AgentHarness interface, normalized event/tool types, and
  * per-harness capability flags.
  *
@@ -249,7 +249,7 @@ export interface HarnessStaticInfo {
 }
 
 /**
- * The seam between Minions and any LLM agent harness.
+ * The seam between Swarmcrews and any LLM agent harness.
  *
  * A harness owns: model selection, the chat/query loop, tool registration,
  * abort, and resume. It owns nothing about the canvas, bus, persistence,

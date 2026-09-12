@@ -243,7 +243,7 @@ describe("mcp-server-store", () => {
     it("warns about command execution and plaintext sidecar secrets without echoing them", () => {
       const messages = mcpServerSecurityWarnings(makeStdio({ env: { TOKEN: "super-secret" } }));
       expect(messages.join(" ")).toMatch(/executes a local command/);
-      expect(messages.join(" ")).toMatch(/stored in the private Minions workspace state/);
+      expect(messages.join(" ")).toMatch(/stored in the private Swarmcrews workspace state/);
       expect(messages.join(" ")).not.toContain("super-secret");
     });
   });

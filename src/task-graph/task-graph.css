@@ -769,6 +769,20 @@ button.tg-task-chip,
 .tg-detail section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-default); }
 .tg-detail h4 { color: var(--text-muted); font: 600 8px var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; }
 .tg-detail p { margin: 5px 0; color: var(--text-secondary); font-size: 9px; line-height: 1.45; }
+.tg-retry-feedback { overflow-wrap: anywhere; }
+.tg-retry-feedback--error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--status-error) 30%, var(--border-default));
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--status-error) 6%, var(--bg-surface));
+  color: var(--status-error);
+  font: 400 var(--text-size-label)/var(--leading-ui) var(--font-sans);
+}
 .tg-detail__status-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-muted); font: 8px var(--font-mono); }
 .tg-detail__brief { padding: 12px; border: 1px solid var(--border-default); border-radius: 8px; background: color-mix(in srgb, var(--bg-surface) 72%, var(--bg-secondary)); }
 .tg-detail section.tg-detail__brief { border-top: 1px solid var(--border-default); }

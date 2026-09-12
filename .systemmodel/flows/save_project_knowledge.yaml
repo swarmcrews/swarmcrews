@@ -9,7 +9,7 @@ suggested_files: [ shared/project-context.ts, server/task-tools/update-project-c
 suggested_tests: [ server/task-tools/update-project-context.test.ts, src/ProjectPanel.test.tsx, src/components/ProjectTree.test.tsx, src/nodes/MarkdownNode.test.tsx, src/SkillsBrowser.test.tsx, src/McpServersBrowser.test.tsx, src/api.test.ts ]
 steps:
   - Edit a supported project artifact through authenticated REST or spatial autosave.
-  - Let a project-bound Leader replace Minions project context through the registered update_project_context tool instead of writing a repository context.md.
+  - Let a project-bound Leader replace Swarmcrews project context through the registered update_project_context tool instead of writing a repository context.md.
   - Enforce project ownership, path guards, artifact sanitation, and honest error reporting.
   - Persist workspace knowledge and canvas state beneath the registered UUID state root.
   - Reuse the artifact deliberately as graph context, card context, preset, skill, or future MCP configuration.

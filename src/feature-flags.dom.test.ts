@@ -19,7 +19,7 @@ import {
   subscribeFeatureFlags,
 } from "./feature-flags.ts";
 
-const STORAGE_KEY = "minions:feature-flags";
+const STORAGE_KEY = "swarmcrews:feature-flags";
 
 beforeEach(() => {
   window.localStorage.clear();

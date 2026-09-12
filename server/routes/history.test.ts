@@ -67,10 +67,11 @@ describe("authenticated bounded history HTTP contract", () => {
   it("limits link credentials to read-only archive routes", () => {
     const req = { method: "GET", originalUrl: "/api/history/s", headers: { cookie: "minions_history=secret" } } as Request;
     expect(historyCookieToken(req)).toBe("secret");
+    expect(historyCookieToken({ ...req, headers: { cookie: "minions_history=old; swarmcrews_history=new" } } as Request)).toBe("new");
     expect(historyCookieToken({ ...req, method: "POST" } as Request)).toBeNull();
     expect(historyCookieToken({ ...req, originalUrl: "/api/files/save" } as Request)).toBeNull();
     let settings: unknown;
-    setHistoryCookie(req, { cookie: (_name: string, _token: string, opts: unknown) => { settings = opts; } } as Response, "secret");
+    setHistoryCookie(req, { cookie: (name: string, _token: string, opts: unknown) => { expect(name).toBe("swarmcrews_history"); settings = opts; } } as Response, "secret");
     expect(settings).toMatchObject({ path: "/api/history", httpOnly: true, sameSite: "strict" });
   });
 });

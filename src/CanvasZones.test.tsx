@@ -1,3 +1,4 @@
+import { mockAnimationFrames } from "../tests/helpers/animation-frames.ts";
 import { useReducer, useRef, useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +10,8 @@ import { resetFeatureFlags } from "./feature-flags.ts";
 import { useCanvasZones, type CanvasZonesController } from "./use-canvas-zones.ts";
 import { registerNodeType } from "./node-registry.ts";
 import type { CanvasAction, CanvasNode } from "./types.ts";
+
+const advanceFrame = mockAnimationFrames();
 
 registerNodeType({ type: "leader", label: "Leader", defaultSize: { width: 100, height: 100 },
   render: () => <><div>Leader drag handle</div><input aria-label="Draft" defaultValue="keep my draft" /></> });
@@ -34,7 +37,7 @@ function Harness() {
     {nodes.filter(n => n.type !== "canvas-zone").map(node => <CanvasNodeComponent key={node.id} node={node}
       parked={c.hiddenMembership.has(node.id)} isSelected={selectedIds.has(node.id)}
       onSelect={id => setSelectedIds(new Set([id]))} onMove={vi.fn()} onUpdateData={vi.fn()}
-      onDragStart={c.beginDrag} onDragEnd={c.endDrag} onMoveToZone={c.choose} />)}
+      onDragStart={c.beginDrag} onDragMove={c.moveDrag} onDragEnd={c.endDrag} onMoveToZone={c.choose} />)}
     <CanvasZones controller={c} nodes={nodes} selectedIds={selectedIds} transform={transform} />
   </div>;
 }
@@ -102,20 +105,20 @@ describe("Canvas workspaces", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save icon" }));
     await waitFor(() => expect(changeIcon).toHaveFocus());
     expect(c.activeId).toBe(GLOBAL_WORKSPACE_ID);
-    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("minions:rocket");
-    expect(screen.getByRole("button", { name: "Switch to Release prep" }).querySelector('[data-minions-icon="rocket"]')).not.toBeNull();
+    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("swarmcrews:rocket");
+    expect(screen.getByRole("button", { name: "Switch to Release prep" }).querySelector('[data-swarmcrews-icon="rocket"]')).not.toBeNull();
     fireEvent.click(changeIcon);
     fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
-    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("minions:rocket");
+    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("swarmcrews:rocket");
     fireEvent.click(changeIcon);
     fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
     fireEvent.click(screen.getByRole("button", { name: "Save icon" }));
-    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("minions:folder");
+    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("swarmcrews:folder");
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("minions:rocket");
+    expect(c.zones.find(z => z.id === "release")?.data.icon).toBe("swarmcrews:rocket");
     switchTo("Release prep");
-    expect(screen.getByRole("button", { name: "Workspaces · Release prep" }).querySelector('[data-minions-icon="rocket"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Workspaces · Release prep" }).querySelector('[data-swarmcrews-icon="rocket"]')).not.toBeNull();
   });
   it("creates a workspace with an optional library icon", () => {
     mount();
@@ -124,8 +127,8 @@ describe("Canvas workspaces", () => {
     fireEvent.click(screen.getByText("Choose workspace icon"));
     fireEvent.click(screen.getByRole("button", { name: "Compass" }));
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
-    expect(c.zones.find(z => z.data.name === "Research")?.data.icon).toBe("minions:compass");
-    expect(screen.getByRole("button", { name: "Workspaces · Research" }).querySelector('[data-minions-icon="compass"]')).not.toBeNull();
+    expect(c.zones.find(z => z.data.name === "Research")?.data.icon).toBe("swarmcrews:compass");
+    expect(screen.getByRole("button", { name: "Workspaces · Research" }).querySelector('[data-swarmcrews-icon="compass"]')).not.toBeNull();
   });
   it("discloses destinations on demand and returns keyboard focus when dismissed", () => {
     render(<Harness />);
@@ -275,8 +278,10 @@ describe("Canvas workspaces", () => {
     vi.mocked(document.elementFromPoint).mockReturnValue(chip);
     fireEvent.mouseDown(screen.getByText("Leader drag handle"), { button: 0, clientX: 50, clientY: 50 });
     fireEvent.mouseMove(window, { clientX: 60, clientY: 50 });
+    advanceFrame();
     act(() => dispatch({ type: "MOVE_NODE", id: "leader", position: { x: 5000, y: 5000 } }));
     fireEvent.mouseMove(window, { clientX: 900, clientY: 100 });
+    advanceFrame();
     expect(chip).toHaveAttribute("data-target", "true");
     fireEvent.mouseUp(window, { clientX: 900, clientY: 100 });
     expect(c.membership.get("leader")?.id).toBe("release");
@@ -288,6 +293,7 @@ describe("Canvas workspaces", () => {
     mount();
     fireEvent.mouseDown(screen.getByText("Leader drag handle"), { button: 0 });
     fireEvent.mouseMove(window, { clientX: 10, clientY: 10 });
+    advanceFrame();
     act(() => dispatch({ type: "MOVE_NODE", id: "leader", position: { x: 500, y: 500 } }));
     fireEvent.keyDown(window, { key: "Escape" });
     expect(state.find(n => n.id === "leader")?.position).toEqual({ x: 10, y: 20 });
@@ -304,7 +310,7 @@ describe("Canvas workspaces", () => {
     expect(screen.queryByRole("button", { name: "Switch to one" })).toBeNull();
   });
   it("keeps workspaces available with a stale disabled flag", () => {
-    localStorage.setItem("minions:feature-flags", JSON.stringify({ "canvas-zones": false }));
+    localStorage.setItem("swarmcrews:feature-flags", JSON.stringify({ "canvas-zones": false }));
     mount(); transfer();
     expect(screen.getByRole("complementary", { name: "Canvas workspaces" })).toBeVisible();
     expect(c.hiddenMembership.has("leader")).toBe(true);

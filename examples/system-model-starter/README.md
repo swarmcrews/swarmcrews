@@ -19,4 +19,4 @@ root, then replace the example names, globs, files, and tests with real ones.
   no errors.
 
 After editing, run your repository's system-model validation command. In
-Minions itself that is `pnpm system-model:validate`.
+Swarmcrews itself that is `pnpm system-model:validate`.

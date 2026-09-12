@@ -45,3 +45,12 @@ describe("primary run planning config", () => {
       .toThrow("2 MiB");
   });
 });
+
+it("does not let source additions overwrite the complete snapshot or pollute user directives", () => {
+  const full = "<connected-context>Existing A and new B</connected-context>";
+  const prior = resolvePrimaryRunConfig(null, { prompt: full + "\nInitial request" });
+  const delta = '<connected-context-update><context-group source-id="b" update="add">B</context-group></connected-context-update>';
+  const next = resolvePrimaryRunConfig(prior.json, { prompt: delta + "\nNext request" });
+  expect(next.config.planningContext).toBe(full);
+  expect(next.config.userDirectives).toEqual(["Initial request", "Next request"]);
+});

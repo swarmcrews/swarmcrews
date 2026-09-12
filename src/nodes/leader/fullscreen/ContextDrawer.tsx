@@ -1,5 +1,5 @@
 import { CrewIcon } from "../../../components/CrewIcon.tsx";
-import { MinionsIcon } from "../../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "../../../components/SwarmcrewsIcon.tsx";
 import { useEffect, useId, useState, type ReactNode, type RefObject } from "react";
 import { buildLeaderSystemPrompt } from "../../../prompts/build-leader-prompt.ts";
 import { CopyButton } from "../../../components/CopyButton.tsx";
@@ -304,7 +304,7 @@ function OverviewPanel({ data }: { data: LeaderData }) {
             fontSize: 11,
           }}
         >
-          <MinionsIcon name="wait" size={13} /> Waiting · {Math.ceil((data.waitUntil - Date.now()) / 1000)}s
+          <SwarmcrewsIcon name="wait" size={13} /> Waiting · {Math.ceil((data.waitUntil - Date.now()) / 1000)}s
           remaining
           {data.waitReason && (
             <div
@@ -518,7 +518,7 @@ function SkillsPanel({
           cursor: "pointer",
         }}
       >
-        <MinionsIcon name="skill" size={13} /> Manage skills {skillIds.length > 0 ? `(${skillIds.length})` : ""}
+        <SwarmcrewsIcon name="skill" size={13} /> Manage skills {skillIds.length > 0 ? `(${skillIds.length})` : ""}
       </button>
       <ul className="leader-fs-skill-list">{skillIds.map(id => <li key={id}>{id}</li>)}</ul>
       {/* Note: The actual SkillFlyout modal is rendered by LeaderNodeRenderer

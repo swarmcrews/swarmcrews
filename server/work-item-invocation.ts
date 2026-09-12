@@ -11,6 +11,8 @@ export interface WorkItemInvocation {
   parentRunKey?: string; taskId?: string;
   systemPrompt?: string; model?: string; thinkingConfig?: ThinkingConfig;
   attachments?: import("./session-host-types.ts").ImageAttachment[];
+  canvasAttachments?: import("./session-host-types.ts").ImageAttachment[];
+  promptAttachments?: import("./session-host-types.ts").ImageAttachment[];
   harness?: string; permissionMode?: string;
   sandboxPolicy?: import("../shared/workspace-contracts.ts").SandboxPolicy;
   executorClass?: "mechanical" | "standard" | "reasoning"; skillIds?: string[]; skillSnapshotId?: string | undefined; skillValues?: Record<string, Record<string, string>>;

@@ -37,7 +37,7 @@ function canBind(port) {
   });
 }
 
-console.log("\nMinions — host checks\n");
+console.log("\nSwarmcrews — host checks\n");
 await check("Node.js ≥ 22", async () => {
   const major = Number.parseInt(process.versions.node.split(".")[0], 10);
   if (major < 22) throw new Error(`found v${process.versions.node}; upgrade to Node 22 or newer`);

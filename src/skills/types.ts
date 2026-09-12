@@ -65,7 +65,7 @@ export interface SkillTemplate {
   description: string;
   /** Category for grouping */
   category: "code" | "docs" | "testing" | "devops" | "analysis" | "design" | "general";
-  /** Stable minions:<name> icon ID, legacy emoji, or custom text badge. */
+  /** Stable swarmcrews:<name> (or legacy minions:<name>) icon ID, legacy emoji, or custom text badge. */
   icon: string;
   /** Accent color hex for UI */
   accentColor: string;
@@ -92,7 +92,7 @@ export interface SkillTemplate {
   /**
    * True for read-only, code-authored built-in presets (bridged from
    * `shared/skill-presets.ts`). These are pickable/taggable but never written
-   * to the project's `.minions/skills.json` and cannot be deleted from the UI.
+   * to the project's `$SWARMCREWS_HOME/workspaces/<uuid>/skills.json` and cannot be deleted from the UI.
    * Editing one creates a project override (a normal, persisted copy).
    */
   builtIn?: boolean;

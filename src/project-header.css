@@ -1,9 +1,9 @@
 .project-header-logo {
   position: relative;
   flex: 0 0 auto;
-  width: 75px;
+  width: 154px;
   height: 28px;
-  padding: 0;
+  padding: 3px 5px;
   background: transparent;
   border: 0;
   border-radius: 6px;
@@ -21,25 +21,6 @@
 .project-switcher__actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.project-header-logo__layer {
-  position: absolute;
-  inset: 5px 7px;
-  background: var(--text-primary);
-  -webkit-mask-image: url("../assets/minions-logo.png");
-  mask-image: url("../assets/minions-logo.png");
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: contain;
-  mask-size: contain;
-}
-
-.project-header-logo__crown {
-  background: var(--accent);
-  clip-path: inset(25% 63.5% 60% 27.5%);
 }
 
 .project-switcher {
@@ -310,12 +291,12 @@
 
 @media (max-width: 720px) {
   .project-header-logo {
-    width: 63px;
+    width: 32px;
   }
 
-  .project-header-logo__layer {
-    inset-inline: 5px;
-  }
+  .project-header-logo .brand__wordmark { display: none; }
+  .project-header-logo .brand { aspect-ratio: 1; }
+  .project-header-logo .brand__mark { flex-basis: 100%; }
 
   .project-switcher__trigger {
     max-width: 32vw;
@@ -333,7 +314,7 @@
 .project-header-save-status:empty { display: none !important; }
 @media (max-width: 640px) {
   .project-header { gap: 6px !important; padding-inline: 8px !important; }
-  .project-header-logo { width: 46px; }
+  .project-header-logo { width: 30px; }
   .project-switcher { flex: 1; }
   .project-switcher__trigger { padding-inline: 4px; }
   .project-header-save-status { max-width: 70px; padding-inline: 2px !important; }

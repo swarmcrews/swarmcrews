@@ -303,7 +303,7 @@ export function restartServer(): Promise<{ ok: true; restarting: true }> {
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("API error 404")) {
       throw new Error(
-        "Server restart is not available on the running backend yet. Restart Minions once manually, then this settings action will work.",
+        "Server restart is not available on the running backend yet. Restart Swarmcrews once manually, then this settings action will work.",
       );
     }
     throw err;

@@ -1,4 +1,4 @@
-import { MinionsIcon, type MinionsIconName } from "./MinionsIcon.tsx";
+import { SwarmcrewsIcon, type SwarmcrewsIconName } from "./SwarmcrewsIcon.tsx";
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { NormalizedEvent } from "../../shared/normalized-event.ts";
 
@@ -42,7 +42,7 @@ function formatRateLimitMessage(event: Extract<NormalizedEvent, { kind: "rate_li
 
 const BANNER_CONFIG: Record<
   BannerKind,
-  { icon: MinionsIconName; color: string; bg: string; border: string }
+  { icon: SwarmcrewsIconName; color: string; bg: string; border: string }
 > = {
   rate_limit: {
     icon: "wait",
@@ -265,7 +265,7 @@ export function StatusBannerStack({
                 textAlign: "center",
               }}
             >
-              <MinionsIcon name={config.icon} size={14} />
+              <SwarmcrewsIcon name={config.icon} size={14} />
             </span>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600 }}>{banner.message}</div>
@@ -302,7 +302,7 @@ export function StatusBannerStack({
               onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
               onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.5")}
             >
-              <MinionsIcon name="close" size={14} />
+              <SwarmcrewsIcon name="close" size={14} />
             </button>
             <ProgressBar ttl={banner.ttl} timestamp={banner.timestamp} />
           </div>

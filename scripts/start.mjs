@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Launches Minions (server + vite) detached in the background and returns to
+// Launches Swarmcrews (server + vite) detached in the background and returns to
 // the terminal. Logs are redirected to a file rather than streamed inline.
 //   pnpm start          start in background
 //   pnpm start stop     stop the background service
@@ -21,8 +21,12 @@ import { checkDependencies } from "./check-dependencies.mjs";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = join(scriptDir, "..");
 const runDir = join(root, ".run");
-const logFile = join(runDir, "minions.log");
-const pidFile = join(runDir, "minions.pid");
+const legacyPidFile = join(runDir, "minions.pid");
+// Adopt a live legacy launcher so status/stop/restart retain process ownership.
+const currentPidFile = join(runDir, "swarmcrews.pid");
+const useLegacy = !isRunning(readPidAt(currentPidFile)) && isRunning(readPidAt(legacyPidFile));
+let pidFile = useLegacy ? legacyPidFile : join(runDir, "swarmcrews.pid");
+let logFile = join(runDir, useLegacy ? "minions.log" : "swarmcrews.log");
 const tailscaleFile = join(runDir, "tailscale.enabled");
 const isWin = process.platform === "win32";
 const vitePort = process.env["VITE_PORT"] ?? "6173";
@@ -48,10 +52,14 @@ switch (action) {
     process.exit(1);
 }
 
+function readPidAt(file) {
+  if (!existsSync(file)) return null;
+  const pid = Number(readFileSync(file, "utf8").trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
 function readPid() {
-  if (!existsSync(pidFile)) return null;
-  const pid = Number.parseInt(readFileSync(pidFile, "utf8").trim(), 10);
-  return Number.isInteger(pid) ? pid : null;
+  return readPidAt(pidFile);
 }
 
 function isRunning(pid) {
@@ -72,7 +80,7 @@ function rel(p) {
 function start(enableTail = tailscale) {
   const existing = readPid();
   if (isRunning(existing)) {
-    console.log(`Minions is already running (pid ${existing}).`);
+    console.log(`Swarmcrews is already running (pid ${existing}).`);
     if (enableTail) {
       enableTailscaleServe();
       mkdirSync(runDir, { recursive: true });
@@ -83,6 +91,8 @@ function start(enableTail = tailscale) {
     return;
   }
 
+  pidFile = join(runDir, "swarmcrews.pid");
+  logFile = join(runDir, "swarmcrews.log");
   checkDependencies(["tsx", "vite", "better-sqlite3"]);
   mkdirSync(runDir, { recursive: true });
   const child = spawn(process.execPath, [join(scriptDir, "run.mjs"), "dev"], {
@@ -90,7 +100,7 @@ function start(enableTail = tailscale) {
     detached: true,
     // The runner owns rotation; inherited append descriptors bypass its bound.
     stdio: "ignore",
-    env: { ...process.env, MINIONS_LAUNCH_LOG: logFile },
+    env: { ...process.env, SWARMCREWS_LAUNCH_LOG: logFile },
     shell: false,
     windowsHide: true,
   });
@@ -110,7 +120,7 @@ function start(enableTail = tailscale) {
     writeFileSync(tailscaleFile, vitePort);
   }
 
-  console.log(`Minions started in background (pid ${child.pid}).`);
+  console.log(`Swarmcrews started in background (pid ${child.pid}).`);
   console.log(`  logs:   ${rel(logFile)}`);
   console.log(`  status: pnpm status`);
   console.log(`  stop:   pnpm stop`);
@@ -119,7 +129,7 @@ function start(enableTail = tailscale) {
 function stop() {
   const pid = readPid();
   if (!isRunning(pid)) {
-    console.log("Minions is not running.");
+    console.log("Swarmcrews is not running.");
     if (existsSync(pidFile)) rmSync(pidFile);
     if (existsSync(tailscaleFile)) {
       disableTailscaleServe();
@@ -152,14 +162,14 @@ function stop() {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
   }
   if (isRunning(pid)) {
-    throw new Error(`Minions (pid ${pid}) did not stop; preserving its ownership record.`);
+    throw new Error(`Swarmcrews (pid ${pid}) did not stop; preserving its ownership record.`);
   }
   if (existsSync(pidFile)) rmSync(pidFile);
   if (existsSync(tailscaleFile)) {
     disableTailscaleServe();
     rmSync(tailscaleFile, { force: true });
   }
-  console.log(`Minions stopped (pid ${pid}).`);
+  console.log(`Swarmcrews stopped (pid ${pid}).`);
 }
 
 function restart() {
@@ -181,11 +191,11 @@ function restart() {
 function status() {
   const pid = readPid();
   if (isRunning(pid)) {
-    console.log(`Minions is running (pid ${pid}).`);
+    console.log(`Swarmcrews is running (pid ${pid}).`);
     console.log(`  logs: ${rel(logFile)}`);
     if (existsSync(tailscaleFile)) showTailscaleServeStatus();
   } else {
-    console.log("Minions is not running.");
+    console.log("Swarmcrews is not running.");
   }
 }
 
@@ -201,7 +211,7 @@ function runTailscaleServe(args, stdio = "inherit") {
 function enableTailscaleServe() {
   const result = runTailscaleServe(["--port", vitePort]);
   if (result.status !== 0) {
-    console.error("\nMinions was not started because Tailscale HTTPS serving could not be configured.");
+    console.error("\nSwarmcrews was not started because Tailscale HTTPS serving could not be configured.");
     throw new Error("Tailscale configuration failed");
   }
 }

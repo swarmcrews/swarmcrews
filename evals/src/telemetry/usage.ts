@@ -36,7 +36,7 @@ export function normalizeUsage(raw: RawUsageObservation): Usage {
   const cacheRead = finite(raw.cacheRead, "cacheRead"); const cacheWrite = finite(raw.cacheWrite, "cacheWrite");
   const reasoning = raw.reasoning === undefined ? null : finite(raw.reasoning, "reasoning");
   if (reasoning !== null && reasoning > output) throw new Error("reasoning exceeds output");
-  // Minions stores ordinary input after subtracting both cache categories; raw Codex input is inclusive.
+  // Swarmcrews stores ordinary input after subtracting both cache categories; raw Codex input is inclusive.
   const totalInput = raw.semantics === "minions_codex" ? input + cacheRead + cacheWrite : input;
   if (raw.semantics === "codex_raw" && cacheRead + cacheWrite > input) throw new Error("cache categories overlap raw input");
   return UsageSchema.parse({ schemaVersion: 1, sourceId: raw.sourceId, participantId: raw.participantId,

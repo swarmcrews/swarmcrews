@@ -16,13 +16,14 @@
  * - Sources without `blocks` (dashboards, markdown, images…) keep
  *   whole-item replace semantics, gated on a content hash as before.
  *
- * Updates for already-delivered sources are wrapped in a
+ * Incremental additions, changes and removals are wrapped in a
  * `<connected-context-update>` block — deliberately distinct from the
  * `<connected-context>` wrapper, which is regex-matched by `deriveTaskName`
  * in `server/session-host-config.ts` and must not gain new call sites with
  * different semantics.
  */
 
+import { attachmentContentHash, uniqueContextSources, renderContextGroup, contextAttachmentHint } from "../shared/connected-context.ts";
 import type { ContextItem } from "./types.ts";
 import { hashString, itemContentHash } from "./connected-context.ts";
 import { TRANSCRIPT_BLOCK_SEPARATOR } from "./nodes/leader/transcript-builder.ts";
@@ -33,6 +34,9 @@ import { TRANSCRIPT_BLOCK_SEPARATOR } from "./nodes/leader/transcript-builder.ts
 export interface ContextDeliveryRecord {
   /** `itemContentHash` of the item as last delivered — change detection. */
   hash: number;
+  nodeType?: string;
+  label?: string;
+  attachmentHash?: number;
   /**
    * For append-capable sources: number of transcript blocks delivered.
    * Absent for replace-only sources.
@@ -60,18 +64,19 @@ export interface ContextUpdate {
    * "append": `content` contains ONLY the new suffix since last delivery.
    * "replace": `content` fully supersedes the previously delivered version.
    */
-  kind: "append" | "replace";
+  kind: "add" | "append" | "replace" | "remove";
+  version?: number;
+  attachments?: ContextItem["attachments"];
   content: string;
 }
 
 export interface ContextDeliveryDiff {
-  /** Sources never delivered before — inject via `buildContextBlock`. */
+  /** Sources never delivered before — emit as add updates on follow-up turns. */
   newItems: ContextItem[];
   /** Sources delivered before whose content changed — inject via
    *  `buildContextUpdateBlock`. */
   updates: ContextUpdate[];
-  /** Ledger to persist for the next turn. Sources no longer connected simply
-   *  drop out. */
+  /** Ledger to persist after acceptance; removed sources emit a withdrawal first. */
   nextLedger: ContextDeliveryLedger;
 }
 
@@ -81,6 +86,9 @@ function recordFor(item: ContextItem, deliveredAt: number): ContextDeliveryRecor
   const record: ContextDeliveryRecord = {
     hash: itemContentHash(item),
     deliveredAt,
+    nodeType: item.nodeType,
+    label: item.label,
+    attachmentHash: attachmentContentHash(item),
   };
   if (item.blocks) {
     record.version = item.blocks.length;
@@ -98,7 +106,7 @@ export function seedContextDelivery(
   deliveredAt: number,
 ): ContextDeliveryLedger {
   const ledger: ContextDeliveryLedger = {};
-  for (const item of items) {
+  for (const item of uniqueContextSources(items)) {
     ledger[item.nodeId] = recordFor(item, deliveredAt);
   }
   return ledger;
@@ -142,7 +150,7 @@ export function diffContextDelivery(
   const updates: ContextUpdate[] = [];
   const nextLedger: ContextDeliveryLedger = {};
 
-  for (const item of items) {
+  for (const item of uniqueContextSources(items)) {
     const record = ledger[item.nodeId];
 
     if (!record) {
@@ -157,7 +165,7 @@ export function diffContextDelivery(
       continue;
     }
 
-    if (item.blocks && appendWatermarkValid(item.blocks, record)) {
+    if (item.blocks && record.attachmentHash === attachmentContentHash(item) && appendWatermarkValid(item.blocks, record)) {
       const suffix = item.blocks
         .slice(record.version)
         .join(TRANSCRIPT_BLOCK_SEPARATOR);
@@ -171,6 +179,7 @@ export function diffContextDelivery(
         nodeId: item.nodeId,
         nodeType: item.nodeType,
         label: item.label,
+        version: itemContentHash(item),
         kind: "append",
         content: suffix,
       });
@@ -183,11 +192,19 @@ export function diffContextDelivery(
       nodeType: item.nodeType,
       label: item.label,
       kind: "replace",
+      version: itemContentHash(item),
+      ...(record.attachmentHash !== attachmentContentHash(item) && item.attachments ? { attachments: item.attachments } : {}),
       content: item.content,
     });
     nextLedger[item.nodeId] = recordFor(item, now);
   }
 
+  for (const [nodeId, record] of Object.entries(ledger)) {
+    if (!Object.hasOwn(nextLedger, nodeId)) updates.push({
+      nodeId, nodeType: record.nodeType ?? "source", label: record.label ?? nodeId,
+      kind: "remove", content: "This source is no longer connected. Do not treat its previous content as current context.",
+    });
+  }
   return { newItems, updates, nextLedger };
 }
 
@@ -206,14 +223,6 @@ export function diffContextDelivery(
 export function buildContextUpdateBlock(updates: ContextUpdate[]): string | null {
   if (updates.length === 0) return null;
 
-  const groups = updates
-    .map((update) => {
-      const isDefault =
-        update.label.toLowerCase() === update.nodeType.toLowerCase();
-      const titleAttr = isDefault ? "" : ` title="${update.label}"`;
-      return `<context-group${titleAttr} update="${update.kind}">\n${update.content}\n</context-group>`;
-    })
-    .join("\n");
-
-  return `<connected-context-update>\nConnected context previously provided in this conversation has changed. Groups marked update="append" contain only NEW content that continues what you already received for that group; groups marked update="replace" fully supersede the earlier version of that group.\n\n${groups}\n</connected-context-update>`;
+  const groups = updates.map(update => renderContextGroup(update, update.kind, update.version)).join("\n");
+  return `<connected-context-update>\nConnected source updates, matched by source-id: add introduces a source; append contains only NEW content; replace fully supersedes its earlier version; remove withdraws the source from current context. Versions identify the resulting source snapshot.\n\n${groups}${contextAttachmentHint(updates)}\n</connected-context-update>`;
 }

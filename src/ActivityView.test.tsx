@@ -21,6 +21,9 @@ import { normalizedToDisplayMessages, type DisplayMessage } from "./sdk-messages
 import { createGraphFixture } from "./task-graph/fixtures.ts";
 import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
 
+import { loadImageFromFile } from "./nodes/image-loader.ts";
+vi.mock("./nodes/image-loader.ts", () => ({ loadImageFromFile: vi.fn() }));
+
 function session(overrides: Partial<MobileSessionInfo>): MobileSessionInfo {
   return {
     sessionKey: overrides.sessionKey ?? "s-1",
@@ -1345,6 +1348,75 @@ describe("ActivityView", () => {
     expect(composer).toHaveValue("Do not lose this.");
   });
 
+  it.each([false, true])("sends image and text files from Activity (canonical: %s)", async canonical => {
+    vi.mocked(loadImageFromFile).mockResolvedValue({ src: "data:image/png;base64,cGl4ZWxz",
+      filename: "shot.png", mediaType: "image/png", naturalWidth: 100, naturalHeight: 100 });
+    const socketSend = vi.fn();
+    render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "Attachments",
+      ...(canonical ? { workItemId: "work-1", canonicalWorkItem: true } : {}) })]}
+      nodes={[]} {...noop} socketSend={socketSend} />);
+    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    const picker = screen.getByLabelText("Image or text attachments");
+    const openPicker = vi.spyOn(picker, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Attach images or text files" }));
+    expect(openPicker).toHaveBeenCalledOnce();
+    fireEvent.change(picker, { target: { files: [
+      new File(["pixels"], "shot.png", { type: "image/png" }),
+      new File(["Acceptance criteria"], "notes.md", { type: "text/markdown" }),
+    ] } });
+    expect(screen.getByRole("button", { name: /^send$/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled());
+    expect(screen.getByRole("img", { name: "shot.png" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    const command = sentCommand(socketSend, canonical ? "continue_work_item" : "send_message");
+    expect(command).toMatchObject({ displayPrompt: "Use the attached context.",
+      attachments: [{ kind: "image", filename: "shot.png", mediaType: "image/png", data: "cGl4ZWxz" }] });
+    expect(command["prompt"]).toContain("Acceptance criteria");
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+  });
+
+  it("restores canonical attachments after failure and keeps them when submission is declined", async () => {
+    const onPromptWorkItem = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    const props = { sessions: [session({ sessionKey: "run-1", workItemId: "work-1",
+      canonicalWorkItem: true, taskName: "Attachments" })], nodes: [], ...noop,
+      socketSend: vi.fn(), onPromptWorkItem };
+    const { rerender } = render(<ActivityView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    fireEvent.paste(screen.getByRole("textbox", { name: /reply or steer/i }), { clipboardData: {
+      files: [new File(["Acceptance criteria"], "notes.md", { type: "text/markdown" })], getData: () => "",
+    } });
+    await waitFor(() => expect(screen.getByRole("button", { name: /^send$/i })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(screen.getByLabelText("Attached context")).toHaveTextContent("notes.md");
+    const contextItems = onPromptWorkItem.mock.calls[0]![2];
+    expect(contextItems).toEqual([expect.objectContaining({ label: "notes.md", content: "Acceptance criteria" })]);
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+    rerender(<ActivityView {...props} promptFailures={{ "work-1": {
+      prompt: "Use the attached context.", error: "Harness unavailable", contextItems,
+    } }} />);
+    expect(await screen.findByLabelText("Attached context")).toHaveTextContent("notes.md");
+    fireEvent.click(screen.getByRole("button", { name: "Remove notes.md" }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+  });
+
+  it("blocks unsupported files and clears attachment drafts when selecting another leader", async () => {
+    const socketSend = vi.fn();
+    render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "First leader" }),
+      session({ sessionKey: "run-2", taskName: "Second leader" })]} nodes={[]} {...noop} socketSend={socketSend} />);
+    fireEvent.click(screen.getByRole("button", { name: /first leader/i }));
+    fireEvent.change(screen.getByLabelText("Image or text attachments"), {
+      target: { files: [new File(["binary"], "archive.zip", { type: "application/zip" })] },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Use PNG, JPEG, GIF, WebP, or a text file.");
+    fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), { target: { value: "Review" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: /reply or steer/i }), { key: "Enter" });
+    expect(sentCommand(socketSend, "send_message")).toBeUndefined();
+    fireEvent.click(screen.getByRole("button", { name: /second leader/i }));
+    expect(screen.queryByLabelText("Attached context")).toBeNull();
+    expect(screen.getByRole("textbox", { name: /reply or steer/i })).toHaveValue("");
+  });
+
   it("offers a New action from the activity header", () => {
     const onLaunchLeader = vi.fn();
     render(
@@ -1541,7 +1613,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    const onboarding = screen.getByRole("banner", { name: /getting started with minions/i });
+    const onboarding = screen.getByRole("banner", { name: /getting started with swarmcrews/i });
     const workspace = screen.getByRole("main", { name: /activity workspace/i });
     const composer = screen.getByRole("region", { name: /add an agent/i });
     const sessionList = document.querySelector(".act-main");

@@ -1,4 +1,4 @@
-import { MinionsIcon } from "./components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "./components/SwarmcrewsIcon.tsx";
 import { SkillIcon } from "./components/SkillIcon.tsx";
 import { SkillIconPicker } from "./components/SkillIconPicker.tsx";
 import "./skill-editor.css";
@@ -545,7 +545,7 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
   }, []);
 
   const [name, setName] = useState(skill?.name ?? "");
-  const [icon, setIcon] = useState(skill?.icon ?? "minions:skill");
+  const [icon, setIcon] = useState(skill?.icon ?? "swarmcrews:skill");
   const [category, setCategory] = useState<SkillTemplate["category"]>(
     skill?.category ?? "general",
   );
@@ -786,7 +786,7 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
               </div>
             </div>
           </div>
-          <button type="button" className="skill-editor__preview-toggle" aria-expanded={previewOpen} aria-controls="skill-compiled-preview" onClick={() => setPreviewOpen(!previewOpen)}><MinionsIcon name="eye" /> Preview</button>
+          <button type="button" className="skill-editor__preview-toggle" aria-expanded={previewOpen} aria-controls="skill-compiled-preview" onClick={() => setPreviewOpen(!previewOpen)}><SwarmcrewsIcon name="eye" /> Preview</button>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -821,7 +821,7 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
             <RailItem
               title="Essentials"
               sublabel="Name, body"
-              glyph={<MinionsIcon name="skill" />}
+              glyph={<SwarmcrewsIcon name="skill" />}
               active={activeCategory === "essentials"}
               status={essentialsStatus}
               onClick={() => setActiveCategory("essentials")}
@@ -829,14 +829,14 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
             <RailItem
               title="Appearance"
               sublabel="Icon, accent"
-              glyph={<MinionsIcon name="appearance" />}
+              glyph={<SwarmcrewsIcon name="appearance" />}
               active={activeCategory === "appearance"}
               onClick={() => setActiveCategory("appearance")}
             />
             <RailItem
               title="Variables"
               sublabel="Placeholders"
-              glyph={<MinionsIcon name="variables" />}
+              glyph={<SwarmcrewsIcon name="variables" />}
               active={activeCategory === "variables"}
               badge={activeVarCount}
               onClick={() => setActiveCategory("variables")}
@@ -844,7 +844,7 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
             <RailItem
               title="Sub-skills"
               sublabel="Nested map"
-              glyph={<MinionsIcon name="subskills" />}
+              glyph={<SwarmcrewsIcon name="subskills" />}
               active={activeCategory === "subskills"}
               badge={namedSubskillCount}
               onClick={() => setActiveCategory("subskills")}

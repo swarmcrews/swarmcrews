@@ -96,7 +96,7 @@ async function probeHarness(name: string, check: (context: { signal: AbortSignal
 
 async function collect(): Promise<HarnessReadinessSnapshot> {
   const testHarness = (() => {
-    if (process.env["MINIONS_TEST_HARNESS"] !== "echo") return [];
+    if ((process.env["SWARMCREWS_TEST_HARNESS"] ?? process.env["MINIONS_TEST_HARNESS"]) !== "echo") return [];
     try {
       const harness = getHarness("echo");
       return harness.exposure === "test" ? [harness] : [];

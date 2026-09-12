@@ -1,4 +1,4 @@
-import { MinionsIcon } from "../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "../components/SwarmcrewsIcon.tsx";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -52,11 +52,11 @@ function ProjectStatsSummary({ stats }: { stats: ProjectStats }) {
   return (
     <>
       {stats.active > 0 ? (
-        <><MinionsIcon name="play" size={12} /> {stats.active} active</>
+        <><SwarmcrewsIcon name="play" size={12} /> {stats.active} active</>
       ) : (stats.count === 1 ? "1 session" : `${stats.count} sessions`)}
       {` · $${stats.cost.toFixed(2)}`}
       {stats.attention > 0 && (
-        <> · <MinionsIcon name="warning" size={12} /> {stats.attention} needs you</>
+        <> · <SwarmcrewsIcon name="warning" size={12} /> {stats.attention} needs you</>
       )}
     </>
   );

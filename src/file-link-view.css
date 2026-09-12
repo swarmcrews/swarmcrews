@@ -7,6 +7,9 @@
   background: var(--bg-primary);
 }
 
+.file-link-view > h1 { margin: 0 0 16px; }
+.file-link-view > .status-message { margin-bottom: 16px; }
+
 .file-link-view .md-preview {
   max-width: 90ch;
   line-height: 1.7;

@@ -135,7 +135,7 @@ describe("ProjectsScreen", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Project" } });
     fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Minions may run into issues without Git");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Swarmcrews may run into issues without Git");
     expect(createProject).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Initialize Git & commit" }));
 

@@ -1,6 +1,6 @@
-# Contributing to Minions
+# Contributing to Swarmcrews
 
-Minions is under active development. Before starting a substantial change,
+Swarmcrews is under active development. Before starting a substantial change,
 open an issue or discussion describing the problem and proposed direction so
 work does not proceed on conflicting assumptions.
 
@@ -18,7 +18,7 @@ live in [CLAUDE.md](./CLAUDE.md).
 
 ## Local working artifacts
 
-When using Minions to work on this repository, keep session working material in
+When using Swarmcrews to work on this repository, keep session working material in
 ignored `.scratch/<task>/` directories. For example:
 
 - `.scratch/<task>/notes.md` and `handoff.md` for working notes and continuity.
@@ -85,5 +85,5 @@ Describe:
 - Security, migration, or persistence implications.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in Minions is provided under the Apache License 2.0, as described
+for inclusion in Swarmcrews is provided under the Apache License 2.0, as described
 in [LICENSE](./LICENSE).

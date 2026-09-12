@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getAuthToken } from "./api.ts";
 import { MarkdownPreview } from "./components/MarkdownPreview.tsx";
+import { StatusMessage } from "./components/StatusMessage.tsx";
 import "./file-link-view.css";
 
 export default function FileLinkView() {
@@ -56,8 +57,9 @@ export default function FileLinkView() {
 
   return <main className="file-link-view">
     <h1 style={{ fontSize: 18, overflowWrap: "anywhere" }}>{path || "File viewer"}</h1>
-    {error ? <p role="alert">{error}</p> : content === null && !blobUrl ? <p role="status">Loading file…</p> : null}
-    {truncated && <p role="status">This preview is limited to the first 512 KB.</p>}
+    {error ? <StatusMessage tone="error">{error}</StatusMessage>
+      : content === null && !blobUrl ? <StatusMessage tone="loading">Loading file…</StatusMessage> : null}
+    {truncated && <StatusMessage>This preview is limited to the first 512 KB.</StatusMessage>}
     {blobUrl && (image ? <img src={blobUrl} alt={path} style={{ maxWidth: "100%" }} /> : <iframe title={path} src={`${blobUrl}#page=1`} style={{ width: "100%", height: "85vh", border: 0 }} />)}
     {content !== null && (markdown ? <MarkdownPreview content={content} /> : <pre style={{ overflowX: "auto", lineHeight: 1.6 }}>
       {content.split("\n").map((text, index) => <div key={index} id={`L${index + 1}`} style={{ background: index + 1 === line && params.has("line") ? "var(--state-hover)" : undefined }}>

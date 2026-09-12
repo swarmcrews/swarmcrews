@@ -1,3 +1,4 @@
+import { readBrandPreference, clearLegacyPreference } from "./brand-storage.ts";
 /**
  * Debug-mode infrastructure for the streaming/chat UI.
  *
@@ -24,7 +25,7 @@
  *   - **Pub/sub** so React components don't poll.
  */
 
-const STORAGE_KEY = "minions:debug-mode";
+const STORAGE_KEY = "swarmcrews:debug-mode";
 const MAX_RECORDS_PER_SESSION = 250;
 let debugEnabledCache: boolean | null = null;
 const flagListeners = new Set<(enabled: boolean) => void>();
@@ -41,7 +42,7 @@ function notifyDebugFlag(enabled: boolean): void {
 
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
-    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    if (event.key !== STORAGE_KEY && event.key !== "minions:debug-mode" && event.key !== null) return;
     debugEnabledCache = null;
     notifyDebugFlag(isDebugEnabled());
   });
@@ -57,7 +58,7 @@ export function isDebugEnabled(): boolean {
   if (debugEnabledCache !== null) return debugEnabledCache;
   if (typeof window === "undefined") return false;
   try {
-    debugEnabledCache = window.localStorage.getItem(STORAGE_KEY) === "1";
+    debugEnabledCache = readBrandPreference(window.localStorage, STORAGE_KEY) === "1";
   } catch {
     debugEnabledCache = false;
   }
@@ -70,9 +71,11 @@ export function setDebugEnabled(value: boolean): void {
   if (typeof window === "undefined") return;
   try {
     if (value) {
+      clearLegacyPreference(window.localStorage, STORAGE_KEY);
       window.localStorage.setItem(STORAGE_KEY, "1");
     } else {
       window.localStorage.removeItem(STORAGE_KEY);
+      clearLegacyPreference(window.localStorage, STORAGE_KEY);
     }
   } catch {
     /* localStorage unavailable — keep going so the in-memory listeners still fire. */

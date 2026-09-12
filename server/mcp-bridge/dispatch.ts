@@ -23,7 +23,7 @@ import type {
 
 // MCP protocol version we implement and report from `initialize`.
 export const PROTOCOL_VERSION = "2025-06-18";
-export const SERVER_INFO = { name: "minions-bridge", version: "0.1.0" };
+export const SERVER_INFO = { name: "swarmcrews-bridge", version: "0.1.0" };
 
 // JSON-RPC error codes we use. The 2.0 spec reserves -32700 .. -32603 for
 // transport/protocol errors and lets servers define their own in -32000 ..

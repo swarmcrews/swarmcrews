@@ -1,8 +1,8 @@
 # External execution boundary
 
 `createExternalAdapter(config)` constructs the three real adapters. It accepts
-adapter settings without importing application internals. Minions factories return
-`ManagedMinionsAdapter`, which owns a separate server process per run.
+adapter settings without importing application internals. Swarmcrews factories return
+`ManagedSwarmcrewsAdapter`, which owns a separate server process per run.
 `LocalCodexProcessLauncher` launches the executable directly. Both
 `multi_agent` and `multi_agent_v2` are disabled at the root CLI level and checked
 with `features list`; `exec --help` checks JSON and ephemeral support only.
@@ -31,11 +31,11 @@ a second model process. Keep controller state private: launch metadata can
 contain credential environment values. The backend owns hard wall-time/resource
 limits and final process/container cleanup, including a dead supervisor.
 
-## Dedicated Minions startup
+## Dedicated Swarmcrews startup
 
 Supply absolute `appRoot` and `codexExecutable` settings to the factory. The CLI
 supplies private controller `stateRoot`; it refuses arbitrary existing endpoints.
-`ManagedMinionsAdapter` uses `dedicatedInstanceRecipe` for local execution and
+`ManagedSwarmcrewsAdapter` uses `dedicatedInstanceRecipe` for local execution and
 prepares the equivalent paths inside Docker. The recipe creates a CODEX_PATH
 wrapper enforcing both native-delegation disables and launches:
 
@@ -51,13 +51,13 @@ interrupted/infrastructure result. Startup is inside the execution deadline.
 After collection, the controller stops the server and removes its participant
 container/workspace. This is never the user's ordinary app instance.
 
-Docker uses internal loopback and `ContainerMinionsTransport`: each HTTP/WS
+Docker uses internal loopback and `ContainerSwarmcrewsTransport`: each HTTP/WS
 operation runs through `docker exec` inside the owned network namespace, without
 publishing a port. The image contains the prepared application and Codex; it
 never mounts the evaluator checkout. Only the workspace is participant writable.
 Local mode has no equivalent security boundary and is development-only.
 
-`WebSocketMinionsProtocolClient` remains separately exported for protocol tests
+`WebSocketSwarmcrewsProtocolClient` remains separately exported for protocol tests
 and embedding behind another controller. It bootstraps `/api/auth/token`, uses
 authenticated WS commands and bearer-authenticated HTTP history, and registers
 the workspace through `/api/projects`. The managed factory constructs its client
@@ -88,7 +88,7 @@ workspace, rather than selecting an arbitrary child's worktree.
 ## Accounting and validation
 
 Raw observations remain in event payloads; `payload.usage` carries the normalized
-run aggregate expected by the runner. Minions' authoritative session totals
+run aggregate expected by the runner. Swarmcrews' authoritative session totals
 reconstruct input as ordinary + cache read + cache creation. Raw Codex input is
 already inclusive. The ledger replaces source revisions and reconciles session
 coverage intervals rather than summing cumulative snapshots. Unknown costs are

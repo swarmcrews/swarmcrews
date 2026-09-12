@@ -239,7 +239,7 @@ describe("CodexHarness.start()", () => {
     ).toBe(systemPrompt);
   });
 
-  it("skips Codex's git repo trust check for Minions-selected projects", async () => {
+  it("skips Codex's git repo trust check for Swarmcrews-selected projects", async () => {
     await collect(codexHarness.start(baseOpts()).events);
     const startThreadOpts = sdkMock.calls.startThread[0] as {
       workingDirectory?: string;
@@ -450,12 +450,13 @@ describe("CodexHarness.start()", () => {
               verificationRequired: false, failurePolicy: "fail_graph", expansionPolicy: null }],
           }, 4);
           const hash = `sha256:${"a".repeat(64)}`;
+          const graphStartedAt = Date.now();
           graph.repo.startRun({ id: "graph", workItemId: "work", primaryRunKey: "primary", revisionId: "revision",
-            expectedLifecycleRevision: current.lifecycle.lifecycleRevision, at: Date.now(), sourceSnapshot: {
+            expectedLifecycleRevision: current.lifecycle.lifecycleRevision, at: graphStartedAt, sourceSnapshot: {
               id: "source", workItemId: "work", primaryRunKey: "primary", taskGraphRevisionId: "revision",
               repositoryBaseCommit: "abc", dirtyDiffDigest: hash, workspaceId: "workspace", worktreeIdentity: "wt",
               systemModelDigest: hash, workPacketRevisionId: null, connectedContext: [], compiledSkills: [],
-              harnessPolicyDigest: hash, toolPolicyDigest: hash, createdAt: Date.now(),
+              harnessPolicyDigest: hash, toolPolicyDigest: hash, createdAt: graphStartedAt,
             } });
           expect((await graph.tick("graph")).run.status).toBe("active");
           expect(children.startChildRun).toHaveBeenCalledOnce();
@@ -592,9 +593,9 @@ describe("CodexHarness MCP bridge", () => {
     };
     expect(constructorOpts.config?.["mcp_servers.task-manager"]).toMatchObject({
       url: expect.stringContaining("/mcp/abc/task-manager"),
-      bearer_token_env_var: "MINIONS_BRIDGE_TOKEN_TASK_MANAGER",
+      bearer_token_env_var: "SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER",
     });
-    expect(constructorOpts.env?.["MINIONS_BRIDGE_TOKEN_TASK_MANAGER"]).toBe("tok-abc");
+    expect(constructorOpts.env?.["SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER"]).toBe("tok-abc");
   });
 
   it("does not register the bridge when no tool groups are non-empty", async () => {
@@ -644,7 +645,7 @@ describe("CodexHarness attachments", () => {
     const inputs = call?.input as Array<{ type: string; path?: string; text?: string }>;
     expect(inputs[0]).toMatchObject({ type: "text" });
     expect(inputs[1]).toMatchObject({ type: "local_image" });
-    expect(inputs[1]?.path).toMatch(/minions-codex-attachments[/\\]att-1[/\\]/);
+    expect(inputs[1]?.path).toMatch(/swarmcrews-codex-attachments[/\\]att-1[/\\]/);
   });
 });
 
@@ -815,8 +816,8 @@ describe("buildCodexEnv", () => {
     await fs.mkdir(path.join(home, ".codex"));
 
     await withEnv({ HOME: home, CODEX_HOME: undefined }, async () => {
-      const env = buildCodexEnv({ MINIONS_BRIDGE_TOKEN_TASKS: "tok" }, cwd);
-      expect(env?.["MINIONS_BRIDGE_TOKEN_TASKS"]).toBe("tok");
+      const env = buildCodexEnv({ SWARMCREWS_BRIDGE_TOKEN_TASKS: "tok" }, cwd);
+      expect(env?.["SWARMCREWS_BRIDGE_TOKEN_TASKS"]).toBe("tok");
       expect(env?.["CODEX_HOME"]).toBeUndefined();
     });
   });
@@ -838,7 +839,7 @@ describe("buildCodexEnv", () => {
   it("respects an explicit CODEX_HOME", async () => {
     const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "codex-cwd-"));
     await withEnv({ CODEX_HOME: "/custom/codex-home" }, async () => {
-      const env = buildCodexEnv({ MINIONS_BRIDGE_TOKEN_TASKS: "tok" }, cwd);
+      const env = buildCodexEnv({ SWARMCREWS_BRIDGE_TOKEN_TASKS: "tok" }, cwd);
       expect(env?.["CODEX_HOME"]).toBe("/custom/codex-home");
     });
   });
@@ -853,9 +854,9 @@ describe("buildCodexEnv", () => {
       GITHUB_TOKEN: "github-token",
       AWS_SECRET_ACCESS_KEY: "aws-token",
     }, async () => {
-      const env = buildCodexEnv({ MINIONS_BRIDGE_TOKEN_TASKS: "bridge-token" }, cwd);
+      const env = buildCodexEnv({ SWARMCREWS_BRIDGE_TOKEN_TASKS: "bridge-token" }, cwd);
       expect(env["OPENAI_API_KEY"]).toBe("openai-token");
-      expect(env["MINIONS_BRIDGE_TOKEN_TASKS"]).toBe("bridge-token");
+      expect(env["SWARMCREWS_BRIDGE_TOKEN_TASKS"]).toBe("bridge-token");
       expect(env["GITHUB_TOKEN"]).toBeUndefined();
       expect(env["AWS_SECRET_ACCESS_KEY"]).toBeUndefined();
     });

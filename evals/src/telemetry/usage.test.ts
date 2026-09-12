@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { UsageLedger, normalizeUsage } from "./usage.js";
 
 describe("usage normalization", () => {
-  it("calibrates raw Codex and Minions ordinary input to the same totals", () => {
+  it("calibrates raw Codex and Swarmcrews ordinary input to the same totals", () => {
     const codex = normalizeUsage({ sourceId: "a", participantId: "p", turnId: "t", kind: "turn_snapshot", semantics: "codex_raw", input: 17, output: 5, cacheRead: 4, cacheWrite: 3 });
     const minions = normalizeUsage({ sourceId: "b", participantId: "p", turnId: "t", kind: "turn_snapshot", semantics: "minions_codex", input: 10, output: 5, cacheRead: 4, cacheWrite: 3 });
     expect(codex).toMatchObject({ inputTokensTotal: 17, inputTokensUncached: 10, totalTokens: 22 });

@@ -3,6 +3,7 @@
 import React, { createRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectList } from "../../src/ProjectList.tsx";
+import { Brand } from "../../src/components/Brand.tsx";
 import { ActivityLaunchForm } from "../../src/nodes/leader/ActivityLaunchForm.tsx";
 import { LEADER_DEFAULT_DATA } from "../../src/nodes/leader/types.ts";
 import { TaskPlanPanel } from "../../src/nodes/leader/TaskPlanPanel.tsx";
@@ -39,7 +40,7 @@ function Launch() {
   return <HarnessListProvider connected send={noop} subscribe={subscribe}>
     <ActivityLaunchForm nodeId="guide-leader" data={data} input={input} slashCommands={[]}
       promptPlaceholder="Describe the outcome" submitDisabled={false} submitActive
-      textareaRef={createRef()} projectPath="/home/you/projects/minions-playground"
+      textareaRef={createRef()} projectPath="/home/you/projects/swarmcrews-playground"
       onInputChange={setInput} onKeyDown={noop} onSubmit={noop}
       onUpdate={(patch) => setData({ ...data, ...patch })} />
   </HarnessListProvider>;
@@ -117,7 +118,7 @@ const scene = new URLSearchParams(location.search).get("scene") ?? "projects";
 const headings = { launch: "Configure your first Leader", minions: "Follow the delegated work", graph: "Inspect dependencies and progress", dashboard: "See results and answer questions" };
 createRoot(document.getElementById("root")).render(scene === "projects" ? <ProjectList onOpenProject={noop} /> :
   <main className="guide-scene">
-    <header className="guide-heading"><span>MINIONS / GETTING STARTED</span><h1>{headings[scene]}</h1><p>Sample project · real application components · illustrative state</p></header>
+    <header className="guide-heading"><div className="guide-heading__brand"><Brand /><span className="guide-heading__label">/ GETTING STARTED</span></div><h1>{headings[scene]}</h1><p>Sample project · real application components · illustrative state</p></header>
     {scene === "launch" && <Launch />}
     {scene === "minions" && <Minions />}
     {scene === "dashboard" && <div className="guide-dashboard"><DashboardSurface renderState={dashboard} onSubmitForm={noop} /></div>}

@@ -284,7 +284,7 @@ describe("MobileApp", () => {
     await waitFor(() => {
       expect(screen.getByRole("main", { name: "Session chat" })).toBeInTheDocument();
     });
-    expect(screen.queryByText("Minions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Swarmcrews")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Enable notifications" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Back to activity" })).toBeInTheDocument();
   });
@@ -400,7 +400,7 @@ describe("MobileApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Restart Server" }));
 
-    expect(screen.getByRole("dialog", { name: "Restart Minions server" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Restart Swarmcrews server" })).toBeInTheDocument();
     expect(screen.getByText(/active sessions will disconnect/i)).toBeInTheDocument();
     expect(restartServer).not.toHaveBeenCalled();
 

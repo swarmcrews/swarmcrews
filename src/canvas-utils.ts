@@ -314,12 +314,13 @@ function alignDropAxis(value: number, start: number, end: number): number {
  * align, but partial blockers can slide the placement along a side or into a
  * diagonal opening instead of cycling through four fixed slots. Every obstacle
  * gets the same gutter, and relative offsets between movers stay exact.
- * Free drops grid-snap only when that position is clear too.
+ * Free drops optionally grid-snap only when that position is clear too.
  */
 export function resolveTidyDrop(
   movers: CanvasNode[],
   obstacles: CanvasNode[],
   gutter = PLACEMENT_PAD,
+  snapToGrid = true,
 ): { dx: number; dy: number } {
   if (movers.length === 0) return { dx: 0, dy: 0 };
   const box = boundingBox(movers);
@@ -345,7 +346,7 @@ export function resolveTidyDrop(
   }
 
   if (!primary) {
-    const snapped = snapPositionToGrid(box);
+    const snapped = snapToGrid ? snapPositionToGrid(box) : box;
     if (!exclusions.some(r => excludesPoint(r, snapped))) {
       return { dx: snapped.x - box.x, dy: snapped.y - box.y };
     }

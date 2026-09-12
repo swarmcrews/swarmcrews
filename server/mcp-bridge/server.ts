@@ -1,7 +1,7 @@
 /**
  * Singleton streamable-HTTP MCP server bound to loopback.
  *
- * Codex runs as its own process and reaches Minions-internal tools through
+ * Codex runs as its own process and reaches Swarmcrews-internal tools through
  * this endpoint. Claude keeps its in-process `wrapTools()` path.
  *
  * Wire protocol: streamable HTTP MCP per
@@ -330,7 +330,7 @@ function writeJsonRpcError(
     "Content-Type": "application/json",
     "Content-Length": Buffer.byteLength(body).toString(),
   };
-  if (status === 401) headers["WWW-Authenticate"] = 'Bearer realm="minions-bridge"';
+  if (status === 401) headers["WWW-Authenticate"] = 'Bearer realm="swarmcrews-bridge"';
   res.writeHead(status, headers);
   res.end(body);
 }

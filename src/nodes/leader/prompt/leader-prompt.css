@@ -182,3 +182,21 @@
     transition: none;
   }
 }
+
+.leader-prompt-bar__attach {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.leader-prompt-bar__attach:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

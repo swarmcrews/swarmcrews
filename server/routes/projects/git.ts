@@ -52,7 +52,7 @@ export function ensureProjectGitReady(
     res.status(409).json({
       code: "GIT_CONFIRMATION_REQUIRED",
       gitStatus: status,
-      warning: "Minions may run into issues in projects that are not Git repositories.",
+      warning: "Swarmcrews may run into issues in projects that are not Git repositories.",
     });
     return false;
   }

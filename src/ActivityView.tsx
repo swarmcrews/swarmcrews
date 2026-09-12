@@ -15,7 +15,7 @@ import {
   type MouseEvent,
 } from "react";
 
-import type { CanvasNode } from "./types.ts";
+import type { CanvasNode, ContextItem } from "./types.ts";
 import type { ProjectSettings } from "./api.ts";
 import type { LeaderData } from "./nodes/leader/types.ts";
 import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
@@ -93,6 +93,9 @@ import { previousPrimaryRuns } from "./work-item-run-history.ts";
 import type { DisplayMessage } from "./sdk-messages.ts";
 import { LeaderTaskGraphBridge } from "./task-graph/LeaderTaskGraphBridge.tsx";
 import { useLeaderTaskGraphController } from "./task-graph/use-leader-task-graph-controller.ts";
+import { usePromptAttachments } from "./nodes/leader/prompt/use-prompt-attachments.ts";
+import { PromptAttachmentList, PromptAttachmentPicker } from "./nodes/leader/prompt/PromptAttachmentControls.tsx";
+import { buildContextUpdateBlock } from "./context-delivery.ts";
 import "./activity.css";
 
 /**
@@ -159,7 +162,7 @@ export interface ActivityViewProps extends ActivityLoadingProps {
   runNextCursor?: Record<string, string | null>;
   onLoadRuns?: (workItemId: string, cursor?: string) => void;
   /** Canonical prompt path; false preserves input while the item is loading. */
-  onPromptWorkItem?: (workItemId: string, prompt: string) => boolean | void;
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
   promptFailures?: Record<string, PromptFailure>;
   onClearPromptFailure?: (workItemId: string) => void;
 }
@@ -593,7 +596,7 @@ function Inspector({
   onAcknowledge: () => void;
   onDismiss: () => void;
   onReopen: () => void;
-  onPromptWorkItem?: (workItemId: string, prompt: string) => boolean | void;
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
   promptFailure?: PromptFailure;
   onClearPromptFailure?: () => void;
   runs?: WorkItemRunSnapshot[];
@@ -613,6 +616,7 @@ function Inspector({
     taskGraphController.snapshot || taskGraphController.planSnapshot,
   );
   const [reply, setReply] = useState("");
+  const promptAttachments = usePromptAttachments();
   const [compactPane, setCompactPane] = useState<"conversation" | "context">("conversation");
   const conversationToggle = useRef<HTMLButtonElement>(null);
   const [conversation, setConversation] = useState(
@@ -652,6 +656,7 @@ function Inspector({
   useEffect(() => {
     if (promptFailure) {
       setReply(promptFailure.prompt);
+      if (promptFailure.contextItems) promptAttachments.restore(promptFailure.contextItems);
       setAwaitingResponse(null);
     }
   }, [promptFailure]);
@@ -727,28 +732,38 @@ function Inspector({
       messages: [...transcriptMessages, optimisticMessage],
     }));
     setReply("");
+    promptAttachments.remove(promptAttachments.drafts.map(draft => draft.id));
   };
 
   const submitReply = () => {
-    const prompt = reply.trim();
+    const displayPrompt = reply.trim() || (promptAttachments.items.length ? "Use the attached context." : "");
+    const contextItems = promptAttachments.items;
     // Only canonical entries carry the work item's revision counter; a session
     // that merely references a work item must use the session envelope or the
     // server rejects the mutation as a stale work-item lifecycle.
     const canonical = Boolean(session.workItemId && session.canonicalWorkItem);
     const blockedCanonicalWait = Boolean(canonical && session.status === "waiting"
       && session.reviewLifecycle?.reviewState !== "decision_needed");
-    if (!prompt || !socketSend || blockedCanonicalWait) return;
+    if (!displayPrompt || !socketSend || blockedCanonicalWait || !promptAttachments.canSubmit()) return;
     if (canonical && session.workItemId && onPromptWorkItem) {
-      if (onPromptWorkItem(session.workItemId, prompt) !== false) markPromptSubmitted(prompt);
+      const accepted = contextItems.length
+        ? onPromptWorkItem(session.workItemId, displayPrompt, contextItems)
+        : onPromptWorkItem(session.workItemId, displayPrompt);
+      if (accepted !== false) markPromptSubmitted(displayPrompt);
       return;
     }
+    const prompt = [buildContextUpdateBlock(contextItems.map(item => ({ ...item, kind: "add" as const }))),
+      displayPrompt].filter(Boolean).join("\n\n");
+    const attachments = contextItems.flatMap(item => item.attachments ?? []);
     socketSend(canonical ? {
       type: "continue_work_item",
-      requestId: randomUuid(), workItemId: session.workItemId, prompt, displayPrompt: prompt,
+      requestId: randomUuid(), workItemId: session.workItemId, prompt, displayPrompt,
+      ...(attachments.length ? { attachments } : {}),
       expectedLifecycleRevision: session.reviewLifecycle?.lifecycleRevision ?? 0,
       expectedCurrentRunKey: session.sessionKey.startsWith("work-item:") ? null : session.sessionKey,
-    } : { type: "send_message", sessionKey: session.sessionKey, prompt, displayPrompt: prompt });
-    markPromptSubmitted(prompt);
+    } : { type: "send_message", sessionKey: session.sessionKey, prompt, displayPrompt,
+      ...(attachments.length ? { attachments } : {}) });
+    markPromptSubmitted(displayPrompt);
   };
   const workItemHistory = useWorkItemHistory({
     workItemId: session.workItemId,
@@ -964,12 +979,14 @@ function Inspector({
           )}
           <div className="act-composer">
             <div className="act-composer-inner">
+              <PromptAttachmentList attachments={promptAttachments} />
               <textarea
                 rows={3}
                 value={reply}
                 onChange={(event) => setReply(event.target.value)}
+                onPaste={promptAttachments.onPaste}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
+                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     submitReply();
                   }
@@ -978,11 +995,15 @@ function Inspector({
                 placeholder="Reply or steer this agent…"
                 aria-label="Reply or steer this agent"
               />
-              <button type="button" onClick={submitReply} disabled={!reply.trim() || !socketSend
-                || Boolean(session.workItemId && session.status === "waiting"
-                  && session.reviewLifecycle?.reviewState !== "decision_needed")}>
-                Send
-              </button>
+              <div className="act-composer-actions">
+                <PromptAttachmentPicker attachments={promptAttachments} />
+                <button type="button" onClick={submitReply}
+                  disabled={(!reply.trim() && !promptAttachments.items.length) || promptAttachments.blocked || !socketSend
+                    || Boolean(session.workItemId && session.status === "waiting"
+                      && session.reviewLifecycle?.reviewState !== "decision_needed")}>
+                  Send
+                </button>
+              </div>
             </div>
           </div>
         </main>
@@ -2024,6 +2045,7 @@ export function ActivityView({
 
       {selectedSession && (
         <Inspector
+          key={activityEntryId(selectedSession)}
           session={selectedSession}
           actionRequest={actionRequest}
           leader={leaderIndex.get(selectedSession.sessionKey)}

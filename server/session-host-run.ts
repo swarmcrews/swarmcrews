@@ -1,3 +1,4 @@
+import { boundLeaderPrompt } from "./leader-context-budget.ts";
 /** Lifecycle helpers for SessionHost worktrees, harness starts, and events. */
 import type { AgentType, AgentTypeContext, AgentToolResult } from "./agents/index.ts";
 import { withLaunchCapabilities } from "./agents/launch-context.ts";
@@ -87,16 +88,19 @@ export function buildHarnessStartOpts(
 
   const resolvedModel = host.model ? (harness.resolveModel(host.model) ?? host.model) : "";
 
+  const handoffPrompt = buildFreshThreadPrompt(host, opts, prompt);
+  const providerPrompt = host.role === "leader"
+    ? boundLeaderPrompt(handoffPrompt, host.worktree?.projectPath ?? host.cwd) : handoffPrompt;
   const startOpts: HarnessStartOptions = {
     sessionKey: host.id,
     cwd: host.cwd,
-    prompt: withCompactionReminder(host, buildFreshThreadPrompt(host, opts, prompt)),
+    prompt: withCompactionReminder(host, providerPrompt),
     systemPrompt: effectiveSystemPrompt,
     model: resolvedModel,
     allowedTools,
     abortSignal: abortController.signal,
     // Provider continuations intentionally open a fresh SDK thread while
-    // retaining the same Minions run identity.
+    // retaining the same Swarmcrews run identity.
     resumeId: opts.invocationKind === "provider_continuation"
       ? undefined
       : opts.resumeId,

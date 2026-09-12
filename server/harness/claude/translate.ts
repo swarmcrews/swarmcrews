@@ -21,7 +21,7 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { NormalizedEvent } from "../types.ts";
 import { tagTerminalProvenance } from "../terminal-provenance.ts";
 
-// We only inspect the fields Minions cares about. A narrower local type avoids
+// We only inspect the fields Swarmcrews cares about. A narrower local type avoids
 // importing BetaContentBlock from the Anthropic SDK's deep type tree.
 
 interface RawBlock {
@@ -46,7 +46,7 @@ type UsageSource = NonNullable<Extract<NormalizedEvent, { kind: "usage" }>["sour
  * Convert one SDK message to zero or more NormalizedEvents.
  *
  * The result array may be empty (e.g. for stream_event partials, tool_progress,
- * and other SDK messages that Minions doesn't surface as discrete events).
+ * and other SDK messages that Swarmcrews doesn't surface as discrete events).
  */
 export function sdkToNormalized(msg: SDKMessage): NormalizedEvent[] {
   switch (msg.type) {

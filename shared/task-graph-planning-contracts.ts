@@ -47,7 +47,7 @@ export const semanticGraphPlanStepSchema = z.object({
   title: z.string().trim().min(1).max(200),
   objective: z.string().trim().min(1),
   context: minionContextSchema.optional()
-    .describe("Construct Minions-owned instructions and reference blocks. Use list_minion_context_blocks and preview_minion_context before unfamiliar or large handoffs."),
+    .describe("Construct Swarmcrews-owned instructions and reference blocks. Use list_minion_context_blocks and preview_minion_context before unfamiliar or large handoffs."),
   acceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
   constraints: z.array(z.string().trim().min(1)).default([]),
   skillIds: z.array(z.string().trim().min(1)).optional()

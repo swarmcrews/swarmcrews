@@ -24,7 +24,7 @@ test("creates a themed skill, explores its context, launches and reloads it", as
   if (!(await panel.isVisible())) await page.getByRole("button", { name: "Skills", exact: true }).click();
   await panel.getByRole("searchbox", { name: "Search skills" }).fill("Release Scout");
   await panel.getByRole("button", { name: "View Release Scout" }).click();
-  await expect(panel.locator('svg[data-minions-icon="rocket"]')).toBeVisible();
+  await expect(panel.locator('svg[data-swarmcrews-icon="rocket"]')).toBeVisible();
   await expect(panel.getByText("Review {{target}} before release. Check tests and rollback steps.")).not.toBeVisible();
   await panel.getByText("Instructions", { exact: true }).click();
   await expect(panel.getByText("Review {{target}} before release. Check tests and rollback steps.")).toBeVisible();

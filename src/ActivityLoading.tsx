@@ -1,3 +1,4 @@
+import { StatusMessage } from "./components/StatusMessage.tsx";
 import "./activity-loading.css";
 
 export interface ActivityLoadingProps {
@@ -13,11 +14,11 @@ export function ActivityLoading({ loadError, onRetryLoad, connected = true, skel
 }) {
   return (
     <div className="activity-loading">
-      <div role={loadError ? "alert" : "status"} className="activity-loading-status">
-        <span>{loadError ?? (!connected ? "Connecting to activity…"
-          : skeleton ? "Loading activity…" : "Loading more activity…")}</span>
-        {loadError && onRetryLoad ? <button type="button" onClick={onRetryLoad}>Retry</button> : null}
-      </div>
+      <StatusMessage className="activity-loading-status" tone={loadError ? "error" : "loading"}
+        onRetry={loadError ? onRetryLoad : undefined}>
+        {loadError ?? (!connected ? "Connecting to activity…"
+          : skeleton ? "Loading activity…" : "Loading more activity…")}
+      </StatusMessage>
       {skeleton && !loadError ? (
         <div className="activity-loading-rows" aria-hidden="true">
           {[0, 1, 2].map((row) => <div className="activity-loading-row" key={row}>

@@ -1,3 +1,4 @@
+import { continuationContext } from "./work-item-continuation-context.ts";
 import { resumePrimaryWake } from "./wake-primary-resume.ts";
 import type { WorkItemInvocation } from "./work-item-invocation.ts";
 export type { WorkItemInvocation } from "./work-item-invocation.ts";
@@ -190,8 +191,7 @@ export class SqliteWorkItemService implements WorkItemService {
         requestId: input.requestId, workItemId: input.workItemId,
         command: "reply", payload: { workItemId: input.workItemId,
           runKey: input.runKey, prompt: input.prompt,
-          ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
-          ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}) }, at: this.now(),
+          ...continuationContext(input) }, at: this.now(),
       }, () => resumeWaitingWorkItemRun(this.options.db, {
         workItemId: input.workItemId, runKey: input.runKey,
         expectedLifecycleRevision: input.expectedLifecycleRevision,
@@ -210,9 +210,7 @@ export class SqliteWorkItemService implements WorkItemService {
           workItemId: input.workItemId, runKey: input.runKey, prompt: input.prompt,
           invocationKind: "resume_open_run",
           continuitySource: input.continuitySource,
-          ...(input.displayPrompt ? { displayPrompt: input.displayPrompt } : {}),
-          ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
-          ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}),
+          ...continuationContext(input),
           ...(resumed.run?.session_id ? { resumeId: resumed.run.session_id } : {}),
           requestId: input.requestId,
         } as const;

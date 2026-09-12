@@ -1,7 +1,7 @@
 /**
  * Codex permission and reasoning option mapping.
  *
- * Pure mapping functions from Minions normalized option types to their
+ * Pure mapping functions from Swarmcrews normalized option types to their
  * Codex SDK equivalents. No I/O, no side effects.
  */
 
@@ -67,7 +67,7 @@ export function mapPermission(
 }
 
 /**
- * Map a Minions thinking effort level to a Codex ModelReasoningEffort value.
+ * Map a Swarmcrews thinking effort level to a Codex ModelReasoningEffort value.
  *
  * The stable Codex CLI accepts GPT-6 Astra and GPT-5.6 Sol's documented
  * `max` value, but the

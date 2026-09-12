@@ -6,6 +6,13 @@ React components and styles, supplied with invented, deterministic sample data.
 They are component scenes, not evidence of a live provider run. The surrounding
 heading and arrangement are documentation framing, not additional app controls.
 
+The projects, launch, minions, and dashboard PNGs have a targeted Swarmcrews
+branding update: the checked-in SVG mark and wordmark are composited into the
+existing captures, with old product and sample-project labels corrected. These
+are edited documentation illustrations, not fresh browser captures. The graph
+images did not contain the old product branding. The capture sources also use
+the SVG brand so a future full capture retains it.
+
 ## Regenerate
 
 From the repository root, after `pnpm install`:
@@ -16,10 +23,10 @@ node docs/screenshots/capture.mjs
 ```
 
 The script starts a temporary loopback Vite server on a free port and closes it
-when capture finishes. It does not start the Minions backend or an agent, mutate
+when capture finishes. It does not start the Swarmcrews backend or an agent, mutate
 project state, or use provider credentials. API and WebSocket boundaries are
 intercepted, and external network requests from the browser are blocked. There
-is no need to stop an existing Minions service.
+is no need to stop an existing Swarmcrews service.
 
 `scenes.tsx` owns sample content. Product layout and behavior come from imports
 under `src/`; `style.css` only frames the component scenes. The capture uses

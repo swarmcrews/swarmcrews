@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getMinionsHome } from "../../workspace-registry.ts";
+import { getSwarmcrewsHome } from "../../workspace-registry.ts";
 
 /**
  * Build the environment passed to the Codex CLI.
@@ -37,7 +37,7 @@ function codexHomeFallback(): string | null {
     return null;
   }
 
-  const fallback = path.join(getMinionsHome(), "runtime", "codex-home");
+  const fallback = path.join(getSwarmcrewsHome(), "runtime", "codex-home");
   try {
     fs.mkdirSync(fallback, { recursive: true });
   } catch (err) {

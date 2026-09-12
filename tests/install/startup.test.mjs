@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawnSync as spawnSyncProcess, spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, openSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +30,9 @@ test("test runners leave inherited installation storage untouched", { timeout: 1
   mkdirSync(liveHome);
   const env = {
     ...process.env,
+    SWARMCREWS_HOME: liveHome,
+    SWARMCREWS_SERVER_DB: join(liveHome, "server.db"),
+    SWARMCREWS_ARTIFACTS_DIR: join(liveHome, "html"),
     MINIONS_HOME: liveHome,
     MINIONS_SERVER_DB: join(liveHome, "server.db"),
     DB_PATH: join(liveHome, "canvas.db"),
@@ -69,7 +72,9 @@ test("test runners leave inherited installation storage untouched", { timeout: 1
     await promisify(execFile)(process.execPath, unitArgs, {
       cwd: root, encoding: "utf8", timeout: 90_000,
       env: {
-        ...env, MINIONS_HOME: freshHome,
+        ...env, MINIONS_HOME: freshHome, SWARMCREWS_HOME: freshHome,
+        SWARMCREWS_SERVER_DB: join(freshHome, "server.db"),
+        SWARMCREWS_ARTIFACTS_DIR: join(freshHome, "html"),
         MINIONS_SERVER_DB: join(freshHome, "server.db"),
         DB_PATH: join(freshHome, "canvas.db"),
         MINIONS_ARTIFACTS_DIR: join(freshHome, "html"),
@@ -86,13 +91,13 @@ test("test runners leave inherited installation storage untouched", { timeout: 1
       import { createBrowserConfig } from './tests/e2e/browser-config.mjs';
       import { initDb } from './server/db.ts';
       import { openPersistDb, closePersistDb } from './server/session-persist.ts';
-      import { getMinionsHome, registerWorkspace } from './server/workspace-registry.ts';
+      import { getSwarmcrewsHome, registerWorkspace } from './server/workspace-registry.ts';
       import { writeHtmlArtifact } from './server/html-artifact-store.ts';
       const inheritedEnv = { ...process.env };
       for (const smoke of [true, false]) {
         Object.assign(process.env, inheritedEnv);
         Object.assign(process.env, createBrowserConfig({ smoke }).webServer.env);
-        assert.equal(getMinionsHome(), path.join(process.env.MINIONS_E2E_HOME, '.minions'));
+        assert.equal(getSwarmcrewsHome(), path.join(process.env.MINIONS_E2E_HOME, '.minions'));
         const db = openPersistDb();
         db.prepare('INSERT OR REPLACE INTO sessions (session_key, task_name) VALUES (?, ?)').run('browser-probe', 'hi');
         closePersistDb();
@@ -143,7 +148,7 @@ test("startup launches both services from a checkout path with spaces without sh
       assert.ifError(result.error);
       assert.equal(result.status, command === "start" ? 0 : 1, result.stderr);
       if (command === "start") {
-        const pid = Number.parseInt(readFileSync(join(fixture, ".run", "minions.pid"), "utf8"), 10);
+        const pid = Number.parseInt(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8"), 10);
         const deadline = Date.now() + 10_000;
         while (Date.now() < deadline) {
           try { process.kill(pid, 0); } catch { break; }
@@ -395,4 +400,30 @@ test("backend replacement stops owned provider descendants before the next launc
     assert.equal(readFileSync(join(fixture, "providers"), "utf8").trim().split("\n").length, 2);
     assert.ok(!existsSync(join(fixture, "overlap")), "old managed provider was still running at replacement");
   } finally { run.child.kill("SIGKILL"); await run.closed; rmSync(fixture, { recursive: true, force: true }); }
+});
+
+test("Swarmcrews start and status adopt a live legacy PID even beside a stale new record", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "swarmcrews-legacy-launcher-"));
+  try {
+    cpSync(join(root, "scripts"), join(fixture, "scripts"), { recursive: true });
+    mkdirSync(join(fixture, ".run"));
+    // Only start/status are invoked: this fixture must never signal the test runner.
+    writeFileSync(join(fixture, ".run", "minions.pid"), String(process.pid));
+    writeFileSync(join(fixture, ".run", "swarmcrews.pid"), "invalid");
+    for (const action of ["status", "start"]) {
+      const outputPath = join(fixture, `${action}.log`);
+      const outputFd = openSync(outputPath, "w");
+      let result;
+      try {
+        result = spawnSync(process.execPath, ["scripts/start.mjs", action], {
+          cwd: fixture, env: fixtureEnv, stdio: ["ignore", outputFd, outputFd],
+        });
+      } finally { closeSync(outputFd); }
+      const output = readFileSync(outputPath, "utf8");
+      assert.equal(result.status, 0, output);
+      assert.match(output, new RegExp(`Swarmcrews .*running \\(pid ${process.pid}\\)`));
+      assert.match(output, /minions\.log/);
+      assert.equal(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8"), "invalid");
+    }
+  } finally { rmSync(fixture, { recursive: true, force: true }); }
 });

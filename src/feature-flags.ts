@@ -1,3 +1,4 @@
+import { readBrandPreference, clearLegacyPreference } from "./brand-storage.ts";
 /**
  * Feature-flag registry surfaced through debug mode.
  *
@@ -19,7 +20,7 @@
  *     stale browser doesn't break the app after a flag is removed.
  */
 
-const STORAGE_KEY = "minions:feature-flags";
+const STORAGE_KEY = "swarmcrews:feature-flags";
 
 /**
  * Static description of a flag. The `id` is the persisted key and the
@@ -84,7 +85,7 @@ const DEFINITIONS_BY_ID: ReadonlyMap<string, FeatureFlagDefinition> = new Map(
 function readOverrides(): Record<string, boolean> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readBrandPreference(window.localStorage, STORAGE_KEY);
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -105,7 +106,9 @@ function writeOverrides(overrides: Record<string, boolean>): void {
   try {
     if (Object.keys(overrides).length === 0) {
       window.localStorage.removeItem(STORAGE_KEY);
+      clearLegacyPreference(window.localStorage, STORAGE_KEY);
     } else {
+      clearLegacyPreference(window.localStorage, STORAGE_KEY);
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(overrides));
     }
   } catch {
@@ -166,6 +169,7 @@ export function resetFeatureFlags(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+      clearLegacyPreference(window.localStorage, STORAGE_KEY);
   } catch {
     /* ignore */
   }

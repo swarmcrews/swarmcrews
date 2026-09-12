@@ -1,7 +1,7 @@
 /**
  * Project Skills Management
  *
- * Skills are stored per-project on the server in .minions/skills.json.
+ * Skills are stored per-project on the server in $SWARMCREWS_HOME/workspaces/<uuid>/skills.json.
  * This module manages syncing between the in-memory registry and the server.
  */
 

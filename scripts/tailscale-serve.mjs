@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Front the Minions web UI over HTTPS on your tailnet with `tailscale serve`.
+ * Front the Swarmcrews web UI over HTTPS on your tailnet with `tailscale serve`.
  *
  * Why: the mobile companion at `/m` uses Web Push, and browsers only expose the
  * Service Worker / PushManager / Notification APIs in a *secure context* (HTTPS,

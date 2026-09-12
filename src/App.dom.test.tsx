@@ -155,14 +155,14 @@ describe("App document title", () => {
       skills: [],
     });
     vi.mocked(updateProject).mockResolvedValue({});
-    document.title = "Minions";
+    document.title = "Swarmcrews";
   });
 
   it("formats project titles", () => {
     expect(formatProjectDocumentTitle("Alpha Project")).toBe(
-      "Alpha Project (Minions)",
+      "Alpha Project (Swarmcrews)",
     );
-    expect(formatProjectDocumentTitle("   ")).toBe("Minions");
+    expect(formatProjectDocumentTitle("   ")).toBe("Swarmcrews");
   });
 
   it.each(["Go To Activity", "Switch To Beta", "Back To Projects"])(
@@ -216,17 +216,17 @@ describe("App document title", () => {
     fireEvent.click(await screen.findByText("Recent Alpha"));
 
     await waitFor(() => {
-      expect(document.title).toBe("Alpha Project (Minions)");
+      expect(document.title).toBe("Alpha Project (Swarmcrews)");
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Rename Project" }));
-    expect(document.title).toBe("Beta Project (Minions)");
+    expect(document.title).toBe("Beta Project (Swarmcrews)");
     expect(updateProject).toHaveBeenCalledWith("project-1", {
       name: "Beta Project",
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Back To Projects" }));
-    expect(document.title).toBe("Minions");
+    expect(document.title).toBe("Swarmcrews");
   });
 
   it("loads a project selected from the header switcher", async () => {
@@ -245,18 +245,18 @@ describe("App document title", () => {
     render(<App />);
 
     fireEvent.click(await screen.findByText("Recent Alpha"));
-    await waitFor(() => expect(document.title).toBe("Alpha Project (Minions)"));
+    await waitFor(() => expect(document.title).toBe("Alpha Project (Swarmcrews)"));
     fireEvent.click(screen.getByRole("button", { name: "Switch To Beta" }));
 
     await waitFor(() => {
       expect(getProject).toHaveBeenCalledWith("project-2");
-      expect(document.title).toBe("Beta Project (Minions)");
+      expect(document.title).toBe("Beta Project (Swarmcrews)");
     });
   });
 });
 
 describe("MCP servers feature flag gating", () => {
-  const FLAGS_KEY = "minions:feature-flags";
+  const FLAGS_KEY = "swarmcrews:feature-flags";
 
   beforeEach(() => {
     window.localStorage.clear();

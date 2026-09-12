@@ -25,7 +25,7 @@ describe("leader port fins and hints", () => {
 
   it.each([
     ["task-out", "task-assignment", "Assign Task", "Drag to a Minion’s task input"],
-    ["context-out", "context", "Dashboard", "Drag to another leader’s context input"],
+    ["context-out", "context", "Share context", "Share dashboard or conversation context. Drag to another leader’s context input, or onto the canvas to create a connected leader."],
   ])("explains the %s output", (portId, protocol, label, hint) => {
     render(<PortDot {...input} direction="output" portId={portId} protocol={protocol} label={label} />);
     fireEvent.mouseEnter(screen.getByRole("group"));

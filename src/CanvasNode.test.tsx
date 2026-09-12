@@ -1,9 +1,12 @@
+import { mockAnimationFrames } from "../tests/helpers/animation-frames.ts";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CanvasNodeComponent } from "./CanvasNode.tsx";
 import { registerNodeType } from "./node-registry.ts";
 import type { CanvasNode, NodeRenderProps } from "./types.ts";
+
+const advanceFrame = mockAnimationFrames();
 
 registerNodeType({
   type: "leader",
@@ -57,9 +60,11 @@ describe("CanvasNodeComponent leader focusing", () => {
     const body = screen.getByTestId("leader-body");
     fireEvent.mouseDown(body, { button: 0, clientX: 100, clientY: 100 });
     fireEvent.mouseMove(window, { clientX: 101, clientY: 101 });
+    advanceFrame();
     expect(screen.queryByRole("status")).toBeNull();
     expect(onDragStart).not.toHaveBeenCalled();
     fireEvent.mouseMove(window, { clientX: 120, clientY: 120 });
+    advanceFrame();
     expect(screen.getByRole("status")).toHaveTextContent("Release to place on canvas");
     expect(body).not.toBeVisible();
     expect(body.closest(".canvas-node-card")).toHaveStyle({ width: "240px", height: "160px" });
@@ -78,6 +83,7 @@ describe("CanvasNodeComponent leader focusing", () => {
     renderNode({ onMove, dragZoneName: "Release prep" });
     fireEvent.mouseDown(screen.getByTestId("leader-body"), { button: 0, clientX: 100, clientY: 100 });
     fireEvent.mouseMove(window, { clientX: 150, clientY: 170 });
+    advanceFrame();
     expect(screen.getByRole("status")).toHaveTextContent("Release into Release prep");
     if (cancellation === "Escape") fireEvent.keyDown(window, { key: "Escape" });
     else fireEvent.blur(window);
@@ -127,4 +133,19 @@ describe("CanvasNodeComponent leader focusing", () => {
       name: "Saved leader",
     });
   });
+});
+
+it("cancels scheduled movement and restores document styles when unmounted", () => {
+  const onMove = vi.fn();
+  const { unmount } = renderNode({ onMove });
+  const userSelect = document.body.style.userSelect;
+  const cursor = document.body.style.cursor;
+  fireEvent.mouseDown(screen.getByTestId("leader-body"), { button: 0, clientX: 100, clientY: 100 });
+  fireEvent.mouseMove(window, { clientX: 150, clientY: 170 });
+  unmount();
+  advanceFrame();
+  fireEvent.mouseMove(window, { clientX: 200, clientY: 200 });
+  expect(onMove).not.toHaveBeenCalled();
+  expect(document.body.style.userSelect).toBe(userSelect);
+  expect(document.body.style.cursor).toBe(cursor);
 });

@@ -1,3 +1,4 @@
+import { Brand } from "./components/Brand.tsx";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   listProjects,
@@ -185,16 +186,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
     <main className="project-list-page">
       <div className="project-list-shell">
         <header className="project-list-header">
-          <div className="project-list-brand" role="img" aria-label="Minions">
-            <span
-              className="project-list-brand__layer project-list-brand__base"
-              aria-hidden="true"
-            />
-            <span
-              className="project-list-brand__layer project-list-brand__crown"
-              aria-hidden="true"
-            />
-          </div>
+          <div className="project-list-brand"><Brand /></div>
           <div className="project-list-heading">
             <span>Workspace</span>
             <h1>Projects</h1>
@@ -214,7 +206,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
               <p>
                 {mode === "open"
                   ? "Choose an existing repository to continue where you left off."
-                  : "Start a fresh Minions canvas in a local repository."}
+                  : "Start a fresh Swarmcrews canvas in a local repository."}
               </p>
             </div>
           </div>
@@ -335,7 +327,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                 <strong>No recent projects</strong>
                 <p>Open a folder to get started.</p>
                 <small>
-                  Worktree isolation is optional, merges require approval, and Minions keeps project state in its private workspace home.
+                  Worktree isolation is optional, merges require approval, and Swarmcrews keeps project state in its private workspace home.
                   A safe first task is: “Summarize this repository’s structure without changing files.”
                 </small>
               </div>

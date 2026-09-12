@@ -76,13 +76,13 @@ describe("ProjectList journeys", () => {
     vi.mocked(deleteProject).mockResolvedValue({});
   });
 
-  it("renders the README logomark with theme-driven color layers", () => {
+  it("renders the Swarmcrews wordmark and existing leader mark", () => {
     render(<ProjectList onOpenProject={vi.fn()} />);
 
-    const logo = screen.getByRole("img", { name: "Minions" });
-    expect(logo).toHaveClass("project-list-brand");
-    expect(logo.querySelector(".project-list-brand__base")).toBeInTheDocument();
-    expect(logo.querySelector(".project-list-brand__crown")).toBeInTheDocument();
+    const logo = screen.getByRole("img", { name: "Swarmcrews" });
+    expect(logo).toHaveClass("brand");
+    expect(logo.querySelector(".brand__wordmark")).toBeInTheDocument();
+    expect(logo.querySelector(".brand__mark")).toBeInTheDocument();
   });
 
   it("shows a sleeping project when it has no active sessions", async () => {
@@ -158,7 +158,7 @@ describe("ProjectList journeys", () => {
     fireEvent.change(screen.getByPlaceholderText("/path/to/new/project..."), { target: { value: "/repo/new" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Minions may run into issues");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Swarmcrews may run into issues");
     expect(createProject).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Initialize Git & create first commit" }));
 

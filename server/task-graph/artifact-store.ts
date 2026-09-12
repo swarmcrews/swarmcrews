@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { artifactStageInputSchema,type ArtifactInput,type ArtifactStageInput,
   type TaskNode, type GraphRevisionInput } from "../../shared/task-graph-contracts.ts";
-import { getMinionsHome } from "../workspace-registry.ts";
+import { getSwarmcrewsHome } from "../workspace-registry.ts";
 import { TaskGraphValidationError } from "./errors.ts";
 import {validateArtifactContract} from "./artifact-contract.ts";
 
@@ -85,7 +85,7 @@ function storeVerifiedBytes(input:UnverifiedArtifactMetadata,bytes:Buffer,
   }
   validateDeclaredOutput(bytes,declaredOutputSchema);
   for (const contract of contracts) validateDeclaredOutput(bytes,contract);
-  const root=path.join(getMinionsHome(),"artifacts","task-graph");
+  const root=path.join(getSwarmcrewsHome(),"artifacts","task-graph");
   fs.mkdirSync(root,{recursive:true,mode:0o700});
   const rootStat=fs.lstatSync(root);
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
@@ -126,7 +126,7 @@ export function readStoredTaskGraphArtifact(input:{storageRef:string;contentHash
   if (!Number.isInteger(input.maxBytes) || input.maxBytes<1 || input.maxBytes>MAX_ARTIFACT_CHUNK_BYTES) {
     throw new TaskGraphValidationError("artifact maxBytes must be between 1 and 262144");
   }
-  const root=path.join(getMinionsHome(),"artifacts","task-graph");
+  const root=path.join(getSwarmcrewsHome(),"artifacts","task-graph");
   let rootReal:string;let storedReal:string;
   try { rootReal=fs.realpathSync(root);storedReal=fs.realpathSync(input.storageRef); }
   catch { throw new TaskGraphValidationError("immutable artifact content is unavailable"); }

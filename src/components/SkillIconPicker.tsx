@@ -1,7 +1,7 @@
 import { useId, useMemo, useState, type KeyboardEvent } from "react";
-import { SKILL_ICON_GROUPS, SKILL_ICON_LIBRARY, SKILL_ICON_PREFIX } from "../skills/icon-library.ts";
+import { SKILL_ICON_GROUPS, SKILL_ICON_LIBRARY, SKILL_ICON_PREFIX, normalizeSkillIcon } from "../skills/icon-library.ts";
 import type { SkillTemplate } from "../skills/types.ts";
-import { MinionsIcon } from "./MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "./SwarmcrewsIcon.tsx";
 import { SkillIcon } from "./SkillIcon.tsx";
 import "./skill-icon-picker.css";
 
@@ -17,7 +17,7 @@ export function SkillIconPicker({ value, onChange, category, accentColor, descri
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState("All icons");
   const [focused, setFocused] = useState("");
-  const selected = SKILL_ICON_LIBRARY.find((icon) => `${SKILL_ICON_PREFIX}${icon.name}` === value);
+  const selected = SKILL_ICON_LIBRARY.find((icon) => `${SKILL_ICON_PREFIX}${icon.name}` === normalizeSkillIcon(value));
   const filtered = useMemo(() => {
     const terms = search.trim().toLowerCase().split(/\s+/);
     return SKILL_ICON_LIBRARY.filter((icon) =>
@@ -49,7 +49,7 @@ export function SkillIconPicker({ value, onChange, category, accentColor, descri
       </div>
       <div className="skill-icon-picker__filters">
         <label className="skill-icon-picker__search">
-          <MinionsIcon name="analysis" />
+          <SwarmcrewsIcon name="analysis" />
           <input type="search" aria-label="Search icons" placeholder="Search icons, e.g. security" value={search} onChange={(event) => setSearch(event.target.value)} />
         </label>
         <select aria-label="Icon category" value={group} onChange={(event) => setGroup(event.target.value)}>
@@ -66,7 +66,7 @@ export function SkillIconPicker({ value, onChange, category, accentColor, descri
             <button key={icon.name} type="button" aria-label={icon.label} title={`${icon.label} · ${icon.group}`}
               aria-pressed={selected?.name === icon.name} tabIndex={tabStop === icon.name ? 0 : -1}
               onFocus={() => setFocused(icon.name)} onClick={() => onChange(`${SKILL_ICON_PREFIX}${icon.name}`)}>
-              <MinionsIcon name={icon.name} size={22} />
+              <SwarmcrewsIcon name={icon.name} size={22} />
             </button>
           ))}
         </div>
@@ -78,7 +78,7 @@ export function SkillIconPicker({ value, onChange, category, accentColor, descri
       {allowCustomBadge && <details className="skill-icon-picker__custom">
         <summary>Use a custom text badge</summary>
         <label htmlFor={`${id}-custom`}>Letters or a symbol</label>
-        <input id={`${id}-custom`} value={value.startsWith(SKILL_ICON_PREFIX) ? "" : value} maxLength={4}
+        <input id={`${id}-custom`} value={normalizeSkillIcon(value).startsWith(SKILL_ICON_PREFIX) ? "" : value} maxLength={4}
           placeholder="e.g. UX or λ" onChange={(event) => onChange(event.target.value)} />
       </details>}
     </div>

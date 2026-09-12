@@ -1,4 +1,4 @@
-# Minions — Project Instructions
+# Swarmcrews — Project Instructions
 
 Project-specific guidance for any agent (or human) working in this repo.
 The global standards in `~/.claude/CLAUDE.md` apply in full; this file
@@ -8,7 +8,7 @@ narrows them to this codebase. **Where the two conflict, this file wins.**
 
 ## North star
 
-Minions is an infinite canvas in front of the Claude Agent SDK. The
+Swarmcrews is an infinite canvas in front of the Claude Agent SDK. The
 architecture uses a typed event bus, an agent-type registry, and
 graph-as-bus routing.
 

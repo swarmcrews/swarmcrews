@@ -37,11 +37,11 @@ export function useCanvasDragSnap(nodes: CanvasNode[], visible: CanvasNode[], se
       y: position.y + state.snap.position.y - box.y } : position;
   }, []);
   const placement = useCallback((...args: Parameters<typeof canvasDropPlacement>) => {
-    const [node, nodes, visible, selected, tidy] = args;
-    // Preserve both magnetic alignment and the user's deliberate breakaway.
-    // Tidying after release would move the preview/drop away from the pointer.
+    const [node, nodes, visible, selected, tidy, snapToGrid = true] = args;
+    // Preserve magnetic alignment and deliberate breakaway without a grid jump.
+    // Keep collision avoidance active if the drag later overlaps another node.
     const preservePlacement = latest.current.enabled && active.current?.id === node.id && active.current.hasSnapped;
-    return canvasDropPlacement(node, nodes, visible, selected, preservePlacement ? false : tidy);
+    return canvasDropPlacement(node, nodes, visible, selected, tidy, snapToGrid && !preservePlacement);
   }, []);
   return { begin, move, placement };
 }

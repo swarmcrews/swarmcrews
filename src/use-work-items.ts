@@ -6,6 +6,8 @@ import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
 import type { ServerMessage, SocketSubscribe } from "./use-socket.ts";
 import { mergeWorkItemSnapshot } from "./work-item-snapshot-merge.ts";
 import { randomUuid } from "./random-id.ts";
+import type { ContextItem } from "./types.ts";
+import { buildContextUpdateBlock } from "./context-delivery.ts";
 import { displayTextFromPrompt } from "../shared/handoff-text.ts";
 import { formatCoordinatedLabel, reduceLiveEditAwareness,
   type LiveEditAwareness } from "../shared/live-edit-coordination.ts";
@@ -211,6 +213,7 @@ export function activityEntryId(session: Pick<MobileSessionInfo, "sessionKey" | 
 
 export interface PromptFailure {
   prompt: string;
+  contextItems?: ContextItem[];
   error: string;
 }
 
@@ -241,6 +244,7 @@ export function useWorkItems(input: {
   const pendingPrompts = useRef(new Map<string, {
     prompt: string; attempts: number; projectId: string; workItemId: string;
     options?: Record<string, unknown>;
+    contextItems?: ContextItem[];
     onStarted?: (sessionKey: string) => void;
     onError?: (error: string) => void;
   }>());
@@ -368,7 +372,9 @@ export function useWorkItems(input: {
       setPromptFailures((current) => ({
         ...current,
         [pending.workItemId]: {
-          prompt: pending.prompt,
+          prompt: pending.contextItems?.length && typeof pending.options?.["displayPrompt"] === "string"
+            ? pending.options["displayPrompt"] : pending.prompt,
+          ...(pending.contextItems?.length ? { contextItems: pending.contextItems } : {}),
           error: message.error ?? "Work-item command failed",
         },
       }));
@@ -398,14 +404,22 @@ export function useWorkItems(input: {
     };
   }, [retryLoad]);
   const mutate = useCallback((type: string, item: WorkItemSnapshot,
-    extra: Record<string, unknown> = {}) => {
+    extra: Record<string, unknown> = {}, contextItems: ContextItem[] = []) => {
+    if (contextItems.length && typeof extra["prompt"] === "string") {
+      const attachments = contextItems.flatMap(item => item.attachments ?? []);
+      extra = { ...extra, displayPrompt: extra["prompt"],
+        prompt: [buildContextUpdateBlock(contextItems.map(item => ({ ...item, kind: "add" as const }))),
+          extra["prompt"]].filter(Boolean).join("\n\n"),
+        ...(attachments.length ? { attachments } : {}) };
+    }
     const requestId = randomUuid();
     if (type === "continue_work_item" && typeof extra["prompt"] === "string") {
       clearPromptFailure(item.id);
       pendingPrompts.current.set(requestId, {
         prompt: extra["prompt"], attempts: 1,
         projectId: item.projectId, workItemId: item.id,
-        options: { displayPrompt: typeof extra["displayPrompt"] === "string"
+        contextItems,
+        options: { ...(extra["attachments"] ? { attachments: extra["attachments"] } : {}), displayPrompt: typeof extra["displayPrompt"] === "string"
           ? extra["displayPrompt"] : displayTextFromPrompt(extra["prompt"]) },
       });
     }
@@ -448,8 +462,8 @@ export function useWorkItems(input: {
     review: (item: WorkItemSnapshot) => mutate("review_work_item", item),
     archive: (item: WorkItemSnapshot) => mutate("archive_work_item", item),
     restore: (item: WorkItemSnapshot) => mutate("restore_work_item", item),
-    start: (item: WorkItemSnapshot, prompt: string) => mutate("continue_work_item", item, { prompt }),
-    reply: (item: WorkItemSnapshot, prompt: string) => mutate("continue_work_item", item, { prompt }),
+    start: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[]) => mutate("continue_work_item", item, { prompt }, contextItems),
+    reply: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[]) => mutate("continue_work_item", item, { prompt }, contextItems),
     launch,
   }), [state, listLoad, retryLoad, orderedItems, promptFailures, clearPromptFailure, input.projectId, input.send, mutate, launch]);
 }

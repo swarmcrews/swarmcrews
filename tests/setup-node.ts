@@ -13,6 +13,7 @@ for (const key of ["GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR
 // A shared runner-level directory allows unrelated suites to contaminate the
 // registry and session DB.
 // Individual tests can still override MINIONS_HOME to exercise specific paths.
+for (const key of ["SWARMCREWS_HOME", "SWARMCREWS_SERVER_DB", "SWARMCREWS_ARTIFACTS_DIR", "SWARMCREWS_TEST_HARNESS"]) delete process.env[key];
 const testMinionsHome = mkdtempSync(join(tmpdir(), "minions-vitest-"));
 process.env["MINIONS_HOME"] = testMinionsHome;
 // This override takes precedence over MINIONS_HOME in session persistence.

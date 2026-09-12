@@ -3,7 +3,7 @@ import path from "path";
 import os from "os";
 import { initDb } from "./db.ts";
 import type Database from "better-sqlite3";
-import { findWorkspaceBySource, getMinionsHome, registerWorkspace } from "./workspace-registry.ts";
+import { findWorkspaceBySource, getSwarmcrewsHome, registerWorkspace } from "./workspace-registry.ts";
 import { DEFAULT_SANDBOX_POLICY, type SandboxPolicy } from "../shared/workspace-contracts.ts";
 import {
   defaultContextActions,
@@ -14,7 +14,7 @@ import { defaultProjectContext } from "../shared/project-context.ts";
 import { normalizeProjectSandboxPolicy } from "./project-defaults.ts";
 export { resolveMinionModelForHarness } from "./project-model-settings.ts";
 const SIDECAR_DIR = ".minions";
-const GLOBAL_DIR = getMinionsHome();
+const GLOBAL_DIR = getSwarmcrewsHome();
 const RECENT_PROJECTS_FILE = path.join(GLOBAL_DIR, "recent-projects.json");
 const LEGACY_RECENT_PROJECTS_FILE = path.join(os.homedir(), SIDECAR_DIR, "recent-projects.json");
 
@@ -147,7 +147,7 @@ export function hasSidecar(projectPath: string): boolean {
 }
 
 /**
- * Initialize central workspace state below MINIONS_HOME.
+ * Initialize central workspace state below SWARMCREWS_HOME.
  * Creates the directory, SQLite DB, empty context.md, and default settings.
  * Returns the initialized database handle.
  */

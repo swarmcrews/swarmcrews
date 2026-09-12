@@ -1,7 +1,7 @@
 import { buildVapidAuthHeader, encryptPayload, signVapidJwt, type VapidKeys } from "./push-crypto.ts";
 import type { PushSubscription } from "./push-store.ts";
 
-const DEFAULT_VAPID_SUBJECT = "mailto:minions@example.invalid";
+const DEFAULT_VAPID_SUBJECT = "mailto:swarmcrews@example.invalid";
 
 export async function sendWebPush(
   subscription: PushSubscription,

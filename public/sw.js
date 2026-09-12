@@ -7,11 +7,11 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("push", (event) => {
   const notification = event.data?.json() ?? {};
   event.waitUntil(
-    self.registration.showNotification(notification.title ?? "Minions", {
+    self.registration.showNotification(notification.title ?? "Swarmcrews", {
       body: notification.body ?? "",
       data: notification.data ?? {},
       tag: notification.data?.sessionKey,
-      icon: "/icons/leader-active.svg",
+      icon: "/icons/favicon.svg",
       badge: "/icons/favicon.svg",
     }),
   );

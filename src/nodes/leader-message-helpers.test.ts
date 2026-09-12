@@ -235,7 +235,7 @@ describe("shortToolName", () => {
 });
 
 describe("toolDisplayInfo", () => {
-  it("turns common Minions MCP actions into friendly labels and summaries", () => {
+  it("turns common Swarmcrews MCP actions into friendly labels and summaries", () => {
     expect(toolDisplayInfo("mcp__task-manager__assign_task", { title: "Fix auth" })).toMatchObject({
       label: "Launch minion",
       shortLabel: "Minion",

@@ -16,7 +16,7 @@ export function createUpdateProjectContextToolDef(ctx: TaskToolContext): Normali
   return {
     name: "update_project_context",
     description:
-      "Replace the current Minions project context in workspace-owned storage. Use this instead of creating context.md or CLAUDE.md when asked to populate the project's Context panel. The saved context is included in subsequently delegated Minion task prompts.",
+      "Replace the current Swarmcrews project context in workspace-owned storage. Use this instead of creating context.md or CLAUDE.md when asked to populate the project's Context panel. The saved context is included in subsequently delegated Minion task prompts.",
     inputSchema: updateProjectContextInputSchema,
     handler: async (input: unknown) => {
       const { content } = updateProjectContextInputSchema.parse(input);

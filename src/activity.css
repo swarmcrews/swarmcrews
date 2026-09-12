@@ -2245,7 +2245,7 @@
 }
 
 .act-composer textarea:focus { border-color: var(--accent); }
-.act-composer button {
+.act-composer-actions > button {
   align-self: end;
   padding: 8px 14px;
   border: 0;
@@ -2254,7 +2254,7 @@
   color: var(--bg-primary);
   font-weight: 700;
 }
-.act-composer button:disabled { opacity: .45; }
+.act-composer-actions > button:disabled { opacity: .45; }
 
 .act-inspector-fallback {
   display: grid;
@@ -3256,3 +3256,19 @@
 .act-launch-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .act-launch-head > .act-draft-back { grid-column: 1 / -1; justify-self: start; }
 .act-root--composing .act-empty-workspace { position: relative; padding-top: 48px; box-sizing: border-box; }
+
+.act-composer-inner > .leader-prompt-bar__attachments {
+  grid-column: 1 / -1;
+  padding: 0 0 4px;
+}
+
+.act-composer-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.act-composer-actions > .leader-prompt-bar__attach {
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}

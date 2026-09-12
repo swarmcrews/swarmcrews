@@ -39,14 +39,14 @@ describe("debug flag", () => {
   it("persists to localStorage when enabled", () => {
     setDebugEnabled(true);
     expect(isDebugEnabled()).toBe(true);
-    expect(window.localStorage.getItem("minions:debug-mode")).toBe("1");
+    expect(window.localStorage.getItem("swarmcrews:debug-mode")).toBe("1");
   });
 
   it("removes the localStorage entry when disabled", () => {
     setDebugEnabled(true);
     setDebugEnabled(false);
     expect(isDebugEnabled()).toBe(false);
-    expect(window.localStorage.getItem("minions:debug-mode")).toBeNull();
+    expect(window.localStorage.getItem("swarmcrews:debug-mode")).toBeNull();
   });
 
   it("notifies subscribers on flag changes", () => {
@@ -68,10 +68,10 @@ describe("debug flag", () => {
     const fn = vi.fn();
     const unsub = subscribeDebugFlag(fn);
 
-    window.localStorage.removeItem("minions:debug-mode");
+    window.localStorage.removeItem("swarmcrews:debug-mode");
     window.dispatchEvent(
       new StorageEvent("storage", {
-        key: "minions:debug-mode",
+        key: "swarmcrews:debug-mode",
         oldValue: "1",
         newValue: null,
       }),

@@ -32,7 +32,7 @@ streaming, stopping, collection, grading and reporting.
 - Durable subprocess execution can use an external supervisor that writes PID,
   exit state and JSONL logs outside the participant workspace. Reconnect reads
   those handles/logs without restarting an agent. Cancellation kills descendants.
-- Minions needs a concrete external WS/HTTP client, a dedicated instance startup
+- Swarmcrews needs a concrete external WS/HTTP client, a dedicated instance startup
   recipe, and actual protocol tests. Existing application commands are the
   integration boundary; do not invent an unimplemented `/eval` endpoint.
 - Root `codex --disable multi_agent --disable multi_agent_v2 features list`
@@ -60,7 +60,7 @@ streaming, stopping, collection, grading and reporting.
 2. Cancel and resume operate on persistent handles; an interrupted controller
    does not duplicate participant launch, erase deadlines, or drop failed cells.
 3. An executable test fixture for raw Codex and a protocol-compatible local WS
-   fixture for Minions exercise concrete clients without calling providers.
+   fixture for Swarmcrews exercise concrete clients without calling providers.
 4. All six reference submissions pass independently executed hidden cases, and
    broken starters/targeted defects fail. Archive has real persistent storage,
    HTTP endpoints and UI; worker recovery uses real restartable processes and
@@ -73,7 +73,7 @@ streaming, stopping, collection, grading and reporting.
 
 ## Lifecycle and provenance requirements
 
-- The controller owns dedicated Minions startup, endpoint binding and shutdown,
+- The controller owns dedicated Swarmcrews startup, endpoint binding and shutdown,
   persists the server handle for recovery, and includes startup in measured time.
   Container-loopback endpoints use a controller-owned container transport;
   they must never connect accidentally to a host instance at the same port.

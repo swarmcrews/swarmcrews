@@ -361,7 +361,7 @@ export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps
           <section className="mob-settings-section mob-settings-section--danger" aria-labelledby="mob-server-heading">
             <div className="mob-settings-section-heading">
               <h2 id="mob-server-heading">Server</h2>
-              <p>Restart the active Minions backend to pick up newly changed code.</p>
+              <p>Restart the active Swarmcrews backend to pick up newly changed code.</p>
             </div>
             <button
               type="button"
@@ -389,10 +389,10 @@ export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Restart Minions server"
+            aria-label="Restart Swarmcrews server"
             className="mob-settings-modal"
           >
-            <h2>Restart Minions server?</h2>
+            <h2>Restart Swarmcrews server?</h2>
             <p>
               {restartState === "sent"
                 ? "Restart requested. The app will reconnect when the server is back."

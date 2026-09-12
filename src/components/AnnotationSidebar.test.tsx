@@ -95,7 +95,7 @@ describe("AnnotationSidebar — palette", () => {
       color: MARKUP_PALETTE[0]!.color,
     });
     expect(screen.getByLabelText("Red").getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByLabelText("Accent").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("Pink").getAttribute("aria-checked")).toBe("false");
   });
 
   it("aria-checked falls back to prop color when nothing is selected", () => {

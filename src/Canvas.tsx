@@ -1,3 +1,4 @@
+import { uniqueContextSources } from "../shared/connected-context.ts";
 import { useCanvasDragSnap } from "./use-canvas-drag-snap.ts";
 import { LeaderDropPreview } from "./LeaderDropPreview.tsx";
 import { EmptyCanvasState } from "./EmptyCanvasState.tsx";
@@ -1126,15 +1127,17 @@ export function Canvas({
     [visibleNodes, navigateTo, zones.hiddenMembership, zones.inspect],
   );
 
+  const focusNodesRef = useRef(focusNodes);
+  focusNodesRef.current = focusNodes;
   const handleFocusNode = useCallback(
     (nodeId: string) => {
       if (zones.inspect(nodeId)) return;
       const ids = new Set([nodeId]);
       setSelectedEdgeId(null);
       setSelectedIds(ids);
-      focusNodes(ids);
+      focusNodesRef.current(ids);
     },
-    [focusNodes, zones.inspect],
+    [zones.inspect],
   );
 
   // Focus the canvas on the node hosting the given sessionKey (if any).
@@ -3435,7 +3438,7 @@ export function Canvas({
       const item = extractContextItem(sourceNode);
       if (item) items.push(item);
     }
-    return items;
+    return uniqueContextSources(items);
   }, [nodes, graph, extractContextItem, getContextFromGroup]);
 
   // Stable per-node getters: closures are created once per node ID and reused
@@ -3831,6 +3834,7 @@ export function Canvas({
             connectedPorts={connectedPorts}
             snapTargetKey={snapTargetKey}
             onDragStart={handleDragStart}
+            onDragMove={zones.moveDrag}
             onDragEnd={handleDragEnd}
             isDropTarget={dropTargetGroupId === node.id}
             isBeingDragged={draggingNodeId === node.id}

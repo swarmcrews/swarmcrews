@@ -7,8 +7,11 @@ export function TaskRetryFeedback({ node, receipt, onRefresh }: {
   onRefresh: (() => void) | undefined;
 }) {
   return <>
-    <p role="status">{receipt?.pending ? receipt.accepted ? "Retry accepted · waiting to start" : "Retry requested…" : node.currentAttempt
+    <p className="tg-retry-feedback" role="status">{receipt?.pending ? receipt.accepted ? "Retry accepted · waiting to start" : "Retry requested…" : node.currentAttempt
       ? `Attempt ${node.currentAttempt.number} ${node.currentAttempt.state}` : "No current attempt"}</p>
-    {receipt?.error && <p role="alert">{receipt.error} {onRefresh && <button onClick={onRefresh}>Refresh task state</button>}</p>}
+    {receipt?.error && <div className="tg-retry-feedback tg-retry-feedback--error" role="alert">
+      <span>{receipt.error}</span>
+      {onRefresh && <button className="tg-button" type="button" onClick={onRefresh}>Refresh task state</button>}
+    </div>}
   </>;
 }

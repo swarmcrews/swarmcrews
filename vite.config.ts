@@ -26,6 +26,7 @@ export default defineConfig({
       // settings changes, and worktree operations don't trigger Vite full-reloads.
       ignored: [
         "**/.minions/**",
+        "**/.swarmcrews/**",
         "**/.canvas-worktrees/**",
       ],
     },

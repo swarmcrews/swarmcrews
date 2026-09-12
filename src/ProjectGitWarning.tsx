@@ -17,12 +17,12 @@ export function ProjectGitWarning({
       <strong>This folder is not a Git repository</strong>
       {mobile ? (
         <span>
-          Minions may run into issues without Git. Initialize it and create the first commit,
+          Swarmcrews may run into issues without Git. Initialize it and create the first commit,
           or continue without Git.
         </span>
       ) : (
         <p>
-          Minions may run into issues in projects that do not use Git. You can initialize Git
+          Swarmcrews may run into issues in projects that do not use Git. You can initialize Git
           and create the first commit now, or continue without it.
         </p>
       )}

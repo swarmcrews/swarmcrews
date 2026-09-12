@@ -1,8 +1,8 @@
-# Getting Started with Minions
+# Getting Started with Swarmcrews
 
 [Back to the README](../README.md)
 
-Minions is a workspace for directing coding agents. You give a **Leader** an
+Swarmcrews is a workspace for directing coding agents. You give a **Leader** an
 outcome, follow its work in **Activity** or on the **Canvas**, and review the
 result. The Leader can delegate bounded tasks to **Minions**, coordinate
 dependencies with a **task graph**, and present progress and questions on a
@@ -24,7 +24,7 @@ are included for maintainers.
 
 | You want to… | Start here |
 |---|---|
-| Install Minions and launch a first task | [1. Install and start](#1-install-and-start) |
+| Install Swarmcrews and launch a first task | [1. Install and start](#1-install-and-start) |
 | Try it without bringing an existing project | [2. Prepare a practice repository](#2-prepare-a-practice-repository) |
 | Understand the interface | [3. Open your project](#3-open-your-project) |
 | Give a Leader a useful assignment | [4. Launch your first Leader](#4-launch-your-first-leader) |
@@ -58,7 +58,7 @@ npm install -g pnpm@10.15.1
 
 You also need at least one authenticated agent harness: **Claude Code, OpenAI
 Codex, OpenCode, or Pi**. Authenticate with your chosen harness on the machine
-running Minions. Minions uses that harness's runtime and model catalog; it does
+running Swarmcrews. Swarmcrews uses that harness's runtime and model catalog; it does
 not supply a model-service account. Claude and Codex can use bundled SDK
 runtimes; OpenCode and Pi must be discoverable on the server's `PATH` or through
 their executable overrides.
@@ -73,8 +73,8 @@ four harnesses to get started.
 Run these commands in the directory where you keep development tools:
 
 ```bash
-git clone https://github.com/hipsterusername/minions.git
-cd minions
+git clone https://github.com/hipsterusername/minions.git swarmcrews
+cd swarmcrews
 pnpm install
 pnpm preflight
 pnpm start
@@ -89,11 +89,11 @@ harnesses do not all need fixing.
 browser. If a browser does not open, visit **http://localhost:6173**.
 
 **Checkpoint:** you see the Projects page. You do not need to configure a
-database; Minions creates its SQLite state automatically.
+database; Swarmcrews creates its SQLite state automatically.
 
 ### Keep these commands handy
 
-Run them from the cloned **Minions application directory**, even when the
+Run them from the cloned **Swarmcrews application directory**, even when the
 project you are working on lives somewhere else.
 
 | Command | Use it to… |
@@ -102,7 +102,7 @@ project you are working on lives somewhere else.
 | `pnpm stop` | Stop the background service |
 | `pnpm restart` | Restart it after changing the server environment |
 | `pnpm dev` | Run in the foreground, with logs and Ctrl-C to stop |
-| `tail -n 100 .run/minions.log` | Inspect recent background-service logs |
+| `tail -n 100 .run/swarmcrews.log` | Inspect recent background-service logs |
 
 Use either the background service or the foreground development command on a
 given set of ports. [More configuration](../README.md#configuration)
@@ -115,8 +115,8 @@ to install. Choose a new directory; run the commands once.
 
 ```bash
 mkdir -p ~/projects
-mkdir ~/projects/minions-playground
-cd ~/projects/minions-playground
+mkdir ~/projects/swarmcrews-playground
+cd ~/projects/swarmcrews-playground
 git init
 cat > greet.mjs <<'EOF'
 console.log('Hello!');
@@ -133,12 +133,12 @@ pwd
 ```
 
 **Checkpoint:** the command prints `Hello!`, the repository has an initial
-commit, and `pwd` gives you the absolute folder path to open in Minions. If Git
+commit, and `pwd` gives you the absolute folder path to open in Swarmcrews. If Git
 asks for your author identity, configure it and retry the commit before
 continuing.
 
 An initial commit gives isolated worktrees a starting revision. Keep this
-practice repository separate from the Minions app clone: it is the project
+practice repository separate from the Swarmcrews app clone: it is the project
 the agents will edit.
 
 ## 3. Open your project
@@ -147,12 +147,12 @@ On the Projects page, select **Open Folder**, enter the absolute repository
 path, and click **Open**. Use the actual path from `pwd`, not the example
 `/home/you/...` path in the screenshot.
 
-[![Projects page showing Open Folder, the repository-path field, Open, and a recent Minions Playground project.](./images/getting-started-projects.png)](./images/getting-started-projects.png)
+[![Projects page showing Open Folder, the repository-path field, Open, and a recent Swarmcrews Playground project.](./images/getting-started-projects.png)](./images/getting-started-projects.png)
 
 *The upper card opens or creates a workspace. The lower card takes you back to
 a recent project.*
 
-**New Project** creates a workspace at a new folder path. If Minions detects
+**New Project** creates a workspace at a new folder path. If Swarmcrews detects
 that the folder is not a Git repository, it offers Git initialization or a
 choice to continue without Git. For this walkthrough, use a repository with an
 initial commit so you can practice isolated-worktree review.
@@ -250,7 +250,7 @@ These components are arranged together for the walkthrough.*
 Minions share the Leader's execution checkout. With isolation enabled, that
 means the Leader's isolated worktree; workers do not each receive an independent
 branch by default. Give concurrent editing tasks disjoint file ownership.
-Minions rejects declared overlapping write scopes during assignment.
+Swarmcrews rejects declared overlapping write scopes during assignment.
 
 For this exercise, the code Minion owns `greet.mjs` and the documentation Minion
 owns `USAGE.md`. The Leader checks their agreement after they finish. In a larger
@@ -499,7 +499,7 @@ use your normal Git review process.
 From the original practice repository:
 
 ```bash
-cd ~/projects/minions-playground
+cd ~/projects/swarmcrews-playground
 node greet.mjs
 node greet.mjs Ada
 git status --short
@@ -520,14 +520,14 @@ review/integration outcome is confirmed, and you know whether any work remains.
 
 ### Return later
 
-Open Minions again and select the project from **Recent projects**. Canvas
+Open Swarmcrews again and select the project from **Recent projects**. Canvas
 state and session history are persisted. Read the latest activity, pending
 questions, and review state before resuming; restoring a page is not evidence
 that interrupted work finished successfully.
 
-Minions normally stores project state and owned worktrees under `~/.minions`,
+Swarmcrews normally stores project state and owned worktrees under `~/.swarmcrews`,
 outside your source repository. If moving a repository or changing
-`MINIONS_HOME`, follow the [storage and migration instructions](../README.md#workspace-storage-and-migration)
+`SWARMCREWS_HOME`, follow the [storage and migration instructions](../README.md#workspace-storage-and-migration)
 so you retain the correct workspace identity and pending work.
 
 ## 10. Go further
@@ -552,7 +552,7 @@ verify them when switching projects.
 ### Mobile companion
 
 For tailnet access, install and sign in to Tailscale on the host and your phone,
-then start Minions with:
+then start Swarmcrews with:
 
 ```bash
 pnpm start -- --tailscale
@@ -599,8 +599,8 @@ and the final evidence. Ask for any missing product decision in a form.
 | `pnpm` is missing or Node is too old | Recheck the versions in [step 1](#1-install-and-start), then reinstall dependencies |
 | Installation fails while building `better-sqlite3` | Install the platform's C++ build tools; see [native-module troubleshooting](../README.md#troubleshooting) |
 | No usable model, or launch says unavailable | Run `pnpm preflight`; confirm your chosen harness is authenticated and visible to the server process, then refresh readiness or restart |
-| Harness works in a terminal but not in Minions | Compare executable paths and environment; the background server must inherit the credentials and overrides it needs |
-| Browser cannot reach the app | Run `pnpm status`, check `.run/minions.log`, and open `http://localhost:6173` |
+| Harness works in a terminal but not in Swarmcrews | Compare executable paths and environment; the background server must inherit the credentials and overrides it needs |
+| Browser cannot reach the app | Run `pnpm status`, check `.run/swarmcrews.log`, and open `http://localhost:6173` |
 | A port is busy | Check for an existing instance first. `PORT` changes the backend port; `VITE_PORT` changes the browser-facing port. Use a free port for the one that conflicts |
 | Project cannot use isolation | Verify the folder is a Git repository with an initial commit and that the path is correct |
 | No Minions appear | A small task may be handled directly. Ask explicitly for bounded delegation, and inspect the plan for assignment errors or blockers |
@@ -623,7 +623,7 @@ existing reports first. A useful report includes:
 What I expected:
 What happened instead:
 Steps to reproduce:
-Minions commit (git rev-parse --short HEAD):
+Swarmcrews commit (git rev-parse --short HEAD):
 OS, Node version, and pnpm version:
 Harness and selected model:
 Shared checkout or isolated worktree:

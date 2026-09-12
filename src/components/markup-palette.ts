@@ -12,7 +12,8 @@ export interface MarkupPaletteSwatch {
 }
 
 export const MARKUP_PALETTE: ReadonlyArray<MarkupPaletteSwatch> = [
-  { label: "Accent", color: "var(--accent)" },
+  // Keep every swatch theme-independent so the accent cannot duplicate another colour.
+  { label: "Pink", color: "#ec4899" },
   { label: "Red", color: "#ef4444" },
   { label: "Amber", color: "#f59e0b" },
   { label: "Green", color: "#10b981" },

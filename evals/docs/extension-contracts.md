@@ -1,9 +1,9 @@
 # Extension contracts
 
-`@minions/agent-evals` is a standalone Node package. Its runtime boundary is
-`evals/src/**`; it never imports application internals. Minions adapters start a separately prepared application process and communicate externally.
-The package exports contracts from `@minions/agent-evals` and runtime schemas
-from `@minions/agent-evals/schemas`. The executable is
+`@swarmcrews/agent-evals` is a standalone Node package. Its runtime boundary is
+`evals/src/**`; it never imports application internals. Swarmcrews adapters start a separately prepared application process and communicate externally.
+The package exports contracts from `@swarmcrews/agent-evals` and runtime schemas
+from `@swarmcrews/agent-evals/schemas`. The executable is
 `agent-evals` (`src/cli/main.ts` → `dist/src/cli/main.js`).
 
 ## Ownership and exports
@@ -18,8 +18,8 @@ import {
   ExtensionRegistry, type ExecutionAdapter, type IsolationBackend,
   type Grader, type ReportView, type TaskDefinition, type ExperimentPlan,
   type ExperimentCell, type ResultRecord
-} from "@minions/agent-evals";
-import { TaskDefinitionSchema, RunEventSchema } from "@minions/agent-evals/schemas";
+} from "@swarmcrews/agent-evals";
+import { TaskDefinitionSchema, RunEventSchema } from "@swarmcrews/agent-evals/schemas";
 ```
 
 All persisted records have `schemaVersion: 1`, use strict runtime schemas, and

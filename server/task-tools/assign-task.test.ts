@@ -608,7 +608,7 @@ describe("assign_task", () => {
       expect(prompt).toContain("CLAUDE.md");
     });
 
-    it("injects configured Minions project context and omits the empty placeholder", async () => {
+    it("injects configured Swarmcrews project context and omits the empty placeholder", async () => {
       writeContext(projectDir, "# Architecture\n\nUse the typed event bus.");
       await callAssign(harness.ctx, {
         taskId: "t-project-context",
@@ -617,7 +617,7 @@ describe("assign_task", () => {
         priority: "low",
       });
 
-      expect(lastSpawnPrompt(harness)).toContain("## Minions project context");
+      expect(lastSpawnPrompt(harness)).toContain("## Swarmcrews project context");
       expect(lastSpawnPrompt(harness)).toContain("Use the typed event bus.");
 
       writeContext(projectDir, "# Project\n\nProject context has not been configured yet.\n");
@@ -627,7 +627,7 @@ describe("assign_task", () => {
         description: "details",
         priority: "low",
       });
-      expect(lastSpawnPrompt(harness)).not.toContain("## Minions project context");
+      expect(lastSpawnPrompt(harness)).not.toContain("## Swarmcrews project context");
       expect(lastSpawnPrompt(harness)).not.toContain("has not been configured yet");
     });
 

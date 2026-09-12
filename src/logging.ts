@@ -27,5 +27,5 @@ export function createBrowserLogger(options: BrowserLoggerOptions): Logger {
 
 export const browserLogger = createBrowserLogger({
   dev: import.meta.env.DEV,
-  configuredLevel: import.meta.env["VITE_MINIONS_LOG_LEVEL"],
+  configuredLevel: import.meta.env["VITE_SWARMCREWS_LOG_LEVEL"] ?? import.meta.env["VITE_MINIONS_LOG_LEVEL"],
 });

@@ -1,6 +1,6 @@
 {
-  "name": "Minions",
-  "short_name": "Minions",
+  "name": "Swarmcrews",
+  "short_name": "Swarmcrews",
   "start_url": "/m",
   "scope": "/m",
   "display": "standalone",
@@ -8,15 +8,10 @@
   "theme_color": "#0f1117",
   "icons": [
     {
-      "src": "/icons/leader-active.svg",
+      "src": "/icons/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
-    },
-    {
-      "src": "/icons/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
     }
   ]
 }

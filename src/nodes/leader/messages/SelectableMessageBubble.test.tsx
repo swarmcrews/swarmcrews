@@ -26,6 +26,7 @@ afterEach(() => {
     setClipboard(undefined);
   }
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 it.each([
@@ -115,6 +116,70 @@ it("supports keyboard picking, shift ranges, clearing, and returning focus on Es
   fireEvent.keyDown(chunks[1]!, { key: "Escape" });
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(message).toHaveFocus();
+});
+
+it.each([0.5, 1, 1.5])("keeps the toolbar inside the selected range while scrolling at zoom %s", scale => {
+  let resize = () => {};
+  const disconnect = vi.fn();
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { resize = callback; }
+    observe() {}
+    disconnect = disconnect;
+  });
+  const { container } = render(<div className="leader-message-feed"><SelectionProbe /></div>);
+  const feed = container.firstElementChild as HTMLElement;
+  const toolbar = container.querySelector<HTMLElement>(".message-selection-toolbar")!;
+  const controls = container.querySelector<HTMLElement>(".message-selection-toolbar__controls")!;
+  const chunks = screen.getAllByTestId("message-chunk");
+  let scroll = 500;
+  let viewportHeight = 300;
+  const rect = (top: number, height: number) => ({
+    top: 100 + top * scale, bottom: 100 + (top + height) * scale, height: height * scale,
+  }) as DOMRect;
+  Object.defineProperties(feed, {
+    clientHeight: { get: () => viewportHeight },
+    clientTop: { value: 0 },
+  });
+  Object.defineProperty(toolbar, "offsetHeight", { value: 40 });
+  vi.spyOn(feed, "getBoundingClientRect").mockImplementation(() => rect(0, viewportHeight));
+  vi.spyOn(toolbar, "getBoundingClientRect").mockImplementation(() => rect(2000 - scroll, 40));
+  chunks.forEach((chunk, index) => {
+    vi.spyOn(chunk, "getBoundingClientRect").mockImplementation(() => rect(400 + index * 400 - scroll, 200));
+  });
+  const controlsTop = () => toolbar.getBoundingClientRect().top
+    + Number(controls.style.transform.match(/translateY\((.*)px\)/)?.[1]) * scale;
+  const controlsBottom = () => controlsTop() + 40 * scale;
+
+  fireEvent.click(chunks[0]!);
+  fireEvent.click(chunks[2]!, { shiftKey: true });
+  expect(controlsBottom()).toBeCloseTo(100 + (viewportHeight - 4) * scale);
+
+  // Resizing the chat moves the toolbar without requiring another scroll.
+  viewportHeight = 250;
+  resize();
+  expect(controlsBottom()).toBeCloseTo(100 + (viewportHeight - 4) * scale);
+
+  // The end of the selection holds the toolbar as it scrolls out above chat.
+  for (scroll of [1200, 1500]) {
+    fireEvent.scroll(feed);
+    expect(controlsBottom()).toBeCloseTo(chunks[2]!.getBoundingClientRect().bottom);
+  }
+  // Scrolling back before the selection anchors it to the first chunk.
+  scroll = 0;
+  fireEvent.scroll(feed);
+  expect(controlsTop()).toBeCloseTo(chunks[0]!.getBoundingClientRect().top);
+
+  // A smaller selection updates the bounds immediately.
+  fireEvent.click(screen.getByRole("button", { name: "Clear selected chunks" }));
+  scroll = 800;
+  fireEvent.click(chunks[1]!);
+  expect(controlsBottom()).toBeCloseTo(chunks[1]!.getBoundingClientRect().bottom);
+
+  fireEvent.click(screen.getByRole("button", { name: "Exit chunk selection" }));
+  expect(controls.style.transform).toBe("");
+  fireEvent.scroll(feed);
+  expect(controls.style.transform).toBe("");
+  expect(disconnect).toHaveBeenCalled();
 });
 
 it("returns focus to the message when the selection toolbar is dismissed", () => {

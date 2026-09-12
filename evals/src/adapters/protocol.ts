@@ -2,7 +2,7 @@ import type { CapabilityReport, ExecutionSnapshot, ParticipantRunSpec, RunEvent,
 import type { CollectedExecution, StopReason, StopReceipt } from "../core/contracts.js";
 
 /** Boundary deliberately modelled as transport messages; implementations live outside evals. */
-export interface MinionsProtocolClient {
+export interface SwarmcrewsProtocolClient {
   probe(): Promise<{ protocolVersion: number; capabilities: Record<string, boolean>; evidence: string[] }>;
   launch(input: { mode: "single" | "graph"; run: ParticipantRunSpec; restrictions: Record<string, unknown> }): Promise<RunHandle>;
   events(handle: RunHandle, afterSequence?: number): AsyncIterable<RunEvent>;
@@ -11,7 +11,7 @@ export interface MinionsProtocolClient {
   collect(handle: RunHandle): Promise<CollectedExecution>;
 }
 
-export interface ExternalAdapterDependencies { minions?: MinionsProtocolClient; now?: () => Date; }
+export interface ExternalAdapterDependencies { minions?: SwarmcrewsProtocolClient; now?: () => Date; }
 export interface ProcessRun {
   id: string; createdAt?: string; events: AsyncIterable<Record<string, unknown>>; inspect(): Promise<{ terminal: boolean; outcome: ExecutionSnapshot["terminalOutcome"] }>;
   stop(reason: StopReason): Promise<boolean>; collect(): Promise<CollectedExecution["artifacts"]>;

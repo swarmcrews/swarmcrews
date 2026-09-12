@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CodexRawAdapter, LocalCodexProcessLauncher, WebSocketMinionsProtocolClient, dedicatedInstanceRecipe, executionCommand } from '../../src/adapters/index.js';
+import { CodexRawAdapter, LocalCodexProcessLauncher, WebSocketSwarmcrewsProtocolClient, dedicatedInstanceRecipe, executionCommand } from '../../src/adapters/index.js';
 import type { ParticipantRunSpec } from '../../schemas/index.js';
 import { protocolServer } from './transport-fixture.js';
 const cleanups:Array<()=>Promise<unknown>>=[];
@@ -80,7 +80,7 @@ describe('actual external subprocess launcher',()=>{
     expect(executionCommand({kind:'docker',containerName:'owned',workdir:'/workspace',stateRoot:'/controller'},'codex',['exec','a;echo nope'])).toEqual({executable:'docker',args:['exec','-w','/workspace','owned','codex','exec','a;echo nope']});
   });
 });
-describe('actual Minions HTTP/WS protocol',()=>{
+describe('actual Swarmcrews HTTP/WS protocol',()=>{
   it('handles uncorrelated session replies, durable reconnect, history pagination and integrated collection',async()=>{
     const f=await setup('');let key='';let status='idle';
     const server=await protocolServer(m=>{
@@ -92,11 +92,11 @@ describe('actual Minions HTTP/WS protocol',()=>{
       throw new Error(`unexpected ${m.type}`);
     },url=>url.includes('before=2')?{events:[{historyId:1,event:{kind:'text',text:'first'}}],history:{before:null}}:{events:[{historyId:2,event:{kind:'usage',input:10,output:5}}],history:{before:2}});
     cleanups.push(server.close);const config={endpoint:server.endpoint,stateRoot:f.state,codexExecutable:f.executable,workspaceId:'registered'};
-    const client=new WebSocketMinionsProtocolClient(config);const handle=await client.launch({mode:'single',run:f.run,restrictions:{}});
+    const client=new WebSocketSwarmcrewsProtocolClient(config);const handle=await client.launch({mode:'single',run:f.run,restrictions:{}});
     const events=[];for await(const e of client.events(handle))events.push(e);
     expect(events.filter(x=>x.eventId.includes(':history:')).map(x=>x.payload.historyId)).toEqual([1,2]);
     expect(events.at(-1)?.payload.usage).toMatchObject({totalTokens:44,reportedCostUSD:0});
-    const reconnect=new WebSocketMinionsProtocolClient(config);const replay=[];for await(const e of reconnect.events(handle,events.length))replay.push(e);expect(replay).toEqual([]);
+    const reconnect=new WebSocketSwarmcrewsProtocolClient(config);const replay=[];for await(const e of reconnect.events(handle,events.length))replay.push(e);expect(replay).toEqual([]);
     expect((await reconnect.collect(handle)).artifacts[0].path).toBe('answer.txt');
     expect(server.commands.find(x=>x.type==='create_session')).toMatchObject({role:'minion',harness:'codex',worktreeIsolation:false});
     status='running';expect((await reconnect.cancel(handle,'cancelled')).descendantsAccountedFor).toBe(true);
@@ -114,7 +114,7 @@ describe('actual Minions HTTP/WS protocol',()=>{
       if(m.type==='get_task_graph_snapshot')return {type:'task_graph_snapshot',workItemId:'work',snapshot:{graphRunId:'graph',revision:4,status:'completed',nodes:[{id:'a'},{id:'b'}]}};
       throw new Error(m.type);
     });cleanups.push(server.close);
-    const client=new WebSocketMinionsProtocolClient({endpoint:server.endpoint,stateRoot:f.state,codexExecutable:f.executable,workspaceId:'registered'});
+    const client=new WebSocketSwarmcrewsProtocolClient({endpoint:server.endpoint,stateRoot:f.state,codexExecutable:f.executable,workspaceId:'registered'});
     const handle=await client.launch({mode:'graph',run:f.run,restrictions:{}});
     expect((await client.snapshot(handle)).participants.map(x=>x.id)).toEqual(runs.map(x=>x.runKey));
     expect(server.commands.find(x=>x.type==='start_work_item_run')).toMatchObject({expectedLifecycleRevision:3,orchestrationMode:'auto'});
@@ -124,7 +124,7 @@ describe('actual Minions HTTP/WS protocol',()=>{
   });
   it('prepares dedicated state and a feature-enforcing executable wrapper without launching providers',async()=>{
     const f=await setup('');const recipe=await dedicatedInstanceRecipe({stateRoot:f.state,appRoot:f.root,codexExecutable:f.executable,port:3142});
-    expect(recipe.environment.MINIONS_HOME).toBe(join(f.state,'minions-home'));
+    expect(recipe.environment.SWARMCREWS_HOME).toBe(join(f.state,'swarmcrews-home'));
     expect(await readFile(recipe.environment.CODEX_PATH,'utf8')).toContain('--disable multi_agent --disable multi_agent_v2');
   });
 });

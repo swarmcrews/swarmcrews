@@ -61,7 +61,7 @@ import {
   writeSettings,
   writeSkills,
 } from "./project-store.ts";
-import { findWorkspaceBySource, getMinionsHome, registerWorkspace } from "./workspace-registry.ts";
+import { findWorkspaceBySource, getSwarmcrewsHome, registerWorkspace } from "./workspace-registry.ts";
 
 let project: string;
 const cleanup: (() => void)[] = [];
@@ -84,9 +84,9 @@ beforeEach(() => {
 
 afterEach(() => {
   while (cleanup.length) cleanup.pop()!();
-  // Reset the canonical index between tests. getMinionsHome() also honors a
+  // Reset the canonical index between tests. getSwarmcrewsHome() also honors a
   // test-runner MINIONS_HOME override, so sandboxed full-suite runs stay isolated.
-  rmSync(join(getMinionsHome(), "recent-projects.json"), {
+  rmSync(join(getSwarmcrewsHome(), "recent-projects.json"), {
     force: true,
   });
 });

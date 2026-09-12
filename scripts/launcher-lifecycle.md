@@ -1,6 +1,9 @@
 # Launcher lifecycle and bounded logs
 
-The background launcher preserves numeric `.run/minions.pid` compatibility and
+The background launcher writes `.run/swarmcrews.pid` and `.run/swarmcrews.log`.
+It recognizes a live legacy `.run/minions.pid` (and its `.run/minions.log`) so
+existing services can still be inspected and stopped. A subsequent start writes
+the new filenames. It preserves numeric PID records and
 normal `pnpm start`, `pnpm stop`, and `pnpm restart`. It does not leave a manual
 recovery fence after ordinary shutdown. Stop waits for the runner before removing
 its PID record. These commands report process state, not application readiness.

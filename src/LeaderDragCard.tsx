@@ -10,8 +10,9 @@ export function LeaderDragCard({ node, pointer, zoneName, count = 1 }: {
   const state = count > 1 ? "Moving together" : zoneLeaderState(node);
   return <ViewportOverlay zIndex={1100}>
     <div className="leader-drag-anchor" style={{
-      left: Math.max(8, Math.min(pointer.x + 18, window.innerWidth - 272)),
-      top: Math.max(8, Math.min(pointer.y + 18, window.innerHeight - 116)),
+      left: 0,
+      top: 0,
+      transform: `translate3d(${Math.max(8, Math.min(pointer.x + 18, window.innerWidth - 272))}px, ${Math.max(8, Math.min(pointer.y + 18, window.innerHeight - 116))}px, 0)`,
     }}>
       <div className="leader-drag-card" data-over-zone={!!zoneName} role="status" aria-live="polite">
         <div className="leader-drag-card-main">

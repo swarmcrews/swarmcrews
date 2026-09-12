@@ -206,11 +206,13 @@ describe("work-item production bootstrap", () => {
     await runtime.continueRun({
       workItemId: "work-1", runKey: "run-1", prompt: "Continue",
       invocationKind: "resume_open_run", resumeId: "provider-1",
+      displayPrompt: "Follow-up", attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }],
     });
     expect(launched).toEqual([expect.objectContaining({
       sessionKey: "run-1", workItemId: "work-1", resumeId: "provider-1",
       invocationKind: "resume_open_run", harness: "codex", initialModel: "gpt-5",
-      cwd: "/repo/worktree",
+      cwd: "/repo/worktree", displayPrompt: "Follow-up",
+      attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }],
     })]);
   });
 
@@ -242,6 +244,7 @@ describe("work-item production bootstrap", () => {
 
     const accepted = await runtime.workItems.continue({ requestId: "guide-active",
       workItemId: created.workItem.id, prompt: "Use the new constraint",
+      displayPrompt: "User text", attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }],
       expectedLifecycleRevision: started.workItem.lifecycle.lifecycleRevision,
       expectedCurrentRunKey: started.workItem.currentRunKey });
     expect(accepted.workItem.currentRunKey).toBe(host.id);
@@ -251,7 +254,8 @@ describe("work-item production bootstrap", () => {
     expect(drainQueuedWorkItemGuidance(host, {} as never)).toBe(true);
     await vi.waitFor(() => expect(launched).toHaveLength(2));
     expect(launched[1]).toMatchObject({ prompt: "Use the new constraint",
-      resumeId: "provider-1", harness: "codex" });
+      resumeId: "provider-1", harness: "codex", displayPrompt: "User text",
+      attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }] });
   });
 
   it("publishes a durable child key before provider launch", async () => {

@@ -8,6 +8,7 @@ import type { PortInfo } from "./components/PortDot.tsx";
 import { wheelDetector } from "./wheel-detector.ts";
 import { useCanvasNodeDrag } from "./use-canvas-node-drag.ts";
 import { LeaderDragCard } from "./LeaderDragCard.tsx";
+import { CanvasNodeContent } from "./CanvasNodeContent.tsx";
 import type { SocketSubscribe } from "./use-socket.ts";
 
 interface CanvasNodeProps {
@@ -60,6 +61,7 @@ interface CanvasNodeProps {
   connectedPorts?: Set<string> | undefined;
   /** Called when the user starts dragging this node */
   onDragStart?: ((nodeId: string, event?: MouseEvent) => void) | undefined;
+  onDragMove?: ((nodeId: string, event: MouseEvent) => void) | undefined;
   /** Called when the user stops dragging this node */
   onDragEnd?: ((nodeId: string, event?: MouseEvent) => void) | undefined;
   /** True when a droppable node is hovering over this node (context-group) */
@@ -174,6 +176,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
   validTargetPorts,
   snapTargetKey,
   onDragStart,
+  onDragMove,
   onDragEnd,
   isDropTarget = false,
   isBeingDragged = false,
@@ -184,7 +187,7 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
   const nodeRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
   const { pointer: dragPointer, onMouseDown: handleMouseDown } = useCanvasNodeDrag({
-    node, isSelected, onSelect, onMove, onDragStart, onDragEnd,
+    node, isSelected, onSelect, onMove, onDragStart, onDragMove, onDragEnd,
   });
   const hiddenForDrag = isDragPreview || (!!dragPointer && node.type === "leader");
 
@@ -417,7 +420,9 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
         fontSize: 11, color: "var(--text-secondary)", background: "var(--bg-secondary)", padding: "3px 6px", borderRadius: 5 }}>{zoneConnections}</div>}
       {portDots}
 
-      <NodeRenderer
+      <CanvasNodeContent
+        renderer={NodeRenderer}
+        hiddenForDrag={hiddenForDrag}
         node={node}
         isSelected={isSelected}
         onUpdateData={handleNodeUpdate}

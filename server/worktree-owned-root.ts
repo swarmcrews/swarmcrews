@@ -43,7 +43,7 @@ function containsWithoutSymlinks(root: string, candidate: string): boolean {
   return true;
 }
 
-/** Preferred Minions-owned execution root for a registered repository. */
+/** Preferred Swarmcrews-owned execution root for a registered repository. */
 export function ownedWorktreeRoot(projectPath: string): string {
   const workspace = findWorkspaceBySource(projectPath);
   const sourceRoot = canonicalizeSourceRoot(projectPath) ?? path.resolve(projectPath);

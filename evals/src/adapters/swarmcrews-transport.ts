@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 /** Actual app commands have both correlated and uncorrelated replies. Each request owns a socket. */
-export class MinionsTransport {
+export class SwarmcrewsTransport {
   constructor(readonly endpoint:string, readonly timeoutMs=10_000) {}
   private token:string|undefined;
   async connectionURL():Promise<string> {
@@ -17,8 +17,8 @@ export class MinionsTransport {
   async headers():Promise<Record<string,string>> {return {authorization:`Bearer ${new URL(await this.connectionURL()).searchParams.get('token')}`};}
   async send(command:Record<string,unknown>):Promise<void> {
     const endpoint=await this.connectionURL();
-    return new Promise((resolve,reject)=>{const ws=new WebSocket(endpoint);const timer=setTimeout(()=>{ws.close();reject(new Error('Minions send timed out'));},this.timeoutMs);
-      ws.addEventListener('open',()=>{ws.send(JSON.stringify(command));ws.close();clearTimeout(timer);resolve();});ws.addEventListener('error',()=>{clearTimeout(timer);reject(new Error('Minions send failed'));});});
+    return new Promise((resolve,reject)=>{const ws=new WebSocket(endpoint);const timer=setTimeout(()=>{ws.close();reject(new Error('Swarmcrews send timed out'));},this.timeoutMs);
+      ws.addEventListener('open',()=>{ws.send(JSON.stringify(command));ws.close();clearTimeout(timer);resolve();});ws.addEventListener('error',()=>{clearTimeout(timer);reject(new Error('Swarmcrews send failed'));});});
   }
   async request(command:Record<string,unknown>, expected?:string): Promise<any> {
     const requestId=typeof command.requestId==='string'?command.requestId:randomUUID();
@@ -26,7 +26,7 @@ export class MinionsTransport {
     return new Promise((resolve,reject)=>{
       const socket=new WebSocket(endpoint);
       const finish=(error:Error|null,value?:unknown)=>{clearTimeout(timer);socket.close();error?reject(error):resolve(value);};
-      const timer=setTimeout(()=>finish(new Error(`Minions ${command.type} timed out`)),this.timeoutMs);
+      const timer=setTimeout(()=>finish(new Error(`Swarmcrews ${command.type} timed out`)),this.timeoutMs);
       socket.addEventListener('open',()=>socket.send(JSON.stringify({...command,requestId})));
       socket.addEventListener('message',event=>{
         try {
@@ -35,11 +35,11 @@ export class MinionsTransport {
           const correlated=message.requestId===requestId;
           const uncorrelated=expected && message.type===expected && (!command.sessionKey || message.sessionKey===command.sessionKey) && (!command.workItemId || !message.workItemId || message.workItemId===command.workItemId);
           if(!correlated&&!uncorrelated)return;
-          if(message.success===false)return finish(new Error(message.error ?? 'Minions command failed'));
+          if(message.success===false)return finish(new Error(message.error ?? 'Swarmcrews command failed'));
           finish(null,Object.hasOwn(message,'result')?message.result:message);
         }catch(error){finish(error as Error);}
       });
-      socket.addEventListener('error',()=>finish(new Error('Minions WS connection failed')));
+      socket.addEventListener('error',()=>finish(new Error('Swarmcrews WS connection failed')));
     });
   }
   async http(path:string, init: {method?:string;body?:string} = {}):Promise<any> {

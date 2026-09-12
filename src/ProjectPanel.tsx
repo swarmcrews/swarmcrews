@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { BookOpen } from "lucide-react";
 import {
   getProjectContext,
   updateProjectContext,
@@ -159,15 +160,8 @@ export function ProjectPanel({
 
   const contextIsEmpty = isProjectContextEmpty(context);
 
-  // Default tab: show context setup if empty, dashboard otherwise
-  const [activeTab, setActiveTab] = useState<Tab>(contextIsEmpty ? "context" : "dashboard");
-
-  // Update default tab when context loads
-  useEffect(() => {
-    if (context !== null) {
-      setActiveTab(contextIsEmpty ? "context" : "dashboard");
-    }
-  }, [context, contextIsEmpty]);
+  // Context is optional; loading or updating it must not change the user's tab.
+  const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
   // Load context on mount
   useEffect(() => {
@@ -284,7 +278,7 @@ export function ProjectPanel({
   }, [hasLeaderData]);
 
   // ── Tabs to show ──
-  const tabs: Tab[] = contextIsEmpty ? ["context"] : ["dashboard", "context"];
+  const tabs: Tab[] = ["dashboard", "context"];
 
   // ── Collapsed state ──
 
@@ -334,17 +328,6 @@ export function ProjectPanel({
               />
               {runningCount}
             </span>
-          )}
-          {contextIsEmpty && (
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "var(--status-warning)",
-                flexShrink: 0,
-              }}
-            />
           )}
         </button>
       </div>
@@ -449,6 +432,7 @@ export function ProjectPanel({
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
+            aria-pressed={activeTab === tab}
             style={{
               flex: 1,
               padding: "7px 0",
@@ -518,6 +502,10 @@ export function ProjectPanel({
           <>
             {contextIsEmpty && !editing && (
               <div style={{ textAlign: "center", padding: "24px 12px" }}>
+                <BookOpen size={24} aria-hidden="true" style={{ color: "var(--text-muted)", marginBottom: 12 }} />
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", margin: "0 0 8px" }}>
+                  Give agents a head start
+                </h3>
                 <div
                   style={{
                     fontSize: 13,
@@ -526,12 +514,14 @@ export function ProjectPanel({
                     lineHeight: 1.5,
                   }}
                 >
-                  No project context configured yet. Write it yourself or let a
-                  Leader agent explore and populate it.
+                  Context is optional. Share your workspace's purpose, architecture,
+                  and conventions so agents can start with a shared understanding.
+                  You can start working now and add context anytime.
                 </div>
                 <div
                   style={{
                     display: "flex",
+                    flexWrap: "wrap",
                     gap: 8,
                     justifyContent: "center",
                   }}
@@ -571,12 +561,20 @@ export function ProjectPanel({
                     Generate with AI
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("dashboard")}
+                  style={{ marginTop: 16, padding: "6px 8px", background: "transparent", border: "none", color: "var(--text-secondary)", fontSize: 12, cursor: "pointer" }}
+                >
+                  Back to Dashboard
+                </button>
               </div>
             )}
 
             {editing && (
               <div>
                 <textarea
+                  aria-label="Workspace context"
                   value={editBuffer}
                   onChange={(e) => setEditBuffer(e.target.value)}
                   style={{

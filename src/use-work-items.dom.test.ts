@@ -210,6 +210,28 @@ describe("useWorkItems lifecycle recovery", () => {
     expect(send).toHaveBeenCalledTimes(countBeforeConflict);
   });
 
+  it.each(["start", "reply"] as const)("preserves attachment context through %s retries and terminal failure", method => {
+    const { result, send, publish } = setup();
+    const attachment = { kind: "image" as const, filename: "shot.png", mediaType: "image/png" as const, data: "cGl4ZWxz" };
+    const contextItems = [{ nodeId: "image-1", nodeType: "image", label: "shot.png",
+      content: "Attached image: shot.png", attachments: [attachment] },
+      { nodeId: "text-1", nodeType: "file", label: "notes.md", content: "Acceptance criteria" }];
+    act(() => result.current[method](result.current.items["work-1"]!, "Review these", contextItems));
+    const first = send.mock.calls.at(-1)![0];
+    expect(first).toMatchObject({ attachments: [attachment], displayPrompt: "Review these" });
+    expect(first.prompt).toContain("Acceptance criteria");
+    act(() => publish({ type: "work_item_response", command: "continue_work_item",
+      requestId: first.requestId, success: false, error: "stale work-item lifecycle", code: "conflict",
+      latest: { workItem: terminalItem(4), bindings: [], currentRun: null, runs: [], nextCursor: null } }));
+    const retry = send.mock.calls.at(-1)![0];
+    expect(retry).toMatchObject({ attachments: [attachment], prompt: first.prompt, displayPrompt: "Review these" });
+    act(() => publish({ type: "work_item_response", command: "continue_work_item",
+      requestId: retry.requestId, success: false, error: "Harness unavailable", code: "unavailable" }));
+    expect(result.current.promptFailures["work-1"]).toEqual({
+      prompt: "Review these", error: "Harness unavailable", contextItems,
+    });
+  });
+
   it("exposes and clears a non-conflict prompt failure", () => {
     const { result, send, publish } = setup();
     act(() => result.current.start(result.current.items["work-1"]!, "Keep my prompt"));

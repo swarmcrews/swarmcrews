@@ -1,3 +1,4 @@
+import { readBrandPreference, clearLegacyPreference } from "./brand-storage.ts";
 import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
@@ -19,12 +20,13 @@ import { RootErrorBoundary, RootLoadingScreen } from "./RootLoadState.tsx";
 // service worker, and manifest all agree). A `?view=` override — remembered in
 // localStorage — is the manual escape hatch in both directions.
 
-const VIEW_PREF_KEY = "minions:view";
+const VIEW_PREF_KEY = "swarmcrews:view";
 
 function resolveViewPreference(): ViewPreference | null {
   const fromQuery = readViewParam(window.location.search);
   if (fromQuery) {
     try {
+      clearLegacyPreference(window.localStorage, VIEW_PREF_KEY);
       window.localStorage.setItem(VIEW_PREF_KEY, fromQuery);
     } catch {
       // Storage can throw in private mode / disabled-cookie contexts; the
@@ -34,7 +36,7 @@ function resolveViewPreference(): ViewPreference | null {
   }
 
   try {
-    const stored = window.localStorage.getItem(VIEW_PREF_KEY);
+    const stored = readBrandPreference(window.localStorage, VIEW_PREF_KEY);
     return stored === "mobile" || stored === "desktop" ? stored : null;
   } catch {
     return null;

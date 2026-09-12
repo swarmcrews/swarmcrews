@@ -2,14 +2,14 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { initDb } from "../../server/db.ts";
 import { closePersistDb, openPersistDb } from "../../server/session-persist.ts";
-import { getMinionsHome } from "../../server/workspace-registry.ts";
+import { getSwarmcrewsHome } from "../../server/workspace-registry.ts";
 import { htmlArtifactsRoot, writeHtmlArtifact } from "../../server/html-artifact-store.ts";
 
 // DOM suites can import server modules transitively, so they need the same
 // storage boundary as server tests. The install regression runs this with
 // inherited paths pointing at a simulated user's databases and artifacts.
 it("isolates real persistence calls in every test environment", async () => {
-  const home = getMinionsHome();
+  const home = getSwarmcrewsHome();
   expect(path.basename(home)).toMatch(/^minions-vitest-/);
   const db = openPersistDb();
   try {

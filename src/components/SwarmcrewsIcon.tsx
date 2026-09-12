@@ -110,19 +110,19 @@ const artwork = {
   orbit: <><circle cx="8" cy="8" r="2" /><ellipse cx="8" cy="8" rx="7" ry="3.5" transform="rotate(-40 8 8)" /><circle cx="12" cy="3" r="1.5" fill="var(--bg-secondary)" /></>,
 } satisfies Record<string, ReactNode>;
 
-export type MinionsIconName = keyof typeof artwork;
+export type SwarmcrewsIconName = keyof typeof artwork;
 
-export function isMinionsIconName(name: string): name is MinionsIconName {
+export function isSwarmcrewsIconName(name: string): name is SwarmcrewsIconName {
   return Object.hasOwn(artwork, name);
 }
 
-export function MinionsIcon({
+export function SwarmcrewsIcon({
   name,
   size = 16,
   label,
   style,
 }: {
-  name: MinionsIconName;
+  name: SwarmcrewsIconName;
   size?: number;
   /** Omit for decorative icons alongside text or in an already labelled control. */
   label?: string;
@@ -142,7 +142,7 @@ export function MinionsIcon({
       aria-hidden={label ? undefined : true}
       aria-label={label}
       role={label ? "img" : undefined}
-      data-minions-icon={name}
+      data-swarmcrews-icon={name}
       style={{ display: "inline-block", verticalAlign: "-0.15em", flexShrink: 0, ...style }}
     >
       {artwork[name]}

@@ -7,8 +7,8 @@ library; it does not claim that the commands or APIs below exist today.
 
 Build a separately runnable `evals/` package that measures how execution mode
 affects task correctness, token consumption, and elapsed time. The first suite
-compares one Minion acting as the task owner, a Minions Task Graph, and a raw
-Codex session initiated outside Minions. The same framework must accept new
+compares one Minion acting as the task owner, a Swarmcrews Task Graph, and a raw
+Codex session initiated outside Swarmcrews. The same framework must accept new
 tasks, execution adapters, graders, and report views without changing its core
 scheduler.
 
@@ -24,11 +24,11 @@ Required boundaries:
 - Application code under `src/`, `server/`, and `shared/` must not import the
   evaluator. Evaluator runtime code must not import application internals or
   execute the application's command handlers in process.
-- The Minions server is a system under test, started as a separate process in a
-  dedicated environment. Running that server is necessary for real Minions
+- The Swarmcrews server is a system under test, started as a separate process in a
+  dedicated environment. Running that server is necessary for real Swarmcrews
   execution; running the evaluator inside it is forbidden.
 - The CLI and reports work without the canvas UI. Raw Codex execution requires
-  neither a running Minions server nor Minions MCP tools.
+  neither a running Swarmcrews server nor Swarmcrews MCP tools.
 - Normal application startup, build, and tests must not launch paid evals.
   Live runs require an explicit CLI invocation and a validated experiment plan.
 - Version one targets Linux with a container-capable isolation backend. A local
@@ -45,9 +45,9 @@ tests and local interactive reports are included.
 flowchart TD
     M[Versioned experiment and task manifests] --> R[External runner]
     R --> S[Single Minion adapter]
-    R --> G[Minions graph adapter]
+    R --> G[Swarmcrews graph adapter]
     R --> C[Standalone Codex adapter]
-    S --> MI[Dedicated Minions instance]
+    S --> MI[Dedicated Swarmcrews instance]
     G --> MI
     MI --> W[Isolated participant workspace]
     C --> W
@@ -60,7 +60,7 @@ flowchart TD
 ```
 
 The diagram shows alternative paths. Every run receives its own workspace and
-state; different modes never share the illustrated workspace or Minions instance.
+state; different modes never share the illustrated workspace or Swarmcrews instance.
 
 Proposed layout, to be created during implementation:
 
@@ -105,7 +105,7 @@ Before launch, expand the suite into an immutable `experiment.lock.json`:
 | --- | --- |
 | Schema and experiment IDs | Explicit schema version and unique experiment identity |
 | Task and grader revisions | Content hashes for prompt, fixture, oracle, and acceptance criteria |
-| Participant implementation | Minions commit/build digest where applicable; Codex binary version and digest |
+| Participant implementation | Swarmcrews commit/build digest where applicable; Codex binary version and digest |
 | Resolved model settings | Requested and resolved model, reasoning effort, service tier, context/compaction settings where exposed |
 | Environment | Image digest, OS/architecture, dependency lock hashes, CPU/memory limits, network policy |
 | Treatment configuration | Prompt templates, skills, tools, orchestration policies, integration policy, child concurrency |
@@ -122,7 +122,7 @@ The default controlled profile supplies identical task prompts, repository
 instructions, tools for doing the work, fixture inputs, model settings, resource
 limits, and skill/context material wherever the modes permit. Mode-specific
 orchestration prompts and tools are deliberate differences and must be captured.
-Optional Minions-only context or skills belong in a separately named profile.
+Optional Swarmcrews-only context or skills belong in a separately named profile.
 
 Use the same generated fixture seed across modes within a repetition. Fixture
 and scheduling seeds do not imply deterministic model responses. Fresh provider
@@ -229,7 +229,7 @@ interface Grader {
 ```
 
 Grading runs in a separate environment containing the submission, pinned
-dependencies, and grader-owned cases. It has no provider credentials, Minions
+dependencies, and grader-owned cases. It has no provider credentials, Swarmcrews
 control access, or participant session. Check IDs map back to public criterion
 IDs, while case details remain hidden until the participant has terminated.
 
@@ -262,7 +262,7 @@ does not change historical full-success criteria unless the task revision change
 | --- | --- |
 | `minion-single` | One Minion receives the whole assignment and owns planning, implementation, and verification. No child delegation or graph execution is available. Record the actual runtime role and prompt; “acting as leader” describes responsibility, not a claim that its prompt matches the canonical Leader. |
 | `minion-graph` | A fresh canonical Leader receives the same assignment and creates its own graph. The server schedules children. Leader review, graph revision, retry, integration, and continuation costs all count. |
-| `codex-raw` | The external runner launches a standalone Codex process directly, using fresh state and no Minions orchestration tools. Native sub-agent delegation is disabled for this baseline. |
+| `codex-raw` | The external runner launches a standalone Codex process directly, using fresh state and no Swarmcrews orchestration tools. Native sub-agent delegation is disabled for this baseline. |
 
 “One shot” means one initial assignment without human follow-up, not one model
 request. All modes may inspect files, edit, run visible tests, and self-correct
@@ -388,7 +388,7 @@ from failures/timeouts may be graded for diagnosis, but cannot become full
 successes. Skipped mandatory checks never count as passed.
 
 The measured execution clock starts immediately before adapter launch, including
-Minions process startup and graph planning, and ends after all participant
+Swarmcrews process startup and graph planning, and ends after all participant
 processes have stopped. Prebuild dependencies and fixture images before this
 clock. Record preparation, execution, collection, grading, report time, and total
 orchestration time separately. Use monotonic durations plus UTC event timestamps.
@@ -448,7 +448,7 @@ coverage interval so a final session total can reconcile, rather than duplicate,
 previous turn records. Missing stable IDs require a documented fallback; ambiguous
 deduplication makes coverage partial rather than silently discarding equal counts.
 
-The current Minions Codex path subtracts cache reads and cache writes from raw
+The current Swarmcrews Codex path subtracts cache reads and cache writes from raw
 Codex input when deriving ordinary input. For that verified schema, reconstruct
 total input as `ordinary + cacheRead + cacheWrite`. Raw Codex input already
 contains those categories. Keep original observations so normalizers can be
@@ -466,7 +466,7 @@ Never sum repeated cumulative session costs. Estimated cost uses a pinned rate
 table and recorded tier/cache rules, and remains separate from provider-reported
 charges. An unavailable or ambiguous price is null, not free execution.
 
-Calibration must demonstrate that known raw usage streams and Minions-normalized
+Calibration must demonstrate that known raw usage streams and Swarmcrews-normalized
 streams yield identical totals. Test repeated events, corrected events, multiple
 turns, cumulative counters, reconnects, identical token counts in distinct turns,
 missing terminal usage, and child-tree aggregation before paid comparisons.
@@ -528,7 +528,7 @@ public contracts must be written and validated before measured execution.
 | `orders-report-simple` | Build an orders CSV CLI that emits monthly totals. Specify required columns, timezone, duplicate-ID winner, malformed-row handling, integer/decimal rules, output ordering, and exit codes. | Independently calculated normalized outputs for known examples and withheld generated inputs. |
 | `reconciliation-complex` | Reconcile orders, payments, refunds, and rates into balances and exceptions. Specify joins, partial refunds, duplicate events, unknown references, rate selection, timezone boundaries, rounding stage/mode, and output schema. | Seeded generator plus independent oracle, curated edge cases, and exact normalized output comparison. |
 
-Use small owned fixtures with pinned dependencies rather than the live Minions
+Use small owned fixtures with pinned dependencies rather than the live Swarmcrews
 repository as the coding target. This separates product changes from benchmark
 changes and avoids requiring prior architectural context. Publicly specify all
 semantics the grader enforces; hidden cases test generalization, not undisclosed
@@ -577,7 +577,7 @@ with secrets removed and hashes recorded. Full provider traces, if retained,
 remain restricted diagnostic artifacts and are excluded from report exports.
 
 The report is a self-contained interactive HTML artifact generated from finalized
-result records. It opens locally without Minions, a web server, remote fonts,
+result records. It opens locally without Swarmcrews, a web server, remote fonts,
 CDNs, provider credentials, or network requests. Inline data and scripts support
 filtering; the report never launches runs or modifies results. Also export the
 underlying JSON/CSV and chart images suitable for sharing.
@@ -604,7 +604,7 @@ Persist report filter state locally or in its URL fragment without remote storag
 Reports display the exact included cohort, missing-data counts, analysis version,
 and denominator definitions. Changing a filter recomputes both charts and tables
 from the same aggregation module. A report can be rebuilt from persisted results
-with every participant and the Minions server shut down.
+with every participant and the Swarmcrews server shut down.
 
 ## 12. CLI and operational behavior
 

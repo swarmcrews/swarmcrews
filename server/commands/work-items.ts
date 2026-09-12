@@ -171,7 +171,8 @@ export const workItemCommand: CommandHandler = async (ctx, cmd, ws) => {
     case "reply_to_waiting_run":
       result = await service.replyToWaitingRun({ ...existingMutationContext(cmd),
         workItemId: cmd.workItemId!, runKey: cmd.runKey!, prompt: cmd.prompt!,
-        ...(cmd.displayPrompt !== undefined ? { displayPrompt: cmd.displayPrompt } : {}) });
+        ...(cmd.displayPrompt !== undefined ? { displayPrompt: cmd.displayPrompt } : {}),
+        ...(cmd.attachments !== undefined ? { attachments: cmd.attachments } : {}) });
       break;
     case "review_work_item":
       result = await service.review({ ...existingMutationContext(cmd), workItemId: cmd.workItemId! });

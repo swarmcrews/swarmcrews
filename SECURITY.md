@@ -1,6 +1,6 @@
 # Security Policy
 
-Minions launches coding agents against local repositories and can read files,
+Swarmcrews launches coding agents against local repositories and can read files,
 create worktrees, run model tools, and expose a local web interface. Treat it
 as developer tooling with access comparable to the account that starts it.
 
@@ -17,7 +17,7 @@ transcripts, and personal filesystem paths.
 
 ## Security boundaries
 
-- Minions is intended for trusted local or tailnet access, not direct public
+- Swarmcrews is intended for trusted local or tailnet access, not direct public
   internet exposure. The server binds to `127.0.0.1` by default; changing
   `HOST` expands the trust boundary and requires a trusted HTTPS proxy or
   private-network control.
@@ -33,7 +33,7 @@ transcripts, and personal filesystem paths.
   an explicit request.
 - Codex enforces all three displayed sandbox axes. An axis the selected harness
   cannot enforce is reported as `unmanaged`; do not interpret the requested
-  policy as a guarantee. Minions does not claim equivalent enforcement for
+  policy as a guarantee. Swarmcrews does not claim equivalent enforcement for
   Claude, OpenCode, or Pi. Use a dedicated OS account, VM, or container when an
   unmanaged axis is unacceptable.
 - Local MCP processes and tools can have privileges outside a harness sandbox.
@@ -44,13 +44,13 @@ transcripts, and personal filesystem paths.
 ## Credentials and local data
 
 - A stable workspace UUID maps server-side to a canonical source root and to
-  `$MINIONS_HOME/workspaces/<uuid>/` (default `MINIONS_HOME=~/.minions`) as its
+  `$SWARMCREWS_HOME/workspaces/<uuid>/` (default `SWARMCREWS_HOME=~/.swarmcrews`) as its
   state root. Project SQLite data, settings, skills, MCP definitions, and new
   worktrees persist there. Global session history and temporary artifacts live
-  elsewhere under `MINIONS_HOME`. Protect and back up the complete central
+  elsewhere under `SWARMCREWS_HOME`. Protect and back up the complete central
   state separately from the source repository.
 - Opening a source folder is the authorization act. Sources may reside on
-  mounted volumes, but Minions rejects unregistered roots, traversal, and
+  mounted volumes, but Swarmcrews rejects unregistered roots, traversal, and
   symlink escapes. A workspace UUID is opaque and must not be used to derive or
   accept a client-supplied source path.
 - Modern launch and work-item commands carry only `workspaceId`; the server
@@ -71,9 +71,9 @@ transcripts, and personal filesystem paths.
   permissions remain provider-controlled capabilities; verify effective policy
   and use the narrowest mode that can complete the task.
 - If the normal Codex home is unusable, its fallback is created below
-  `MINIONS_HOME/runtime/`; Minions does not create runtime state in a repository.
+  `SWARMCREWS_HOME/runtime/`; Swarmcrews does not create runtime state in a repository.
 - HTTP MCP endpoints are accepted without TLS only on loopback. Remote MCP
-  endpoints must use HTTPS, but Minions does not attest to or sandbox the
+  endpoints must use HTTPS, but Swarmcrews does not attest to or sandbox the
   remote server's behavior.
 
 ## Deployment guidance
@@ -82,7 +82,7 @@ Use the default loopback bind for desktop use. For mobile access, prefer the
 documented Tailscale HTTPS setup and do not enable public Funnel exposure.
 Place no unrelated reverse proxy, browser extension, or untrusted local user
 inside the same trust boundary. If stronger multi-user isolation is required,
-run Minions in a dedicated OS account, VM, or container with separately scoped
+run Swarmcrews in a dedicated OS account, VM, or container with separately scoped
 provider credentials.
 
 Only the latest revision on `main` receives security fixes while the project is

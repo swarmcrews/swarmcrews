@@ -1,3 +1,4 @@
+import { uniqueContextSources } from "../../../shared/connected-context.ts";
 import type { ContextItem } from "../../types.ts";
 import { buildContextBlock } from "../../connected-context.ts";
 import { seedContextDelivery } from "../../context-delivery.ts";
@@ -42,7 +43,7 @@ export function buildInitialLeaderRun(input: {
   // handoff. Replaying client history here duplicates old requests on every run.
   const sessionContext = data.workItemId || data.workItemSnapshot ? ""
     : buildSessionContext(data.messages, data.taskPlan ?? [], data.taskName);
-  const allItems = [...contextItems, ...(input.promptContextItems ?? [])];
+  const allItems = uniqueContextSources([...contextItems, ...(input.promptContextItems ?? [])]);
   const block = buildContextBlock(allItems);
   let prompt = block ? `${block}\n\n${userPrompt}` : userPrompt;
   if (sessionContext) prompt = `${sessionContext}\n\n${prompt}`;

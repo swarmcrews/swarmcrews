@@ -1,3 +1,7 @@
+import { inheritRunContinuity } from "./work-item-handoff.ts";
+import { getWorkItemRun } from "./work-item-repo.ts";
+import { resolvePrimaryRunConfig } from "./work-item-run-config.ts";
+import { buildConnectedContextBlock } from "../shared/connected-context.ts";
 import { createWorkItem, startWorkItemIteration } from "./work-item-repo.ts";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionHost, type StartSessionOptions } from "./session-host.ts";
@@ -43,6 +47,61 @@ function boundary(host: SessionHost, opts: StartSessionOptions) {
 }
 
 describe("provider-boundary handoff regressions", () => {
+  it("keeps source deltas out of durable directives and preserves the complete snapshot", () => {
+    const host = leader();
+    const full = buildConnectedContextBlock([
+      { nodeId: "a", nodeType: "note", label: "Note", content: "KEEP_A" },
+      { nodeId: "b", nodeType: "note", label: "Note", content: "KEEP_B" },
+    ])!;
+    host.setCanvasContext(full);
+    const delta = '<connected-context-update><context-group source-id="b" update="add">KEEP_B</context-group></connected-context-update>';
+    captureSessionContinuity(host, options(delta + "\n\nActual instruction"));
+    expect(host.continuity.directives).toEqual(["Actual instruction"]);
+    expect(host.continuity.canvasContext).toBe(full);
+    expect(boundary(host, options("Continue")).prompt).toContain("KEEP_A");
+    expect(openPersistDb().prepare("SELECT text FROM session_user_directives").all())
+      .toEqual([{ text: "Actual instruction" }]);
+  });
+
+  it("inherits complete media and source snapshots across iterations without resending unchanged images", () => {
+    const host = leader();
+    const a = { kind: "image" as const, mediaType: "image/png" as const, data: "AAAA" };
+    const b = { ...a, data: "BBBB" };
+    const direct = { ...a, data: "CCCC" };
+    captureSessionContinuity(host, options("Initial", { attachments: [a, b, direct] }));
+    host.setCanvasContext("<connected-context>FULL_REQUIREMENTS</connected-context>", [a, b]);
+    const inherited = inheritRunContinuity(openPersistDb(), getWorkItemRun(openPersistDb(), host.id)!, null);
+    const { config } = resolvePrimaryRunConfig(inherited, { prompt: "Next iteration" });
+    expect(config.attachments).toBeUndefined();
+    expect(config.canvasAttachments).toEqual([a, b]);
+    expect(config.promptAttachments).toEqual([direct]);
+    // Simulate a newly allocated host before continuity capture, using the same
+    // fixture row so durable directive writes retain valid run identity.
+    host.continuity = { directives: [] };
+    const next = options("<connected-context>TRUNCATED</connected-context>\nNext iteration", config);
+    captureSessionContinuity(host, next);
+    expect(host.continuity.canvasContext).toContain("FULL_REQUIREMENTS");
+    expect(boundary(host, next).attachments).toEqual([a, b, direct]);
+    expect(boundary(host, { ...next, resumeId: "provider" }).attachments).toBeUndefined();
+  });
+
+  it("keeps the latest full canvas images through delta turns and retains direct prompt images on clear", () => {
+    const host = leader();
+    const image = (data: string) => ({ kind: "image" as const, mediaType: "image/png" as const, data });
+    const a = image("AAAA"), b = image("BBBB"), direct = image("CCCC");
+    captureSessionContinuity(host, options("First", { attachments: [a, b, direct] }));
+    host.setCanvasContext("<connected-context>Images</connected-context>", [a, b]);
+    captureSessionContinuity(host, options("No new images"));
+    expect(boundary(host, options("Fresh")).attachments).toEqual([a, b, direct]);
+    const changed = image("DDDD");
+    host.setCanvasContext("<connected-context>Images</connected-context>", [a, changed]);
+    captureSessionContinuity(host, options("Changed image", { attachments: [changed] }));
+    expect(boundary(host, options("Fresh")).attachments).toEqual([a, changed, direct]);
+    expect(boundary(host, options("Resume", { resumeId: "provider", attachments: [changed] })).attachments).toEqual([changed]);
+    host.setCanvasContext(null);
+    expect(boundary(host, options("Fresh")).attachments).toEqual([direct]);
+  });
+
   it("preserves original instructions, corrections, decisions and recent evidence across repeated forced resets", () => {
     const host = leader();
     captureSessionContinuity(host, options("Migrate the API. PRESERVE_V1."));

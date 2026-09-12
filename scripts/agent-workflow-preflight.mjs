@@ -63,7 +63,7 @@ if (existsSync(join(gitPath, "index.lock"))) {
   fail(".git/index.lock already exists; resolve the interrupted git operation first");
 }
 
-const metadataProbe = join(gitPath, "minions-agent-preflight.tmp");
+const metadataProbe = join(gitPath, "swarmcrews-agent-preflight.tmp");
 try {
   const fd = openSync(metadataProbe, "wx");
   closeSync(fd);

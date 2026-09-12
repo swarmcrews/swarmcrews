@@ -39,9 +39,9 @@ export function extractContextItem(sourceNode: CanvasNode): ContextItem | null {
     const hasText = !!content && !!content.trim();
     if (!hasText && (!attachments || attachments.length === 0)) return null;
     const d = sourceNode.data as
-      | { filename?: string; title?: string; filePath?: string }
+      | { filename?: string; title?: string; taskName?: string; filePath?: string }
       | undefined;
-    const label = d?.filename || d?.title || d?.filePath || sourceNode.type;
+    const label = d?.filename || d?.title || d?.filePath || d?.taskName || sourceNode.type;
     return withAttachments({
       nodeId: sourceNode.id,
       nodeType: sourceNode.type,

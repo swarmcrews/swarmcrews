@@ -6,7 +6,7 @@
  * inventory). Here we adapt them to the client `SkillTemplate` shape and mark
  * them `builtIn: true` so the UI can:
  *   - surface them in every skill picker (desktop + mobile), and
- *   - treat them as read-only: never persisted to `.minions/skills.json`,
+ *   - treat them as read-only: never persisted to `$SWARMCREWS_HOME/workspaces/<uuid>/skills.json`,
  *     not deletable (editing creates a project override instead).
  *
  * `SkillPreset` is structurally identical to `SkillTemplate` (the type trees

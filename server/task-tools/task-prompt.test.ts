@@ -18,7 +18,7 @@ describe("buildTaskSpawnPrompt canvas context", () => {
     for (const text of ["KEEP_V1", "END_CONSTRAINT", "API contract", "/tmp/context-sources/exact-source.txt",
       CANVAS_CONTEXT_TRUNCATED_MARKER, "</connected-context>"]) expect(excerpt).toContain(text);
   });
-  it("places bounded Minions project context before the task description", () => {
+  it("places bounded Swarmcrews project context before the task description", () => {
     const prompt = buildTaskSpawnPrompt({
       taskId: "t1",
       title: "Use project knowledge",
@@ -28,8 +28,8 @@ describe("buildTaskSpawnPrompt canvas context", () => {
       projectContext: `# Project\n\n${"a".repeat(7000)}`,
     });
 
-    expect(prompt).toContain("## Minions project context");
-    expect(prompt.indexOf("## Minions project context")).toBeLessThan(prompt.indexOf("## Description"));
+    expect(prompt).toContain("## Swarmcrews project context");
+    expect(prompt.indexOf("## Swarmcrews project context")).toBeLessThan(prompt.indexOf("## Description"));
     expect(prompt).toContain(PROJECT_CONTEXT_TRUNCATED_MARKER);
     expect(prompt.length).toBeLessThan(7000);
   });

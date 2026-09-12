@@ -103,7 +103,7 @@ it("saves a chosen library icon with the skill and restores it when editing", ()
   fireEvent.click(screen.getByRole("button", { name: "Rocket" }));
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   const saved = onSave.mock.calls[0]![0] as SkillTemplate;
-  expect(saved.icon).toBe("minions:rocket");
+  expect(saved.icon).toBe("swarmcrews:rocket");
   expect(saved.attachments).toEqual(baseSkill.attachments);
   unmount();
   render(<SkillEditor skill={saved} onSave={() => {}} onClose={() => {}} />);

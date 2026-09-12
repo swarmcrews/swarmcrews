@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { CodexRawAdapter, MinionGraphAdapter, MinionSingleAdapter, type CodexProcessLauncher, type MinionsProtocolClient } from "./index.js";
+import { CodexRawAdapter, MinionGraphAdapter, MinionSingleAdapter, type CodexProcessLauncher, type SwarmcrewsProtocolClient } from "./index.js";
 import type { ParticipantRunSpec, RunHandle } from "../../schemas/index.js";
 
 const run: ParticipantRunSpec = { schemaVersion: 1, runId: "run", idempotencyKey: "same-run", taskId: "task", prompt: "fix it", workspace: { id: "workspace", mountPath: "/tmp/workspace" }, limits: { maxTotalTokens: 10, executionTimeoutMs: 10, preparationTimeoutMs: 10, gradingTimeoutMs: 10 }, configuration: {}, visibleAssets: [] };
 const handle: RunHandle = { schemaVersion: 1, adapterId: "minion-single", handleId: "h", runId: "run", createdAt: "2026-01-01T00:00:00.000Z" };
 
 describe("external adapters", () => {
-  it("fails Minions preflight when enforced single-agent controls are absent", async () => {
-    const client: MinionsProtocolClient = { probe: async () => ({ protocolVersion: 1, capabilities: { dedicated_state: true }, evidence: ["fake"] }), launch: async () => handle, events: async function* () {}, snapshot: async () => ({ schemaVersion: 1, handle, state: "terminal", terminalOutcome: "completed", participants: [], observedAt: handle.createdAt }), cancel: async () => ({ schemaVersion: 1, handle, reason: "cancelled", accepted: true, stoppedAt: handle.createdAt, descendantsAccountedFor: true }), collect: async () => ({ schemaVersion: 1, handle, artifacts: [], provenance: {}, usageCoverage: "complete", logTruncated: false }) };
+  it("fails Swarmcrews preflight when enforced single-agent controls are absent", async () => {
+    const client: SwarmcrewsProtocolClient = { probe: async () => ({ protocolVersion: 1, capabilities: { dedicated_state: true }, evidence: ["fake"] }), launch: async () => handle, events: async function* () {}, snapshot: async () => ({ schemaVersion: 1, handle, state: "terminal", terminalOutcome: "completed", participants: [], observedAt: handle.createdAt }), cancel: async () => ({ schemaVersion: 1, handle, reason: "cancelled", accepted: true, stoppedAt: handle.createdAt, descendantsAccountedFor: true }), collect: async () => ({ schemaVersion: 1, handle, artifacts: [], provenance: {}, usageCoverage: "complete", logTruncated: false }) };
     const p = await new MinionSingleAdapter(client).preflight({ schemaVersion: 1, adapterId: "minion-single", settings: {}, requiredCapabilities: [] });
     expect(p.supported).toBe(false); expect(p.limitations).toContain("missing required capability: role_tool_restrictions");
   });
@@ -21,6 +21,6 @@ describe("external adapters", () => {
   });
   it("requires graph-specific self-decomposition and terminal-quiescence capabilities", async () => {
     const p = await new MinionGraphAdapter(undefined).preflight({ schemaVersion: 1, adapterId: "minion-graph", settings: {}, requiredCapabilities: [] });
-    expect(p.supported).toBe(false); expect(p.limitations[0]).toMatch(/external Minions protocol client/);
+    expect(p.supported).toBe(false); expect(p.limitations[0]).toMatch(/external Swarmcrews protocol client/);
   });
 });

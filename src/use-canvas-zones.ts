@@ -199,15 +199,11 @@ export function useCanvasZones(options: Options) {
       return next.size === prev.size ? prev : next;
     });
   }, [visibleNodes, options.setSelectedIds]);
-  useEffect(() => {
-    const move = (event: MouseEvent) => {
-      if (drag.current) setDragTarget(document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-zone-target]")?.dataset["zoneTarget"] ?? null);
-    };
-    window.addEventListener("mousemove", move);
-    return () => window.removeEventListener("mousemove", move);
+  const moveDrag = useCallback((_nodeId: string, event: MouseEvent) => {
+    if (drag.current) setDragTarget(document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-zone-target]")?.dataset["zoneTarget"] ?? null);
   }, []);
   return { zones, activeId, visibleNodes, membership, hiddenMembership, dialog, dragTarget, dragCount,
     receipt, receiptZone, undoAvailable, undo, viewZone, park, choose, name, saveName, editIcon, saveIcon, inspect, remove, requestDelete, deleteAll,
-    beginDrag, endDrag, dismissDialog: () => setDialog(null), dismissReceipt };
+    beginDrag, moveDrag, endDrag, dismissDialog: () => setDialog(null), dismissReceipt };
 }
 export type CanvasZonesController = ReturnType<typeof useCanvasZones>;

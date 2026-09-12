@@ -6,13 +6,13 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { ExecutionSnapshot, ParticipantRunSpec, RunEvent, RunHandle } from '../../schemas/index.js';
 import type { CollectedExecution, StopReason } from '../core/contracts.js';
-import type { MinionsProtocolClient } from './protocol.js';
+import type { SwarmcrewsProtocolClient } from './protocol.js';
 import { UsageLedger } from '../telemetry/usage.js';
-import { ContainerMinionsTransport } from './container-transport.js';
-import { MinionsTransport } from './minions-transport.js';
+import { ContainerSwarmcrewsTransport } from './container-transport.js';
+import { SwarmcrewsTransport } from './swarmcrews-transport.js';
 import { collectWorkspace, command, executionDescriptor } from './execution.js';
 
-export interface MinionsClientConfiguration {
+export interface SwarmcrewsClientConfiguration {
   endpoint:string; stateRoot:string;
   /** Dedicated CODEX_PATH wrapper from dedicatedInstanceRecipe; checked non-generatively. */
   codexExecutable:string;
@@ -20,12 +20,12 @@ export interface MinionsClientConfiguration {
 }
 interface SavedRun { handle:RunHandle; run:ParticipantRunSpec; sessionKey:string; workItemId?:string; mode:'single'|'graph'; mutationIds:{create:string;start:string}; resolvedTreatment:ReturnType<typeof resolveTreatment>; stopped?:boolean }
 const terminal=(status:string)=>['idle','done','completed','stopped','error','failed','cancelled'].includes(status);
-export class WebSocketMinionsProtocolClient implements MinionsProtocolClient {
-  private readonly transport:MinionsTransport;
-  readonly config:MinionsClientConfiguration;
-  constructor(config:MinionsClientConfiguration|string) {
-    this.config=typeof config==='string'?{endpoint:config,stateRoot:process.env.EVAL_MINIONS_STATE_ROOT??'',codexExecutable:process.env.EVAL_MINIONS_CODEX_PATH??'codex'}:config;
-    this.transport=this.config.execution?.kind === "docker" ? new ContainerMinionsTransport(this.config.endpoint,this.config.execution,this.config.requestTimeoutMs) : new MinionsTransport(this.config.endpoint,this.config.requestTimeoutMs);
+export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClient {
+  private readonly transport:SwarmcrewsTransport;
+  readonly config:SwarmcrewsClientConfiguration;
+  constructor(config:SwarmcrewsClientConfiguration|string) {
+    this.config=typeof config==='string'?{endpoint:config,stateRoot:(process.env.EVAL_SWARMCREWS_STATE_ROOT ?? process.env.EVAL_MINIONS_STATE_ROOT)??'',codexExecutable:(process.env.EVAL_SWARMCREWS_CODEX_PATH ?? process.env.EVAL_MINIONS_CODEX_PATH)??'codex'}:config;
+    this.transport=this.config.execution?.kind === "docker" ? new ContainerSwarmcrewsTransport(this.config.endpoint,this.config.execution,this.config.requestTimeoutMs) : new SwarmcrewsTransport(this.config.endpoint,this.config.requestTimeoutMs);
   }
   async probe() {
     const harnesses=await this.transport.request({type:'list_harnesses'},'harness_list');
@@ -41,7 +41,7 @@ export class WebSocketMinionsProtocolClient implements MinionsProtocolClient {
   private directory(id:string) {return join(this.config.stateRoot,'minions',id);}
   private async save(value:SavedRun) {const file=join(this.directory(value.handle.handleId),'handle.json');await atomicJson(file,value);}
   private async load(handle:RunHandle):Promise<SavedRun> {
-    if(!/^[a-f0-9]{64}$/.test(handle.handleId))throw new Error('invalid Minions durable handle');
+    if(!/^[a-f0-9]{64}$/.test(handle.handleId))throw new Error('invalid Swarmcrews durable handle');
     const saved:SavedRun=JSON.parse(await readFile(join(this.directory(handle.handleId),'handle.json'),'utf8'));
     if(saved.mode==='graph'&&saved.sessionKey.startsWith('eval-')) {
       if(!saved.mutationIds)throw new Error('legacy graph handle has invalid receipt identities; refusing re-execution');

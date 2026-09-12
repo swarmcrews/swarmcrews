@@ -10,20 +10,20 @@ describe("buildOpenCodeEnv", () => {
     } as McpBridgeRegistration;
     const env = buildOpenCodeEnv({
       baseEnv: { OPENCODE_CONFIG_CONTENT: '{"model":"local/base","agent":{"build":{"temperature":0}}}' },
-      systemPrompt: "Minions system prompt",
+      systemPrompt: "Swarmcrews system prompt",
       bridge,
       groups: ["task-manager"],
     });
     const config = JSON.parse(env["OPENCODE_CONFIG_CONTENT"]!) as Record<string, any>;
     expect(config["model"]).toBe("local/base");
-    expect(config["agent"]["build"]).toMatchObject({ temperature: 0, prompt: "Minions system prompt" });
+    expect(config["agent"]["build"]).toMatchObject({ temperature: 0, prompt: "Swarmcrews system prompt" });
     expect(config["mcp"]["task-manager"]).toMatchObject({
       type: "remote",
       url: "http://127.0.0.1/mcp/task-manager",
       oauth: false,
-      headers: { Authorization: "Bearer {env:MINIONS_BRIDGE_TOKEN_TASK_MANAGER}" },
+      headers: { Authorization: "Bearer {env:SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER}" },
     });
-    expect(env["MINIONS_BRIDGE_TOKEN_TASK_MANAGER"]).toBe("secret-token");
+    expect(env["SWARMCREWS_BRIDGE_TOKEN_TASK_MANAGER"]).toBe("secret-token");
     expect(env["OPENCODE_CONFIG_CONTENT"]).not.toContain("secret-token");
   });
 });

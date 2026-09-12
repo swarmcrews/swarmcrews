@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { getMinionsHome } from "./workspace-registry.ts";
+import { getSwarmcrewsHome } from "./workspace-registry.ts";
 
 export interface HtmlArtifactMeta {
   id: string;
@@ -60,7 +60,7 @@ async function canonicalArtifactRoot(create: boolean): Promise<string | null> {
 }
 
 export function htmlArtifactsRoot(): string {
-  return process.env.MINIONS_ARTIFACTS_DIR ?? path.join(getMinionsHome(), "artifacts", "html");
+  return (process.env.SWARMCREWS_ARTIFACTS_DIR ?? process.env.MINIONS_ARTIFACTS_DIR) ?? path.join(getSwarmcrewsHome(), "artifacts", "html");
 }
 
 export async function writeHtmlArtifact(

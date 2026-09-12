@@ -6,7 +6,7 @@
  * overrides on the CLI. The keys live under `mcp_servers.<name>.<field>`
  * — see https://developers.openai.com/codex/mcp.
  *
- * For Minions-internal tools (task-manager, render-dashboard, minion-status),
+ * For Swarmcrews-internal tools (task-manager, render-dashboard, minion-status),
  * each tool group registered with the bridge becomes one Codex MCP server
  * entry pointing at the bridge's HTTP endpoint, with the bearer token
  * supplied through an environment variable so it never appears in the
@@ -107,7 +107,7 @@ export function renderBridgeServers(
 export function bearerTokenEnvVar(group: string): string {
   // Group names can contain `-` (e.g. `task-manager`); env vars are
   // conventionally uppercase with `_` separators, so map `-` → `_`.
-  return `MINIONS_BRIDGE_TOKEN_${group.replace(/-/g, "_").toUpperCase()}`;
+  return `SWARMCREWS_BRIDGE_TOKEN_${group.replace(/-/g, "_").toUpperCase()}`;
 }
 
 /** Group names map directly into config keys and env vars; restrict the

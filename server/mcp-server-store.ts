@@ -2,7 +2,7 @@
  * MCP server file storage.
  *
  * Server configs live in one JSON file in the registered workspace state
- * root under MINIONS_HOME. This mirrors the flat
+ * root under SWARMCREWS_HOME. This mirrors the flat
  * array format used by `skills.json` in `project-store.ts`: one file for
  * all entries, parsed as an array, each entry validated independently.
  *
@@ -133,16 +133,16 @@ export function mcpServerSecurityWarnings(entry: McpServerEntry): string[] {
   const messages: string[] = [];
   if (entry.transport === "stdio") {
     messages.push(
-      "This server executes a local command with the Minions process user's privileges.",
+      "This server executes a local command with the Swarmcrews process user's privileges.",
     );
     if (entry.env && Object.keys(entry.env).length > 0) {
       messages.push(
-        "Environment values are stored in the private Minions workspace state; protect access to MINIONS_HOME.",
+        "Environment values are stored in the private Swarmcrews workspace state; protect access to SWARMCREWS_HOME.",
       );
     }
   } else if (entry.headers && Object.keys(entry.headers).length > 0) {
     messages.push(
-      "HTTP header values are stored in the private Minions workspace state; protect access to MINIONS_HOME.",
+      "HTTP header values are stored in the private Swarmcrews workspace state; protect access to SWARMCREWS_HOME.",
     );
   }
   return messages;

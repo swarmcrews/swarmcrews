@@ -45,7 +45,7 @@ describe("SQLite worktree integration runtime", () => {
       const workspace = registerWorkspace(projectPath)!;
       const plan = await service.bindRun({ workItemId: "work", runKey: "run-1" });
       expect(plan).toMatchObject({ projectPath, leaderSessionKey: "run-1",
-        branch: expect.stringContaining("minions/contribution/") });
+        branch: expect.stringContaining("swarmcrews/contribution/") });
       const contribution = findContributionByRun(db, "run-1")!;
       expect(path.isAbsolute(plan.path)).toBe(true);
       expect(plan.path).toBe(path.join(workspace.stateRoot, "worktrees", contribution.id));

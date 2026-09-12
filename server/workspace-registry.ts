@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
+import { resolveSwarmcrewsHome } from "./runtime-home.ts";
 import path from "node:path";
 import { readLegacyWorkspaceId } from "./workspace-legacy-identity.ts";
 
@@ -35,12 +35,12 @@ export function workspaceStateRoot(
   return pathApi.join(pathApi.resolve(minionsHome), "workspaces", id);
 }
 
-export function getMinionsHome(): string {
-  return path.resolve(process.env["MINIONS_HOME"] ?? path.join(os.homedir(), ".minions"));
+export function getSwarmcrewsHome(): string {
+  return resolveSwarmcrewsHome();
 }
 
 function workspacesRoot(): string {
-  return path.join(getMinionsHome(), "workspaces");
+  return path.join(getSwarmcrewsHome(), "workspaces");
 }
 
 function registryPath(): string {
@@ -52,13 +52,13 @@ function ensureWorkspacesRoot(): string {
   fs.mkdirSync(root, { recursive: true, mode: 0o700 });
   const stat = fs.lstatSync(root);
   if (!stat.isDirectory() || stat.isSymbolicLink()) {
-    throw new Error("Minions workspaces root must be a real directory");
+    throw new Error("Swarmcrews workspaces root must be a real directory");
   }
   return root;
 }
 
 function binding(stored: StoredWorkspace): WorkspaceBinding {
-  return { ...stored, stateRoot: workspaceStateRoot(getMinionsHome(), stored.id) };
+  return { ...stored, stateRoot: workspaceStateRoot(getSwarmcrewsHome(), stored.id) };
 }
 
 function safeBinding(stored: StoredWorkspace, create: boolean): WorkspaceBinding | null {

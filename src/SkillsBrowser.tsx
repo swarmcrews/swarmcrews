@@ -1,4 +1,4 @@
-import { MinionsIcon } from "./components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "./components/SwarmcrewsIcon.tsx";
 import { SkillIcon } from "./components/SkillIcon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -231,7 +231,7 @@ function SkillDetails({ skill, onBack, onLaunch, onEdit, onDuplicate, onExport, 
         </div>
         <p className="skills-browser__detail-description">{skill.description || "Reusable instructions to guide your leader."}</p>
         <div className="skills-browser__next-step">
-          <MinionsIcon name="skill" size={18} />
+          <SwarmcrewsIcon name="skill" size={18} />
           <div><strong>Make it part of your next task</strong><p>Launch adds a leader to the canvas with this skill selected. Add your task{skill.variables.length ? " and configure its inputs" : ""} there before starting.</p></div>
         </div>
         <div className="skills-browser__disclosures">
@@ -257,7 +257,7 @@ function SkillDetails({ skill, onBack, onLaunch, onEdit, onDuplicate, onExport, 
               <ul>{skill.attachments.map((attachment, index) => <li key={`${attachment.filename}-${index}`}>{attachment.filename}</li>)}</ul>
             </details>
           )}
-          <details><summary>Instructions <MinionsIcon name="file" size={14} /></summary>
+          <details><summary>Instructions <SwarmcrewsIcon name="file" size={14} /></summary>
             <pre>{skill.template || "No instructions yet. Edit this skill to add them."}</pre>
           </details>
         </div>
@@ -368,14 +368,14 @@ export function SkillsBrowser({
               <ChevronRight size={15} aria-hidden="true" />
             </button>)}
             {!filtered.length && <div className="skills-browser__empty">
-              <MinionsIcon name={hasFilters ? "analysis" : "skill"} size={24} />
+              <SwarmcrewsIcon name={hasFilters ? "analysis" : "skill"} size={24} />
               <strong>{source === "project" && !query && category === "all" ? "Make your first skill" : hasFilters ? "No matching skills" : "No skills yet"}</strong>
               <p>{source === "project" && !query && category === "all" ? "Turn the way you work into reusable instructions. Start from scratch or duplicate a built-in skill." : "Try a different search, or create a skill for your workflow."}</p>
               {hasFilters && <button type="button" onClick={() => { setSearch(""); setSource("all"); setCategory("all"); }}>Reset filters</button>}
               <button type="button" onClick={onCreateSkill}><Plus size={14} aria-hidden="true" /> Create skill</button>
             </div>}
           </div>
-          <div className="skills-browser__library-footer"><MinionsIcon name="lightbulb" size={14} /><span>Explore a skill, then bring it to your canvas.</span></div>
+          <div className="skills-browser__library-footer"><SwarmcrewsIcon name="lightbulb" size={14} /><span>Explore a skill, then bring it to your canvas.</span></div>
         </>}
       </div>
     </DockPanel>

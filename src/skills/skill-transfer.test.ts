@@ -147,3 +147,9 @@ it.each(["minions:rocket", "minions:shield", "UX", "🎨"])("preserves the icon 
   expect(skipped).toBe(0);
   expect(skills[0]?.icon).toBe(icon);
 });
+
+it("imports legacy branded bundles and exports the Swarmcrews format", () => {
+  const old = JSON.stringify({ format: "minions-skills", version: 1, skills: [] });
+  const parsed = parseSkillTransfer(old);
+  expect(JSON.parse(serializeSkills(parsed.skills, "2026-09-11")).format).toBe("swarmcrews-skills");
+});

@@ -54,6 +54,7 @@ export function createBrowserConfig({ smoke = false } = {}) {
         PORT: "3473",
         VITE_PORT: "6473",
         MINIONS_TEST_HARNESS: "echo",
+        SWARMCREWS_TEST_HARNESS: "echo",
         // Explicit missing binaries prevent local provider installs or inherited
         // credentials from changing these deterministic fixture defaults.
         CLAUDE_CODE_PATH: path.join(e2eHome, "unavailable-harness"),
@@ -61,10 +62,14 @@ export function createBrowserConfig({ smoke = false } = {}) {
         OPENCODE_PATH: path.join(e2eHome, "unavailable-harness"),
         PI_PATH: smoke ? path.join(e2eHome, "unavailable-harness") : fakePiPath,
         MINIONS_NO_OPEN: "1",
+        SWARMCREWS_NO_OPEN: "1",
         MINIONS_HOME: path.join(e2eHome, ".minions"),
+        SWARMCREWS_HOME: path.join(e2eHome, ".minions"),
         MINIONS_SERVER_DB: serverDb,
+        SWARMCREWS_SERVER_DB: serverDb,
         DB_PATH: path.join(e2eHome, ".minions", "canvas.db"),
         MINIONS_ARTIFACTS_DIR: path.join(e2eHome, ".minions", "artifacts", "html"),
+        SWARMCREWS_ARTIFACTS_DIR: path.join(e2eHome, ".minions", "artifacts", "html"),
       },
     },
     globalTeardown: "./tests/e2e/global-teardown.mjs",

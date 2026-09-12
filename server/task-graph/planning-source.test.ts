@@ -1,3 +1,4 @@
+import { buildConnectedContextBlock } from "../../shared/connected-context.ts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -95,6 +96,27 @@ describe("planning source capture", () => {
         async () => ({ baseCommit: "abc", dirtyDigest: HASH_A })))
         .rejects.toThrow(/(unavailable|not found|Unknown)/i);
     } finally { fs.rmSync(projectPath, { recursive: true, force: true }); }
+  });
+
+  it("selects versioned sources by stable ID and decoded title after content changes", async () => {
+    const sources = [
+      { nodeId: "auth-node", nodeType: "note", label: 'Auth "rules"', content: "Auth rules" },
+      { nodeId: "billing-node", nodeType: "note", label: "Billing", content: "Billing rules" },
+    ];
+    for (const selector of ["canvas:auth-node", "canvas:auth rules"]) {
+      const captured = await capturePlanningSource(context(plan([selector]), buildConnectedContextBlock(sources)), 1,
+        async () => ({ baseCommit: "abc", dirtyDigest: HASH_A }));
+      expect(captured.snapshot.connectedContext).toHaveLength(2);
+      expect(captured.scopedSources).toHaveLength(1);
+      expect(captured.scopedSources[0]!.sourceId).toBe("auth-node");
+      expect(captured.scopedSources[0]!.content).toContain("Auth rules");
+      expect(captured.scopedSources[0]!.content).not.toContain("Billing rules");
+    }
+    const changed = await capturePlanningSource(context(plan(["canvas:auth-node"]), buildConnectedContextBlock([
+      { ...sources[0]!, content: "Updated auth rules" }, sources[1]!,
+    ])), 2, async () => ({ baseCommit: "abc", dirtyDigest: HASH_A }));
+    expect(changed.scopedSources[0]!.sourceId).toBe("auth-node");
+    expect(changed.scopedSources[0]!.content).toContain("Updated auth rules");
   });
 
   it("routes only context groups selected by a node", async () => {

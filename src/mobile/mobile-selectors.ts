@@ -217,7 +217,7 @@ export function compareActivityPriority<T extends MobileSessionInfo>(a: T, b: T)
  *
  * A session is owned by a project when it carries the same stable project ID,
  * its working directory is inside the source root, or its working directory is
- * inside that workspace's central `worktrees` directory under MINIONS_HOME.
+ * inside that workspace's central `worktrees` directory under SWARMCREWS_HOME.
  * The source-root check remains for legacy in-repository worktrees.
  */
 export function sessionBelongsToProject(

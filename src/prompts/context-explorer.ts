@@ -1,5 +1,5 @@
 import { PROJECT_CONTEXT_CHAR_LIMIT } from "../../shared/project-context.ts";
-export const CONTEXT_EXPLORER_PROMPT = (projectPath: string) => `Explore the project at ${projectPath} and populate its Minions project context.
+export const CONTEXT_EXPLORER_PROMPT = (projectPath: string) => `Explore the project at ${projectPath} and populate its Swarmcrews project context.
 
 Your goal is to understand this project and save concise context that will help subsequently delegated Minion agents work effectively in this codebase.
 
@@ -17,7 +17,7 @@ Your goal is to understand this project and save concise context that will help 
 
 After investigating, call \`update_project_context\` exactly once with the complete context as well-structured Markdown. Use headers, bullet points, and code references. Be specific — reference actual file paths, function names, and type names.
 
-Do not create or edit \`context.md\`, \`CLAUDE.md\`, or another repository file. Those files do not populate the Minions Context panel; only \`update_project_context\` fulfills this task.
+Do not create or edit \`context.md\`, \`CLAUDE.md\`, or another repository file. Those files do not populate the Swarmcrews Context panel; only \`update_project_context\` fulfills this task.
 
 ## Important
 

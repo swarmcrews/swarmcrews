@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 /** Leader-owned context, independent of provider-owned instructions and permissions. */
 export const minionContextSchema = z.object({
   profile: z.enum(["standard", "compact"]).default("standard")
-    .describe("standard: repository work and investigation; compact: small self-contained tasks. Changes only Minions instructions, not provider instructions, tools, or permissions."),
+    .describe("standard: repository work and investigation; compact: small self-contained tasks. Changes only Swarmcrews instructions, not provider instructions, tools, or permissions."),
   role: z.string().trim().min(1).max(1_000).optional()
     .describe("Optional functional mandate, e.g. review correctness. Does not grant authority."),
   instructions: z.array(z.string().trim().min(1).max(4_000)).max(8).default([])
@@ -49,7 +49,7 @@ export const MINION_CONTEXT_GUIDE = [
   { block: "objective / acceptanceCriteria / constraints / ownershipRequest / outputSchemas", when: "Define the work, observable completion, invariants, permitted writes, and output contract here. These remain active for every profile." },
   { block: "context.references", when: "Pass short excerpts, examples, or a focused summary as reference data. Include provenance in the content. Do not copy whole logs or repeat selected canvas/skill content." },
   { block: "contextSelectors", when: "Use canvas:<sourceId> from the inventory for exact connected-source selection, or canvas:<title words>. repo:<path> is an applicability hint, not file-content injection. Empty selects no canvas context." },
-  { block: "skillIds", when: "Set exact relevant frozen skill IDs. [] excludes optional Minions skills; omission inherits Leader-selected skills. Provider-owned skill catalogs are separate." },
+  { block: "skillIds", when: "Set exact relevant frozen skill IDs. [] excludes optional Swarmcrews skills; omission inherits Leader-selected skills. Provider-owned skill catalogs are separate." },
   { block: "workPacketId", when: "Supply required project constraints and model guidance through a Work Packet. Context profiles cannot remove required constraints or bypass freshness/policy gates." },
   { block: "dependsOn / inputBindings", when: "Use typed artifact dependencies for predecessor results; do not paste their full transcripts. Runtime resolves immutable inputs." },
 ] as const;

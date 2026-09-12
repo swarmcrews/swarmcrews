@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import path from "node:path";
 
 /**
- * Vitest configuration for the Minions canvas project.
+ * Vitest configuration for the Swarmcrews canvas project.
  *
  * Uses two projects so the right environment runs against the right files:
  *

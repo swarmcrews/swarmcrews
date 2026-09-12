@@ -20,6 +20,9 @@ export interface PrimaryRunConfig {
   skillValues?: Record<string, Record<string, string>>;
   systemPrompt?: string;
   attachments?: ImageAttachment[];
+  /** Complete recovery media, separate from this invocation's image delta. */
+  canvasAttachments?: ImageAttachment[];
+  promptAttachments?: ImageAttachment[];
   orchestrationMode?: LeaderOrchestrationMode;
   planningContext?: string;
   userDirectives?: string[];
@@ -29,7 +32,7 @@ interface ConfigInput {
   harness?: string; model?: string; permissionMode?: string; sandboxPolicy?: SandboxPolicy;
   thinkingConfig?: unknown; skillIds?: string[]; skillValues?: Record<string, Record<string, string>>;
   systemPrompt?: string; attachments?: unknown[];
-  orchestrationMode?: LeaderOrchestrationMode; prompt?: string;
+  orchestrationMode?: LeaderOrchestrationMode; prompt?: string; displayPrompt?: string;
 }
 
 export function resolvePrimaryRunConfig(previousJson: string | null, input: ConfigInput) {
@@ -46,7 +49,7 @@ export function resolvePrimaryRunConfig(previousJson: string | null, input: Conf
   if (input.attachments !== undefined) config.attachments = input.attachments as ImageAttachment[];
   if (input.orchestrationMode !== undefined) config.orchestrationMode = input.orchestrationMode;
   config.orchestrationMode = normalizeLeaderOrchestrationMode(config.orchestrationMode);
-  config.userDirectives = retainUserDirectives([...(previous.userDirectives ?? []), ...inheritedUserDirectives(input.prompt ?? ""), userTextFromPrompt(input.prompt ?? "")]);
+  config.userDirectives = retainUserDirectives([...(previous.userDirectives ?? []), ...inheritedUserDirectives(input.prompt ?? ""), userTextFromPrompt(input.displayPrompt ?? input.prompt ?? "")]);
   const planningContext = input.prompt?.match(/<connected-context>[\s\S]*?<\/connected-context>/)?.[0];
   if (planningContext) {
     if (Buffer.byteLength(planningContext) > MAX_PLANNING_CONTEXT_BLOCK_BYTES) {

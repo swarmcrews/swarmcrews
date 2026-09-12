@@ -1,6 +1,6 @@
 import type { McpBridgeRegistration } from "../../mcp-bridge/registry.ts";
 
-/** Merge Minions' ephemeral prompt and MCP bridge into OpenCode's inline config. */
+/** Merge Swarmcrews' ephemeral prompt and MCP bridge into OpenCode's inline config. */
 export function buildOpenCodeEnv(input: {
   baseEnv?: NodeJS.ProcessEnv;
   systemPrompt: string;
@@ -18,7 +18,7 @@ export function buildOpenCodeEnv(input: {
     const mcp = objectValue(existing["mcp"]);
     for (const group of new Set(input.groups ?? [])) {
       if (!/^[A-Za-z0-9_-]+$/.test(group)) continue;
-      const tokenEnv = `MINIONS_BRIDGE_TOKEN_${group.replace(/-/g, "_").toUpperCase()}`;
+      const tokenEnv = `SWARMCREWS_BRIDGE_TOKEN_${group.replace(/-/g, "_").toUpperCase()}`;
       env[tokenEnv] = input.bridge.bearerToken;
       mcp[group] = {
         type: "remote",

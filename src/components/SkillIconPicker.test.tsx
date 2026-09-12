@@ -2,7 +2,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SkillIconPicker } from "./SkillIconPicker.tsx";
-import { isMinionsIconName } from "./MinionsIcon.tsx";
+import { isSwarmcrewsIconName } from "./SwarmcrewsIcon.tsx";
 import { SKILL_ICON_LIBRARY } from "../skills/icon-library.ts";
 
 function Picker() {
@@ -14,7 +14,7 @@ describe("SkillIconPicker", () => {
   it("ships over 100 unique icons with artwork", () => {
     expect(SKILL_ICON_LIBRARY.length).toBeGreaterThanOrEqual(100);
     expect(new Set(SKILL_ICON_LIBRARY.map((icon) => icon.name)).size).toBe(SKILL_ICON_LIBRARY.length);
-    expect(SKILL_ICON_LIBRARY.every((icon) => isMinionsIconName(icon.name))).toBe(true);
+    expect(SKILL_ICON_LIBRARY.every((icon) => isSwarmcrewsIconName(icon.name))).toBe(true);
   });
 
   it("searches purpose and name, selects an icon, and preserves selection through filtering", () => {

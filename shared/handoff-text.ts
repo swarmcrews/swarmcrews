@@ -36,7 +36,7 @@ export function userTextFromPrompt(prompt: string): string {
 
 /** Legacy transcript events may contain an assembled prompt instead of displayPrompt. */
 export function displayTextFromPrompt(prompt: string): string {
-  const text = prompt.replace(/<(context-checkpoint|previous-run-context|previous-session-context|session-continuation|context-window-recovery|connected-context|context-update)\b[^>]*>[\s\S]*?<\/\1>/g, "");
+  const text = prompt.replace(/<(context-checkpoint|previous-run-context|previous-session-context|session-continuation|context-window-recovery|connected-context-update|connected-context|context-update)\b[^>]*>[\s\S]*?<\/\1>/g, "");
   return text === prompt ? prompt : text.trim();
 }
 

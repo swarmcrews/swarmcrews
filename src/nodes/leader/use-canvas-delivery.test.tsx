@@ -1,3 +1,5 @@
+import type { ContextItem } from "../../types.ts";
+import { seedContextDelivery } from "../../context-delivery.ts";
 import { useRef, useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -16,7 +18,7 @@ const item: WorkItemSnapshot = {
   waitKind: null, currentRunKey: "run-1", iteration: 1,
   lastTransitionAt: 2, createdAt: 1, updatedAt: 2,
 };
-function setup(canonical = true, initial: Partial<LeaderData> = {}) {
+function setup(canonical = true, initial: Partial<LeaderData> = {}, getContextForNode?: () => ContextItem[]) {
   const listeners = new Set<(message: unknown) => void>();
   const socketSubscribe = (listener: (message: unknown) => void) => {
     listeners.add(listener); return () => { listeners.delete(listener); };
@@ -35,7 +37,7 @@ function setup(canonical = true, initial: Partial<LeaderData> = {}) {
       projectPath: "/repo", socketSend, socketSubscribe, dataRef, emitUpdate,
       publishCanvasContext: () => undefined });
     const delivery = useCanvasDelivery({ ...workItem, dataRef, emitUpdate, socketSend, socketSubscribe,
-      frozenPromptRef, getContextForNode: undefined });
+      frozenPromptRef, getContextForNode });
     return <CanvasDeliveryContext.Provider value={delivery}>
       <textarea aria-label="Draft" value={draft} onChange={(e) => setDraft(e.target.value)} />
       <button onClick={() => { if (delivery.send(draft)) setDraft(""); }}>Send</button>
@@ -56,6 +58,34 @@ function setup(canonical = true, initial: Partial<LeaderData> = {}) {
 
 afterEach(() => vi.useRealTimers());
 describe("Canvas message delivery", () => {
+  it("publishes a complete deduplicated snapshot before deltas, resending only changed images", async () => {
+    const image: ContextItem = { nodeId: "image", nodeType: "image", label: "Image", content: "annotations",
+      attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }] };
+    const existing: ContextItem = { nodeId: "existing", nodeType: "note", label: "Note", content: "KEEP" };
+    const added: ContextItem = { nodeId: "added", nodeType: "note", label: "Note", content: "NEW" };
+    let sources = [existing, image, added, existing];
+    const test = setup(false, { contextDelivery: seedContextDelivery([existing, image], 1) }, () => sources);
+    fireEvent.click(screen.getByText("Send"));
+    const first = test.commands()[0]!;
+    expect(first['prompt']).toContain('source-id="added"');
+    expect(first['prompt']).toContain('update="add"');
+    expect(first['prompt']).not.toContain('<connected-context>');
+    expect(first['attachments']).toBeUndefined();
+    expect(first['displayPrompt']).toBe("  Exact text\nwith spacing  ");
+    const calls = test.socketSend.mock.calls.map(([call]) => call);
+    const snapshotIndex = calls.findIndex(call => call.type === "canvas_context");
+    expect(calls[snapshotIndex].items).toEqual([existing, image, added]);
+    expect(snapshotIndex).toBeLessThan(calls.findIndex(call => call.type === "send_message"));
+    await test.reply(true);
+    sources = [{ ...image, attachments: [{ kind: "image", mediaType: "image/png", data: "BBBB" }] }, added];
+    fireEvent.change(screen.getByLabelText("Draft"), { target: { value: "Changed sources" } });
+    fireEvent.click(screen.getByText("Send"));
+    const second = test.commands()[1]!;
+    expect(second['attachments']).toEqual(sources[0]!.attachments);
+    expect(second['prompt']).toMatch(/source-id="existing"[^>]*update="remove"/);
+    expect(second['prompt']).toMatch(/source-id="image"[^>]*update="replace"/);
+  });
+
   it("queries the completed receipt after timeout and reconnect without resending the mutation", async () => {
     vi.useFakeTimers();
     const test = setup();

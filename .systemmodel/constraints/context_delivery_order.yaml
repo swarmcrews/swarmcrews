@@ -6,17 +6,21 @@ applies_to:
   flows: []
   surfaces: []
   files:
+    - shared/connected-context.ts
+    - shared/handoff-text.ts
     - src/connected-context.ts
     - src/context-extraction.ts
     - src/context-delivery.ts
     - server/commands/canvas-context.ts
+    - server/leader-context-budget.ts
+    - server/continuity-attachments.ts
     - server/session-continuity.ts
     - server/session-handoff.ts
     - server/context-checkpoint.ts
     - src/session-stream.ts
 severity: high
-agent_instruction: Preserve graph ordering and provider eligibility, sanitize attachments, publish the complete snapshot before start/send, and explicitly mark stale or cleared context. Persist the latest complete source snapshot and sanitized images; reseed fresh provider threads on the server before execution and invalidate browser delivery acknowledgements after committed checkpoints. Bounded prompt excerpts must mark omissions and identify durable full sources.
-suggested_tests: [ server/session-handoff.test.ts, src/nodes/leader/session-context.test.ts, src/connected-context.test.ts, src/context-extraction.test.ts, src/context-delivery.test.ts, src/context-staleness.test.ts ]
+agent_instruction: Preserve graph order and deduplicate by source ID. Publish complete snapshots before turns; incremental add/append/replace/remove groups must never replace that snapshot or become durable user directives. Preserve source IDs, types and versions in prompts. Compare image content, send only new/changed images on resumed turns, and retain the complete canvas image set separately from direct prompt images for recovery. Withdraw disconnected sources explicitly. At the Leader provider boundary cap connected text at 24000 characters total and 8000 per source, with omission notices and readable immutable full-source references. Reseed fresh threads server-side and invalidate browser delivery acknowledgements after committed checkpoints.
+suggested_tests: [ server/session-handoff.test.ts, server/leader-context-budget.test.ts, src/nodes/leader/session-context.test.ts, src/nodes/leader/use-canvas-delivery.test.tsx, src/connected-context.test.ts, src/context-extraction.test.ts, src/context-delivery.test.ts, src/context-staleness.test.ts ]
 evidence: [ decision.typed_event_bus ]
 domain: domain.workspace
 scope: domain

@@ -14,7 +14,10 @@ export function inheritRunContinuity(db: Database.Database, previous: WorkItemRu
   if (!saved) return inherited;
   const config: PrimaryRunConfig = inherited ? JSON.parse(inherited) : {};
   config.userDirectives = saved.continuity.directives.length ? saved.continuity.directives : config.userDirectives;
-  if (saved.continuity.attachments !== undefined) config.attachments = saved.continuity.attachments;
+  // Recovery needs every current image, but a resumed turn only needs its delta.
+  config.canvasAttachments = saved.continuity.canvasAttachments ?? saved.continuity.attachments ?? [];
+  config.promptAttachments = saved.continuity.promptAttachments ?? [];
+  delete config.attachments;
   config.skillIds = saved.skillIds;
   config.skillValues = saved.skillValues;
   if (saved.continuity.canvasContext !== undefined) {

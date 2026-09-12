@@ -1,3 +1,4 @@
+import { contextAttribute } from "../../shared/connected-context.ts";
 import { readSkillSnapshot, saveSkillSnapshot, selectSnapshotSkills } from "../skill-snapshot.ts";
 import { execFile as execFileCallback } from "node:child_process";
 import path from "node:path";
@@ -272,11 +273,11 @@ export interface CanvasSource { sourceId: string; title: string; content: string
 export function splitConnectedContext(value: string | null): CanvasSource[] {
   if (!value?.trim()) return [];
   const groups = [...value.matchAll(
-    /<context-group(?:\s+title="([^"]*)")?>([\s\S]*?)<\/context-group>/g,
+    /<context-group\b([^>]*)>([\s\S]*?)<\/context-group>/g,
   )].map((match, index) => {
-    const title = match[1] || `Connected context ${index + 1}`;
+    const title = contextAttribute(match[1]!, "title") || `Connected context ${index + 1}`;
     return {
-      sourceId: canonicalId("canvas", { index, title, content: match[2] }),
+      sourceId: contextAttribute(match[1]!, "source-id") || canonicalId("canvas", { index, title, content: match[2] }),
       title,
       content: match[0],
     };

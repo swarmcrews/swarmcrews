@@ -73,7 +73,8 @@
 }
 
 .message-selection-toolbar {
-  /* Keep the same footer space in both modes: no overlap or text movement. */
+  /* Reserve the same footer space in both modes. The controls float above
+     this slot within the selected range without moving the message text. */
   position: relative;
   margin-top: 4px;
   z-index: 7;

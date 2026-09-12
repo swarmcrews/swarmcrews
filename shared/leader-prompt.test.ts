@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   LEGACY_PLANNING_PROMPT,
+  CLAUDE_LEADER_BUILT_IN_TOOLS,
+  TASK_GRAPH_LEADER_TOOL_NAMES,
   LEADER_PROMPT_CORE,
   TASK_GRAPH_PLANNING_PROMPT,
   buildLeaderPromptFeatures,
@@ -61,7 +63,7 @@ describe("leader prompt composition", () => {
     });
 
     for (const name of names) expect(inventory).toContain(name);
-    expect(inventory).toContain('wake_on: "any_terminal"');
+    expect(inventory).toContain("callable schemas define arguments and behavior");
   });
 
   it("makes Graph the standard Minion execution path while allowing Leader local work", () => {
@@ -135,4 +137,19 @@ describe("leader prompt composition", () => {
       skillsAddendum: "",
     });
   });
+});
+
+it("keeps the baseline compact with every capability and one canonical naming instruction", () => {
+  const prompt = composeLeaderPrompt({ builtInTools: CLAUDE_LEADER_BUILT_IN_TOOLS,
+    registeredToolNames: TASK_GRAPH_LEADER_TOOL_NAMES });
+  expect(prompt.length).toBeLessThan(6500);
+  const inventory = buildLeaderCapabilityInventory({ builtInTools: [],
+    registeredToolNames: [...TASK_GRAPH_LEADER_TOOL_NAMES, ...TASK_GRAPH_LEADER_TOOL_NAMES] });
+  for (const name of TASK_GRAPH_LEADER_TOOL_NAMES) expect(inventory.split(`**${name}**`)).toHaveLength(2);
+  expect(prompt.match(/call `set_task_name` once/g)).toHaveLength(1);
+  expect(prompt).toContain("observable acceptance criteria");
+  expect(prompt).toContain("Only pending form IDs accept answers");
+  expect(prompt).toContain("cannot remove provider instructions or permissions");
+  expect(prompt).toContain("Load the relevant procedure before entering its phase");
+  expect(prompt).toContain("source-id/version");
 });

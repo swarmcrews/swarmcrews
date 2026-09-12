@@ -54,7 +54,7 @@ export async function initializeProjectGit(
   try {
     await runtime.runGit(projectPath, ["var", "GIT_AUTHOR_IDENT"]);
   } catch {
-    identityArgs = ["-c", "user.name=Minions", "-c", "user.email=minions@localhost"];
+    identityArgs = ["-c", "user.name=Swarmcrews", "-c", "user.email=swarmcrews@localhost"];
   }
 
   const gitDirectory = path.join(projectPath, ".git");

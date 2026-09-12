@@ -2,9 +2,9 @@ import type { LeaderData } from "./nodes/leader/types.ts";
 import { selectWorkItemPresentation } from "../shared/work-item-lifecycle.ts";
 import { partitionDashboardQuestions } from "./nodes/render/dashboard-questions.ts";
 import type { CanvasNode } from "./types.ts";
-import { SKILL_ICON_LIBRARY, SKILL_ICON_PREFIX } from "./skills/icon-library.ts";
+import { SKILL_ICON_LIBRARY, SKILL_ICON_PREFIX, LEGACY_SKILL_ICON_PREFIX } from "./skills/icon-library.ts";
 
-const workspaceIcons = new Set(SKILL_ICON_LIBRARY.map(icon => `${SKILL_ICON_PREFIX}${icon.name}`));
+const workspaceIcons = new Set(SKILL_ICON_LIBRARY.flatMap(icon => [SKILL_ICON_PREFIX, LEGACY_SKILL_ICON_PREFIX].map(prefix => `${prefix}${icon.name}`)));
 export function isWorkspaceIcon(value: unknown): value is string { return typeof value === "string" && workspaceIcons.has(value); }
 
 // Metadata nodes participate in the workspace's existing atomic canvas save.

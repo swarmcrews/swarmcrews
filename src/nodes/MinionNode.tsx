@@ -1,4 +1,4 @@
-import { MinionsIcon, type MinionsIconName } from "../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon, type SwarmcrewsIconName } from "../components/SwarmcrewsIcon.tsx";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import type { NodeRenderProps, ThinkingConfig } from "../types.ts";
 import { MINION_THINKING_CONFIG } from "../types.ts";
@@ -771,7 +771,7 @@ export function MinionNodeRenderer({
 
   const priorityColors: Record<string, string> = PRIORITY_COLORS;
 
-  const taskStatusIcon = (status: string): MinionsIconName => {
+  const taskStatusIcon = (status: string): SwarmcrewsIconName => {
     switch (status) {
       case "in_progress": return "wait";
       case "completed": return "check";
@@ -929,7 +929,7 @@ export function MinionNodeRenderer({
             title="Settings"
             aria-label={showSettings ? "Hide minion settings" : "Show minion settings"}
           >
-            <MinionsIcon name="settings" size={14} />
+            <SwarmcrewsIcon name="settings" size={14} />
           </button>
         </div>
       </div>
@@ -972,7 +972,7 @@ export function MinionNodeRenderer({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
             <span style={{ fontSize: 11, flexShrink: 0 }}>
-              <MinionsIcon name={taskStatusIcon(activeTask.status)} size={13} label={activeTask.status.replaceAll("_", " ")} />
+              <SwarmcrewsIcon name={taskStatusIcon(activeTask.status)} size={13} label={activeTask.status.replaceAll("_", " ")} />
             </span>
             <span style={{
               fontSize: 12,

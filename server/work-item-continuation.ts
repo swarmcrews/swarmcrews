@@ -1,3 +1,5 @@
+import { continuationContext } from "./work-item-continuation-context.ts";
+import { sanitizeAttachments } from "./commands/attachment-sanitize.ts";
 import type Database from "better-sqlite3";
 import { executeWorkItemCommand } from "./work-item-command-ledger.ts";
 import { getWorkItem, getWorkItemRun, WorkItemConflictError } from "./work-item-repo.ts";
@@ -14,6 +16,7 @@ export interface RunContinuationInput {
   runKey: string;
   prompt: string;
   displayPrompt?: string;
+  attachments?: import("./session-host-types.ts").ImageAttachment[];
   continuitySource?: "system";
   skillIds?: string[];
   skillValues?: Record<string, Record<string, string>>;
@@ -34,9 +37,7 @@ export async function continueWorkItemIntent(
       return service.replyToWaitingRun({
         requestId: input.requestId, workItemId: input.workItemId,
         runKey: item.currentRunKey, prompt: input.prompt,
-        ...(input.displayPrompt ? { displayPrompt: input.displayPrompt } : {}),
-        ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
-        ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}),
+        ...continuationContext(input),
         expectedLifecycleRevision: item.lifecycle.lifecycleRevision,
         expectedCurrentRunKey: item.currentRunKey,
       });
@@ -51,15 +52,13 @@ export async function continueWorkItemIntent(
           requestId: input.requestId, workItemId: input.workItemId,
           command: "queue_guidance", payload: {
             workItemId: input.workItemId, runKey: item.currentRunKey, prompt: input.prompt,
-            ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
-            ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}),
+            ...continuationContext(input),
           }, resultKey: item.currentRunKey, at: service.now(),
         }, () => item.currentRunKey!);
         if (!queued.idempotent) await service.options.queueRunGuidance?.({
           requestId: input.requestId, workItemId: input.workItemId,
           runKey: item.currentRunKey, prompt: input.prompt,
-          ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
-          ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}),
+          ...continuationContext(input),
         });
         service.emit(detail, queued.idempotent ? "guidance_replayed" : "guidance_queued", service.now());
         return detail;
@@ -120,6 +119,6 @@ export async function continueChildWorkItemRun(options: {
   });
   const run = getWorkItemRun(options.db, input.runKey);
   if (!run || run.ended_at !== null) return;
-  await options.continueRun({ ...input, invocationKind: "resume_open_run",
+  await options.continueRun({ ...input, attachments: sanitizeAttachments(input.attachments), invocationKind: "resume_open_run",
     ...(run.session_id ? { resumeId: run.session_id } : {}) });
 }

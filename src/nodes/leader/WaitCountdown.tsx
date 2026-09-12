@@ -1,4 +1,4 @@
-import { MinionsIcon } from "../../components/MinionsIcon.tsx";
+import { SwarmcrewsIcon } from "../../components/SwarmcrewsIcon.tsx";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -49,7 +49,7 @@ export function WaitCountdown({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <MinionsIcon name="wait" />
+        <SwarmcrewsIcon name="wait" />
         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>
           Waiting — resuming in {display}
         </span>
