@@ -1,5 +1,8 @@
 .project-header-logo {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
   width: 154px;
   height: 28px;
