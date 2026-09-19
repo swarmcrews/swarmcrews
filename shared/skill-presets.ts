@@ -39,6 +39,10 @@ export interface SkillPreset {
   accentColor: string;
   template: string;
   variables: SkillPresetVariable[];
+  /** Automatically selected on new leader nodes. */
+  isDefault?: boolean;
+  /** Advertise to agents for on-demand selection; enabled when omitted. */
+  selfServe?: boolean;
   attachments?: import("./skill-attachments.ts").SkillAttachment[];
   subskills?: SubSkillPreset[];
 }

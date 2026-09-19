@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { getVirtualRange, whyNotRunning, WORK_QUEUE_ROW_HEIGHT } from "./model.ts";
 import { NodeState } from "./NodeState.tsx";
+import { ModelLabel } from "./ModelLabel.tsx";
 import type { TaskGraphNodeView } from "./types.ts";
 
 export function WorkQueue({ nodes, onSelect, onClearFilter }: { nodes: TaskGraphNodeView[]; onSelect: (id: string) => void; onClearFilter?: () => void }) {
@@ -34,7 +35,7 @@ export function WorkQueue({ nodes, onSelect, onClearFilter }: { nodes: TaskGraph
           {visible.map((node) => (
             <button key={node.id} type="button" className="tg-queue-row" style={{ height: WORK_QUEUE_ROW_HEIGHT }} onClick={() => onSelect(node.id)}>
               <NodeState node={node} compact />
-              <span className="tg-queue-row__main"><strong>{node.title}</strong><small>{whyNotRunning(node)}</small></span>
+              <span className="tg-queue-row__main"><strong>{node.title}</strong><ModelLabel node={node} /><small>{whyNotRunning(node)}</small></span>
               <span className="tg-queue-row__meta">P{node.priority} · age {formatAge(node.queueAgeMs)}<small>{node.currentAttempt?.executor ?? "unassigned"}</small></span>
               <span className="tg-queue-row__meta">{node.currentAttempt ? `#${node.currentAttempt.number} ${node.currentAttempt.state}` : "no attempt"}<small>{node.backoffUntil ? `backoff until ${new Date(node.backoffUntil).toLocaleTimeString()}` : `$${node.costUsd.toFixed(2)}`}</small></span>
             </button>

@@ -2,13 +2,16 @@ import { useState, type FormEvent } from "react";
 import { isValidEmptyCanvasDescription } from "./empty-canvas.ts";
 
 export function EmptyCanvasState({
+  description,
+  onDescriptionChange,
   onStart,
   onAddLeader,
 }: {
+  description: string;
+  onDescriptionChange: (description: string) => void;
   onStart: (description: string) => void;
   onAddLeader: () => void;
 }) {
-  const [description, setDescription] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const canStart = isValidEmptyCanvasDescription(description);
 
@@ -94,7 +97,7 @@ export function EmptyCanvasState({
           </span>
           <textarea
             value={description}
-            onChange={(event) => setDescription(event.currentTarget.value)}
+            onChange={(event) => onDescriptionChange(event.currentTarget.value)}
             rows={5}
             placeholder="Example: This repo is a canvas for coordinating agent work. I want to triage the next product improvements and keep a dashboard current."
             style={{

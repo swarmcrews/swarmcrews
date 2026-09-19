@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, RefObject } from "react";
 import type { CanvasAction, CanvasNode, CanvasTransform, Position } from "./types.ts";
 import { activeWorkspaceId, createZone, GLOBAL_WORKSPACE_ID, isWorkspaceIcon, moveToZone, readWorkspaces, readZones, visibleZoneNodes, workspaceTransferIds, zoneMembership } from "./canvas-zones.ts";
-import { focusTransformOnRects } from "./canvas-utils.ts";
+import { focusTransformOnRects, unobstructedCanvasViewport } from "./canvas-utils.ts";
 import { generateId } from "./canvas-state.ts";
 
 type Move = { id: string; position: Position };
@@ -19,6 +19,7 @@ interface Options {
   reveal: (transform: CanvasTransform, ids: string[]) => void;
   removeNodes?: ((nodes: CanvasNode[]) => void) | undefined;
   topOffset?: number;
+  projectPanelRight?: number;
 }
 
 export function useCanvasZones(options: Options) {
@@ -54,12 +55,13 @@ export function useCanvasZones(options: Options) {
   }, [notification, dismissReceipt]);
 
   const fitWorkspace = useCallback((id: string, selected: string[] = []) => {
-    const { nodes, containerRef, reveal, topOffset = 0 } = latest.current;
+    const { nodes, containerRef, reveal, topOffset = 0, projectPanelRight = 0 } = latest.current;
     const box = containerRef.current?.getBoundingClientRect();
     const width = box?.width || containerRef.current?.clientWidth || 800;
     const height = box?.height || containerRef.current?.clientHeight || 600;
     const top = Math.max(24, topOffset + 64 - (box?.top ?? 0));
-    const viewport = { width: Math.max(120, width - 48), height: Math.max(120, height - top - 80) };
+    const available = unobstructedCanvasViewport({ left: box?.left ?? 0, width, height }, projectPanelRight);
+    const viewport = { x: available.x ?? 0, width: Math.max(0, available.width - 48), height: Math.max(120, height - top - 80) };
     const content = visibleZoneNodes(nodes, id);
     const target = focusTransformOnRects(content.map(n => ({ ...n.position, ...n.size })), viewport, { padding: 32, maxScale: 1 });
     reveal(target ? { ...target, y: target.y + top } : { x: 32, y: top + 32, scale: 1 }, selected);

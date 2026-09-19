@@ -39,8 +39,6 @@ import { rewindFiles } from "./rewind-files.ts";
 import { seedReadState } from "./seed-read-state.ts";
 import {
   getContextUsage,
-  getUsageReport,
-  getProviderUsageReport,
   getSupportedModels,
   getSupportedCommands,
   getSupportedAgents,
@@ -148,8 +146,6 @@ export const COMMAND_TABLE = {
   seed_read_state: seedReadState,
   // Info queries
   get_context_usage: getContextUsage,
-  get_usage_report: getUsageReport,
-  get_provider_usage_report: getProviderUsageReport,
   get_supported_models: getSupportedModels,
   get_supported_commands: getSupportedCommands,
   get_supported_agents: getSupportedAgents,

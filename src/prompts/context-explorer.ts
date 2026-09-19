@@ -17,13 +17,13 @@ Your goal is to understand this project and save concise context that will help 
 
 After investigating, call \`update_project_context\` exactly once with the complete context as well-structured Markdown. Use headers, bullet points, and code references. Be specific — reference actual file paths, function names, and type names.
 
-Do not create or edit \`context.md\`, \`CLAUDE.md\`, or another repository file. Those files do not populate the Swarmcrews Context panel; only \`update_project_context\` fulfills this task.
+The Context panel reflects \`AGENTS.md\` in the project folder (or an existing lowercase \`agents.md\`). Read that file first if it exists and preserve its instructions and user-authored guidance. The tool saves the complete document there, creating \`AGENTS.md\` when missing. Do not save a separate \`context.md\` or \`CLAUDE.md\`.
 
 ## Important
 
 - Read actual source files, don't guess
 - If you're unsure about something, note it as uncertain
 - Focus on what's useful for someone about to work in this codebase
-- Keep it concise but complete — keep the complete document within ${PROJECT_CONTEXT_CHAR_LIMIT} characters (the delegated prompt budget). Prioritize current constraints, build/test commands, key entry points and exact reference paths; remove repeated background
+- Aim for ${PROJECT_CONTEXT_CHAR_LIMIT} characters (the delegated prompt budget), but preserve existing instructions even if the document is longer. Prioritize current constraints, build/test commands, key entry points and exact reference paths; remove repeated background
 
 Begin by exploring the project structure and key files.`;

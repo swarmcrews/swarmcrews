@@ -1,3 +1,4 @@
+import { CONNECTION_MCP_TOOLS } from "../../shared/mcp-servers/connections.ts";
 import type { AgentHarness } from "../harness/types.ts";
 import { getHarness } from "../harness/index.ts";
 import type { TaskNode } from "../../shared/task-graph-contracts.ts";
@@ -70,7 +71,7 @@ export function validateTaskGraphNodePolicy(
   // Validate MCP identities against the same inventory used by Minion registration
   // and planning defaults. Skill authoring is still gated by the child's armed
   // skills at registration; an allowlist cannot expose an unregistered tool.
-  const supported=new Set([...selected.builtInTools,...MINION_MCP_TOOLS_BASE,
+  const supported=new Set([...CONNECTION_MCP_TOOLS,...selected.builtInTools,...MINION_MCP_TOOLS_BASE,
     ...minionSkillMcpToolNames([SKILL_BUILDER_ID]),
     "mcp__task-graph__read_input_artifact","mcp__task-graph__stage_output_artifact"]);
   const unsupported=node.allowedTools.filter(name=>!supported.has(name));

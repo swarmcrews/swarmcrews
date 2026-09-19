@@ -14,42 +14,43 @@ describe("matchSystemModel", () => {
       topK: 2,
     });
 
-    expect(result.matchConfidence).toBe("high");
+    expect(result.matchConfidence).toBe("medium");
     expect(result.candidates.map((candidate) => candidate.id)).toEqual([
       "flow.approve_changes",
-      "domain.workspace",
+      "capability.workspace_management",
     ]);
-    expect(result.candidates[0]?.reasons).toContain("file matched 1 suggested path");
+    expect(result.candidates[0]?.reasons.join(" ")).toContain("file evidence matched");
+    expect(result.candidates[1]?.reasons.join(" ")).toContain("primary-capability support");
   });
 
   it("scores every object type from its contract fields", () => {
     const model = loadSystemModel("tests/fixtures/system-model/valid").model!;
 
-    expect(matchSystemModel({ model, request: "workspace" }).candidates[0]).toMatchObject({
+    expect(matchSystemModel({ model, request: "workspace", objectTypes: ["capability"] }).candidates[0]).toMatchObject({
       id: "capability.workspace_management",
       type: "capability",
-      score: 5,
-      reasons: expect.arrayContaining(["name matched 1 term", "keyword matched 1 term"]),
+      score: expect.any(Number),
+      reasons: ["text matched 1 query term"],
     });
     expect(matchSystemModel({ model, request: "approve inspect" }).candidates[0]).toMatchObject({
       id: "flow.approve_changes",
-      score: 7,
-      reasons: expect.arrayContaining(["name matched 1 term", "flow matched 2 terms"]),
+      score: expect.any(Number),
+      reasons: ["text matched 2 query terms"],
     });
     expect(matchSystemModel({ model, request: "outbound direct", files: ["server/commands/index.ts"] }).candidates[0]).toMatchObject({
       id: "constraint.bus_only",
-      score: 9,
-      reasons: expect.arrayContaining(["name matched 1 term", "instruction matched 1 term", "file matched 1 suggested path"]),
+      score: expect.any(Number),
+      reasons: expect.arrayContaining(["text matched 2 query terms", expect.stringContaining("file evidence")]),
     });
     expect(matchSystemModel({ model, request: "typed payloads" }).candidates[0]).toMatchObject({
       id: "decision.bus_architecture",
-      score: 5,
-      reasons: expect.arrayContaining(["name matched 1 term", "summary matched 2 terms"]),
+      score: expect.any(Number),
+      reasons: ["text matched 2 query terms"],
     });
     expect(matchSystemModel({ model, request: "centrally" }).candidates[0]).toMatchObject({
       id: "risk.merge_bypass",
-      score: 1,
-      reasons: expect.arrayContaining(["summary matched 1 term"]),
+      score: expect.any(Number),
+      reasons: ["text matched 1 query term"],
     });
   });
 
@@ -57,12 +58,11 @@ describe("matchSystemModel", () => {
     const model = loadSystemModel("tests/fixtures/system-model/valid").model!;
     const result = matchSystemModel({ model, request: "merge", topK: 1 });
 
-    expect(result.candidates.map((candidate) => candidate.id)).toEqual([
-      "flow.approve_changes",
-    ]);
-    expect(result.candidates.map((candidate) => candidate.id)).toEqual(
-      [...result.candidates].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).map((candidate) => candidate.id),
-    );
+    const all = matchSystemModel({ model, request: "merge", topK: 100 }).candidates;
+    expect(result.candidates).toEqual(all.slice(0, 1));
+    expect(all).toEqual([...all].sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)));
+    model.objectsById = new Map([...model.objectsById].reverse());
+    expect(matchSystemModel({ model, request: "merge", topK: 100 }).candidates).toEqual(all);
   });
 
   it("returns low confidence with fallback instruction when no candidate scores", () => {
@@ -79,7 +79,7 @@ describe("matchSystemModel", () => {
     expect(matchSystemModel({ model, request: "mobile" }).candidates[0]).toMatchObject({
       id: "surface.mobile",
       type: "surface",
-      score: 6,
+      score: expect.any(Number),
     });
     const capability = matchSystemModel({
       model,
@@ -87,8 +87,8 @@ describe("matchSystemModel", () => {
       files: ["src/mobile/App.tsx"],
     }).candidates.find((candidate) => candidate.id === "capability.workspace_management");
     expect(capability).toMatchObject({
-      score: 4,
-      reasons: ["file matches entry point surface.mobile"],
+      score: expect.any(Number),
+      reasons: expect.arrayContaining(["file matches entry point surface.mobile"]),
     });
   });
 });

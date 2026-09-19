@@ -3,7 +3,8 @@ import { createHash } from "node:crypto";
 import type Database from "better-sqlite3";
 import type { ImageAttachment } from "./session-host-types.ts";
 import type { SessionHost, StartSessionOptions } from "./session-host.ts";
-import { setSessionCanvasContext } from "./canvas-context-store.ts";
+import { getSessionCanvasContextItems, setSessionCanvasContext, setSessionCanvasContextItems } from "./canvas-context-store.ts";
+import type { StoredCanvasContextItem } from "./canvas-context-store.ts";
 import { persistenceDb } from "./session-persist.ts";
 import { inheritedUserDirectives, retainUserDirectives, userTextFromPrompt } from "../shared/handoff-text.ts";
 import type { PrimaryRunConfig } from "./work-item-run-config.ts";
@@ -17,9 +18,12 @@ export interface SessionContinuity {
   attachments?: ImageAttachment[];
   canvasAttachments?: ImageAttachment[];
   promptAttachments?: ImageAttachment[];
+  /** Raw structured snapshot; persisted prose is never reused as graph authority. */
+  canvasContextItems?: StoredCanvasContextItem[];
 }
 export interface ContinuitySnapshot {
   continuity: SessionContinuity;
+  connectionIds?: string[] | undefined;
   skillIds: string[];
   skillSnapshotId?: string | undefined;
   skillValues: Record<string, Record<string, string>>;
@@ -50,8 +54,9 @@ export function captureSessionContinuity(host: SessionHost, opts: StartSessionOp
 }
 
 export function saveContinuitySnapshot(db: Database.Database, host: SessionHost): void {
+  host.continuity.canvasContextItems = [...getSessionCanvasContextItems(host.id)];
   const snapshot: ContinuitySnapshot = {
-    continuity: host.continuity, skillIds: host.skillIds, skillValues: host.skillValues,
+    continuity: host.continuity, connectionIds: host.connectionIds, skillIds: host.skillIds, skillValues: host.skillValues,
     skillSnapshotId: host.skillSnapshotId,
   };
   db.prepare(`INSERT INTO session_continuity (session_key, snapshot_json) VALUES (?, ?)
@@ -72,6 +77,7 @@ export function restoreSessionContinuity(host: SessionHost): void {
   const row = db.prepare("SELECT run_config_json FROM sessions WHERE session_key = ?")
     .get(host.id) as { run_config_json?: string | null } | undefined;
   const config = row?.run_config_json ? JSON.parse(row.run_config_json) as PrimaryRunConfig : {};
+  host.connectionIds = saved?.connectionIds ?? config.connectionIds;
   host.skillIds = saved?.skillIds ?? config.skillIds ?? [];
   host.skillSnapshotId = saved?.skillSnapshotId;
   host.skillValues = saved?.skillValues ?? config.skillValues ?? {};
@@ -88,4 +94,5 @@ export function restoreSessionContinuity(host: SessionHost): void {
   host.canvasContext = host.continuity.canvasContext !== undefined
     ? host.continuity.canvasContext : config.planningContext ?? null;
   setSessionCanvasContext(host.id, host.canvasContext);
+  setSessionCanvasContextItems(host.id, host.continuity.canvasContextItems ?? []);
 }

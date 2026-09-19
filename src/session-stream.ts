@@ -486,13 +486,14 @@ function stripTaskNameMarker(s: string): string {
 export function preserveOptimisticUserMessages(
   prev: ReadonlyArray<DisplayMessage>,
   next: ReadonlyArray<DisplayMessage>,
+  optimisticIds?: ReadonlySet<string>,
 ): DisplayMessage[] {
   const nextIds = new Set(next.map((m) => m.id));
   const missing: DisplayMessage[] = [];
   for (const m of prev) {
     if (m.role === "user" && !nextIds.has(m.id)) missing.push(m);
   }
-  if (missing.length === 0) return collapseOptimisticUserEchoes(next);
+  if (missing.length === 0) return collapseOptimisticUserEchoes(next, optimisticIds);
 
   const result = [...next];
   for (const u of missing) {
@@ -517,19 +518,25 @@ export function preserveOptimisticUserMessages(
       result.splice(anchorIdx + 1, 0, u);
     }
   }
-  return collapseOptimisticUserEchoes(result);
+  return collapseOptimisticUserEchoes(result, optimisticIds);
 }
 
 /** Match placeholders one-to-one within a turn, preserving repeated requests. */
-function collapseOptimisticUserEchoes(messages: ReadonlyArray<DisplayMessage>): DisplayMessage[] {
+function collapseOptimisticUserEchoes(
+  messages: ReadonlyArray<DisplayMessage>,
+  optimisticIds?: ReadonlySet<string>,
+): DisplayMessage[] {
+  // Delivery receipts identify local bubbles saved before the optimistic flag
+  // was added to the follow-up/new-iteration path.
+  const isOptimistic = (message: DisplayMessage) => message.optimistic || optimisticIds?.has(message.id);
   const replaced = new Set<number>();
   for (let i = 0; i < messages.length; i++) {
     const message = messages[i]!;
-    if (message.role !== "user" || message.optimistic) continue;
+    if (message.role !== "user" || isOptimistic(message)) continue;
     for (let j = i - 1; j >= 0; j--) {
       const candidate = messages[j]!;
       if (candidate.role !== "user" && candidate.role !== "system") break;
-      if (candidate.role === "user" && candidate.optimistic
+      if (candidate.role === "user" && isOptimistic(candidate)
         && candidate.content === message.content && !replaced.has(j)) {
         replaced.add(j);
         break;

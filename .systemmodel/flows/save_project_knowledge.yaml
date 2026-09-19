@@ -9,9 +9,9 @@ suggested_files: [ shared/project-context.ts, server/task-tools/update-project-c
 suggested_tests: [ server/task-tools/update-project-context.test.ts, src/ProjectPanel.test.tsx, src/components/ProjectTree.test.tsx, src/nodes/MarkdownNode.test.tsx, src/SkillsBrowser.test.tsx, src/McpServersBrowser.test.tsx, src/api.test.ts ]
 steps:
   - Edit a supported project artifact through authenticated REST or spatial autosave.
-  - Let a project-bound Leader replace Swarmcrews project context through the registered update_project_context tool instead of writing a repository context.md.
+  - Reflect the source project's AGENTS.md (or existing agents.md) in Context, and save manual or Leader-generated updates to that file through REST or update_project_context. Missing instructions stay absent until a user initiates saving or generation.
   - Enforce project ownership, path guards, artifact sanitation, and honest error reporting.
-  - Persist workspace knowledge and canvas state beneath the registered UUID state root.
+  - Persist canvas state and other workspace artifacts beneath the registered UUID state root; project Context remains in the source folder's agent instructions file.
   - Reuse the artifact deliberately as graph context, card context, preset, skill, or future MCP configuration.
 freshness:
   class: code_coupled

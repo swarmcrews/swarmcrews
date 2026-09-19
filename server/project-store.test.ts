@@ -99,10 +99,11 @@ describe("initSidecar / openProjectDb", () => {
 
     expect(existsSync(join(project, ".minions"))).toBe(false);
     expect(existsSync(join(workspace.stateRoot, "canvas.db"))).toBe(true);
-    expect(existsSync(join(workspace.stateRoot, "context.md"))).toBe(true);
+    expect(existsSync(join(workspace.stateRoot, "context.md"))).toBe(false);
+    expect(existsSync(join(project, "AGENTS.md"))).toBe(false);
   });
 
-  it("creates the sidecar directory, default context.md, and settings.json", () => {
+  it("creates workspace state and settings without creating project instructions", () => {
     expect(hasSidecar(project)).toBe(false);
     const db = initSidecar(project, {
       defaultModel: "claude-sonnet-5", defaultLeaderHarness: "codex", defaultLeaderModel: "gpt-5.6-sol",
@@ -115,13 +116,7 @@ describe("initSidecar / openProjectDb", () => {
     expect(hasSidecar(project)).toBe(true);
 
     const ctx = readContext(project);
-    expect(ctx.exists).toBe(true);
-    // Don't pin the literal copy (§5.7) — assert structure: a heading +
-    // at least one paragraph.
-    expect(ctx.content.trim().startsWith("#")).toBe(true);
-    expect(
-      ctx.content.split("\n").filter((l) => l.trim().length > 0).length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(ctx).toEqual({ content: "", exists: false });
 
     const settings = readSettings(project);
     expect(settings.defaultModel).toBeTruthy();
@@ -172,16 +167,45 @@ describe("context / settings / skills / mcp-servers round-trip", () => {
     cleanup.push(() => db.close());
   });
 
-  it("readContext returns the default for a missing file (does not throw)", () => {
-    rmSync(join(findWorkspaceBySource(project)!.stateRoot, "context.md"));
+  it("readContext returns an empty state without creating a missing file", () => {
     const ctx = readContext(project);
     expect(ctx).toEqual({ content: "", exists: false });
+    expect(existsSync(join(project, "AGENTS.md"))).toBe(false);
   });
 
   it("writeContext / readContext round-trip preserves the markdown bytes", () => {
     const md = "# Project\n\nSome **bold** text and a `code` span.\n";
     writeContext(project, md);
     expect(readContext(project)).toEqual({ content: md, exists: true });
+    expect(readFileSync(join(project, "AGENTS.md"), "utf8")).toBe(md);
+  });
+
+  it("reads existing instructions and reflects external edits and deletion", () => {
+    const file = join(project, "AGENTS.md");
+    writeFileSync(file, "# Existing instructions\r\n");
+    expect(readContext(project)).toEqual({ content: "# Existing instructions\r\n", exists: true });
+    writeFileSync(file, "Updated externally");
+    expect(readContext(project).content).toBe("Updated externally");
+    rmSync(file);
+    expect(readContext(project)).toEqual({ content: "", exists: false });
+  });
+
+  it("updates an existing lowercase agents.md without creating a duplicate", () => {
+    writeFileSync(join(project, "agents.md"), "Lowercase instructions");
+    expect(readContext(project).content).toBe("Lowercase instructions");
+    writeContext(project, "Updated lowercase instructions");
+    expect(readFileSync(join(project, "agents.md"), "utf8")).toBe("Updated lowercase instructions");
+    expect(existsSync(join(project, "AGENTS.md"))).toBe(false);
+  });
+
+  it("prefers AGENTS.md and ignores legacy workspace context", () => {
+    writeFileSync(join(findWorkspaceBySource(project)!.stateRoot, "context.md"), "Legacy notes");
+    expect(readContext(project)).toEqual({ content: "", exists: false });
+    writeFileSync(join(project, "agents.md"), "Lowercase");
+    writeFileSync(join(project, "AGENTS.md"), "Canonical");
+    expect(readContext(project).content).toBe("Canonical");
+    writeContext(project, "Updated canonical");
+    expect(readFileSync(join(project, "agents.md"), "utf8")).toBe("Lowercase");
   });
 
   it("writeSettings / readSettings round-trip", () => {

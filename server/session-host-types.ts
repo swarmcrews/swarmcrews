@@ -1,3 +1,4 @@
+import type { TaskGraphExperiments } from "../shared/task-graph-experiments.ts";
 import type { Bus } from "./bus.ts";
 import type { WorktreeInfo } from "./worktree.ts";
 import type { PlannedWorktree } from "./worktree-create.ts";
@@ -31,7 +32,7 @@ export interface SessionHostDeps {
     prompt: string; cwd: string; systemPrompt: string; model?: string;
     harness?: string; thinkingConfig?: ThinkingConfig; permissionMode?: string;
     executorClass?: "mechanical" | "standard" | "reasoning";
-    skillIds?: string[]; skillSnapshotId?: string | undefined;
+    connectionIds?: string[] | undefined; skillIds?: string[]; skillSnapshotId?: string | undefined;
     /** Called after durable allocation and before provider launch. */
     onAllocated?: (sessionKey: string) => void;
   }) => void | Promise<{ sessionKey: string; harness: string; model: string; permissionMode: string }>;
@@ -42,6 +43,7 @@ export interface SessionHostDeps {
   getTaskGraphTools?: (runKey:string) => NormalizedToolDef[];
   getTaskGraphAllowedTools?: (runKey:string) => string[]|null;
   getTaskGraphMutationScope?: (runKey:string) => LiveEditPathInput[]|null;
+  getTaskGraphExperiments?: (runKey: string) => TaskGraphExperiments;
   getLeaderOrchestrationMode?: (runKey: string) => LeaderOrchestrationMode;
   getTaskGraphPlanning?: (runKey: string) => TaskGraphPlanningCoordinator | null;
   transitionWorktreeProvisioning?: (runKey: string,
@@ -104,7 +106,7 @@ export interface StartSessionOptions {
   systemPrompt?: string | undefined;
   role?: SessionRole | undefined;
   /** Skill IDs tagged on this session; Leaders pass them to their Minions. */
-  skillIds?: string[] | undefined;
+  connectionIds?: string[] | undefined; skillIds?: string[] | undefined;
   skillSnapshotId?: string | undefined;
   /** Template values for the tagged skills, inherited by delegated Minions. */
   skillValues?: Record<string, Record<string, string>> | undefined;

@@ -1,3 +1,4 @@
+import type { TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 /**
  * AgentType interface — the pluggable contract that each agent role implements.
  *
@@ -40,6 +41,7 @@ export interface AgentTypeContext {
   /** Primary-Leader graph planner; present only for graph orchestration mode. */
   taskGraphPlanning?: TaskGraphPlanningCoordinator;
   orchestrationMode?: LeaderOrchestrationMode;
+  taskGraphExperiments?: TaskGraphExperiments;
   /** Existing task state to preserve across resume calls (leader only) */
   existingTaskState?: TaskManagerState;
   /** Existing render state to preserve across resume calls (leader only) */
@@ -49,7 +51,7 @@ export interface AgentTypeContext {
    * surfaces and are inherited by delegated Minions. Sourced from the
    * frontend at launch time and persisted across resume/wait cycles.
    */
-  skillIds?: string[]; skillSnapshotId?: string | undefined;
+  connectionIds?: string[] | undefined; skillIds?: string[]; skillSnapshotId?: string | undefined;
   /** Template values configured for the tagged Leader skills. */
   skillValues?: Record<string, Record<string, string>>;
   /** Worktree inherited from the leader (minion only) */
@@ -76,7 +78,7 @@ export interface AgentTypeContext {
     thinkingConfig?: ThinkingConfig;
     permissionMode?: string;
     executorClass?: "mechanical" | "standard" | "reasoning";
-    skillIds?: string[]; skillSnapshotId?: string | undefined;
+    connectionIds?: string[] | undefined; skillIds?: string[]; skillSnapshotId?: string | undefined;
     onAllocated?: (sessionKey: string) => void;
   }) => void | Promise<{ sessionKey: string; harness: string; model: string; permissionMode: string }>;
   /** Callback to schedule a delayed "Continue" resume (leader only) */

@@ -10,6 +10,7 @@ import { useCanvasNodeDrag } from "./use-canvas-node-drag.ts";
 import { LeaderDragCard } from "./LeaderDragCard.tsx";
 import { CanvasNodeContent } from "./CanvasNodeContent.tsx";
 import type { SocketSubscribe } from "./use-socket.ts";
+import { LeaderContextMenu } from "./components/LeaderContextMenu.tsx";
 
 interface CanvasNodeProps {
   node: CanvasNode;
@@ -186,6 +187,8 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
 }: CanvasNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const [isResizing, setIsResizing] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState<Position | null>(null);
+  const closeContextMenu = useCallback(() => setContextMenuPosition(null), []);
   const { pointer: dragPointer, onMouseDown: handleMouseDown } = useCanvasNodeDrag({
     node, isSelected, onSelect, onMove, onDragStart, onDragMove, onDragEnd,
   });
@@ -343,6 +346,15 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
 
   return (
     <>
+    {contextMenuPosition && !parked && !hiddenForDrag && <LeaderContextMenu
+      node={node}
+      position={contextMenuPosition}
+      onClose={closeContextMenu}
+      onFocusNode={onFocusNode}
+      onDuplicateSetup={onDuplicateLeaderSetup}
+      onOpenSystemModel={onOpenSystemModel}
+      onMoveToZone={onMoveToZone}
+    />}
     {dragPointer && hiddenForDrag && <LeaderDragCard node={node} pointer={dragPointer} zoneName={dragZoneName} count={dragNodeCount} />}
     <div
       ref={nodeRef}
@@ -350,9 +362,15 @@ export const CanvasNodeComponent = memo(function CanvasNodeComponent({
       data-canvas-node-id={node.id}
       data-parked={parked || undefined}
       inert={hiddenForDrag ? true : undefined}
-      onContextMenu={onMoveToZone ? event => {
-        if (!event.currentTarget.contains(event.target as Node) || (event.target as Element).closest("input,textarea,[contenteditable=true]")) return;
-        event.preventDefault(); event.stopPropagation(); onMoveToZone(node.id);
+      onContextMenu={node.type === "leader" || onMoveToZone ? event => {
+        if (!event.currentTarget.contains(event.target as Node) || (event.target as Element).closest("input,textarea,select,a,[contenteditable]:not([contenteditable=false])")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (node.type === "leader") {
+          setContextMenuPosition({ x: event.clientX, y: event.clientY });
+        } else {
+          onMoveToZone?.(node.id);
+        }
       } : undefined}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}

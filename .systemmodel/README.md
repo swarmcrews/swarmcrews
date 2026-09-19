@@ -7,7 +7,7 @@ capabilities; a mobile surface is not itself a second copy of every capability.
 Search returns compact cards. Read selected facets to open relevant detail, and
 explicitly expand one-hop dependencies, bridges, or inverse relationships. Queries
 never create packets or record exposure as use. Responses have bounded, lossless
-continuation; see [the retrieval contract](../docs/progressive-system-model-retrieval.md).
+continuation.
 Compiled Work Packets use a separate scope:
 
 - Explicitly selected behavior and its primary capability remain in context.

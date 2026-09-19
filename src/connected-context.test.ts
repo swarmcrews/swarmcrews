@@ -58,6 +58,14 @@ describe("source identity", () => {
     expect(block).toContain('source-id="b"');
     expect(block).toContain('title="Note &quot;quoted&quot; &lt;tag&gt;"');
   });
+
+  it("treats graph binding changes as snapshot changes", () => {
+    const source = { nodeId: "leader", nodeType: "leader", label: "Leader", content: "graph",
+      leaderGraphSource: { workItemId: "work", primaryRunKey: "run-1" } };
+    expect(canvasContextSignature([source])).not.toBe(canvasContextSignature([
+      { ...source, leaderGraphSource: { ...source.leaderGraphSource, primaryRunKey: "run-2" } },
+    ]));
+  });
 });
 
 // ── buildContextBlock ─────────────────────────────────────────────────────

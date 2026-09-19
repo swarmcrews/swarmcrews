@@ -48,7 +48,7 @@ export class DurableProcessRun implements ProcessRun {
       let data=''; try {data=await readFile(join(this.id,'stdout.jsonl'),'utf8');} catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}
       const end=terminal?data.length:data.lastIndexOf('\n')+1;
       for(const line of data.slice(offset,end).split('\n').filter(Boolean)) {
-        try {yield JSON.parse(line) as Record<string,unknown>;} catch {yield {type:'error',message:'invalid Codex JSONL',raw:line};}
+        try {yield JSON.parse(line) as Record<string,unknown>;} catch {yield {type:'error',message:'invalid process JSONL',raw:line};}
       }
       offset=end; if(terminal)return; await delay(30);
     }

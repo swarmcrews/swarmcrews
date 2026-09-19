@@ -13,6 +13,8 @@ import {
 import type { MobileSessionInfo } from "./mobile-selectors.ts";
 import { needsAttention, sessionBelongsToProject } from "./mobile-selectors.ts";
 import { ProjectGitWarning } from "../ProjectGitWarning.tsx";
+import { ProjectsTutorial } from "../ProjectsTutorial.tsx";
+import { RepositoryPathPicker } from "../components/RepositoryPathPicker.tsx";
 
 interface ProjectsScreenProps {
   sessions: MobileSessionInfo[];
@@ -167,6 +169,7 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
       <header className="mob-screen-header">
         <h1>Projects</h1>
         <div className="mob-project-header-actions">
+          {!loading && projects.length > 0 && <ProjectsTutorial />}
           {projects.length > 0 ? <span className="mob-count">{projects.length}</span> : null}
           <button
             type="button"
@@ -182,26 +185,21 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
         </div>
       </header>
 
+      {!loading && !error && projects.length === 0 && <ProjectsTutorial prominent />}
+
       {showCreateForm ? (
         <form className="mob-project-create" onSubmit={handleCreateProject}>
           <div className="mob-muted">{readiness?.harnesses.map((h) => `${h.name}: ${h.ready ? "Ready" : h.state.replaceAll("_", " ")}`).join(" · ")}</div>
-          <label className="mob-launch-field">
-            <span>Project path</span>
-            <input
-              type="text"
-              value={projectPath}
-              onChange={(event) => {
-                setProjectPath(event.currentTarget.value);
-                setPendingGitDecision(null);
-              }}
-              placeholder="/path/to/new/project"
-              autoCapitalize="off"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              autoFocus
-            />
-          </label>
+          <RepositoryPathPicker
+            value={projectPath}
+            disabled={creating}
+            placeholder="/path/to/new/project"
+            autoFocus
+            onChange={(path) => {
+              setProjectPath(path);
+              setPendingGitDecision(null);
+            }}
+          />
           <label className="mob-launch-field">
             <span>Name</span>
             <input

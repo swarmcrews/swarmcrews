@@ -189,6 +189,7 @@ describe("LaunchScreen", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Use the project defaults" },
     });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
@@ -239,6 +240,7 @@ describe("LaunchScreen", () => {
     await waitFor(() => expect(screen.getByLabelText("Workspace write")).toBeChecked());
     fireEvent.click(screen.getByLabelText("Full Host - Leader + Minions"));
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Use host tools" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
@@ -291,8 +293,9 @@ describe("LaunchScreen", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Build the mobile launch flow" },
     });
-    expect(submit).toBeEnabled();
+    await waitFor(() => expect(submit).toBeEnabled());
 
+    await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
     await waitFor(() => {
@@ -307,7 +310,7 @@ describe("LaunchScreen", () => {
     expect(onLaunched).toHaveBeenCalledWith("run-1");
   });
 
-  it("disables canonical launch immediately and ignores duplicate submissions", () => {
+  it("disables canonical launch immediately and ignores duplicate submissions", async () => {
     const canonicalLaunch = vi.fn();
 
     render(
@@ -324,6 +327,7 @@ describe("LaunchScreen", () => {
     const submit = screen.getByRole("button", { name: "Launch leader" });
     const form = submit.closest("form");
     expect(form).not.toBeNull();
+    await waitFor(() => expect(submit).toBeEnabled());
 
     fireEvent.click(submit);
     fireEvent.submit(form!);
@@ -333,7 +337,7 @@ describe("LaunchScreen", () => {
     expect(canonicalLaunch).toHaveBeenCalledTimes(1);
   });
 
-  it("re-enables canonical launch after an error", () => {
+  it("re-enables canonical launch after an error", async () => {
     const canonicalLaunch = vi.fn((
       _input: unknown,
       _onStarted: (sessionKey: string) => void,
@@ -352,6 +356,7 @@ describe("LaunchScreen", () => {
       target: { value: "Try launch" },
     });
     const submit = screen.getByRole("button", { name: "Launch leader" });
+    await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Unable to launch");
@@ -393,7 +398,7 @@ describe("LaunchScreen", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Do the thing" },
     });
-    expect(submit).toBeEnabled();
+    await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
     await waitFor(() => {
@@ -442,7 +447,9 @@ describe("LaunchScreen", () => {
     expect(screen.getByRole("option", { name: "GPT-5.5 Codex" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Do work" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.change(select, { target: { value: "codex::gpt-5.5" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     await waitFor(() => {
@@ -481,6 +488,7 @@ describe("LaunchScreen", () => {
       subscriber?.({ type: "harness_list", harnesses: [CLAUDE_HARNESS, CODEX_HARNESS] });
     });
 
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add" })).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Model"), {
       target: { value: "codex::gpt-5.5-codex" },
     });
@@ -489,6 +497,7 @@ describe("LaunchScreen", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Use focused reasoning" },
     });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
@@ -537,6 +546,7 @@ describe("LaunchScreen", () => {
     expect(screen.getByText("Unmanaged by the selected harness")).toBeInTheDocument();
     expect(screen.getByText("Workspace · unmanaged")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Run safely" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({
@@ -563,6 +573,7 @@ describe("LaunchScreen", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     await waitFor(() => {
@@ -593,8 +604,9 @@ describe("LaunchScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("index.html")).toBeInTheDocument();
     });
-    expect(submit).toBeEnabled();
+    await waitFor(() => expect(submit).toBeEnabled());
 
+    await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
     await waitFor(() => {
@@ -644,6 +656,7 @@ describe("LaunchScreen", () => {
     expect(screen.getByText("Lint Cleanup")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
@@ -655,6 +668,47 @@ describe("LaunchScreen", () => {
     expect(payload.skillIds).toEqual(["lint"]);
     expect(payload.skillValues).toEqual({});
     expect(payload.systemPrompt).toContain("Clean up all lint violations.");
+  });
+
+  it("preselects defaults even when self-serve is disabled, and lets the user deselect them", async () => {
+    vi.mocked(getProjectSkills).mockResolvedValue([{ ...LINT_SKILL, isDefault: true, selfServe: false }]);
+    const launch = vi.fn((_input: unknown, onStarted: (key: string) => void) => onStarted("run-1"));
+    const props = { canonicalLaunch: launch, onLaunched: vi.fn(), lockedProject: { id: "defaults", path: "/work/defaults", name: "Defaults" } };
+    const view = render(<LaunchScreen {...props} />);
+    await screen.findByText("Lint Cleanup");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
+    expect(launch.mock.calls[0]![0]).toMatchObject({ options: { skillIds: ["lint"] } });
+
+    view.unmount();
+    launch.mockClear();
+    render(<LaunchScreen {...props} />);
+    await screen.findByText("Lint Cleanup");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Lint Cleanup" }));
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
+    expect((launch.mock.calls[0]![0] as { options: unknown }).options).not.toHaveProperty("skillIds");
+  });
+
+  it("waits for defaults to load before allowing launch", async () => {
+    let resolveSkills!: (skills: SkillTemplate[]) => void;
+    vi.mocked(getProjectSkills).mockReturnValue(new Promise((resolve) => { resolveSkills = resolve; }));
+    const launch = vi.fn();
+    render(<LaunchScreen canonicalLaunch={launch} onLaunched={vi.fn()}
+      lockedProject={{ id: "slow", path: "/work/slow", name: "Slow" }} />);
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    const submit = screen.getByRole("button", { name: "Launch leader" });
+    expect(submit).toBeDisabled();
+    fireEvent.submit(submit.closest("form")!);
+    expect(launch).not.toHaveBeenCalled();
+    await act(async () => resolveSkills([{ ...LINT_SKILL, isDefault: true }]));
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ skillIds: ["lint"] }) }), expect.any(Function), expect.any(Function));
   });
 
   it("omits skill fields from the payload when no skills are armed", async () => {
@@ -672,6 +726,7 @@ describe("LaunchScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Add" })).toBeEnabled());
 
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Go" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));

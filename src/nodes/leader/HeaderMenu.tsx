@@ -135,8 +135,12 @@ export function HeaderMenu({
         className="leader-header-menu__popover"
         role="menu"
         aria-label="Leader actions"
+        data-scroll-capture
         onMouseDown={(event) => event.stopPropagation()}
+        // Keep native list scrolling without triggering the outside-wheel dismissal.
+        onWheel={(event) => event.stopPropagation()}
         style={{
+          overscrollBehavior: "contain",
           left: popoverPosition?.left ?? 0,
           maxHeight: popoverPosition?.maxHeight,
           top: popoverPosition?.top ?? 0,

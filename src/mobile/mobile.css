@@ -1135,6 +1135,30 @@
   gap: 10px;
 }
 
+.mob-iteration-boundary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-default);
+  padding-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.mob-iteration-boundary > span {
+  flex: 1;
+}
+
+.mob-iteration-boundary button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
 .mob-chat-callout {
   display: grid;
   gap: 7px;
@@ -3585,12 +3609,6 @@ article.mob-plan-row {
   gap: 4px;
 }
 
-.mob-settings-section-heading--action {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 12px;
-}
-
 .mob-settings-section-heading h2 {
   font-size: 16px;
   line-height: 1.25;
@@ -3803,93 +3821,6 @@ article.mob-plan-row {
 
 .mob-settings-danger-button:disabled {
   opacity: 0.56;
-}
-
-.mob-settings-secondary-button {
-  padding: 0 12px;
-  border-color: color-mix(in srgb, var(--text-muted) 34%, var(--border-default));
-  color: var(--text-primary);
-  background: var(--bg-elevated);
-  font-weight: 700;
-}
-
-.mob-usage-grid {
-  display: grid;
-  gap: 10px;
-}
-
-.mob-usage-card {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-  background: var(--bg-primary);
-}
-
-.mob-usage-card-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.mob-usage-card-header strong {
-  font-size: 15px;
-}
-
-.mob-usage-card-header span {
-  min-width: 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.mob-usage-muted,
-.mob-usage-error {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.mob-usage-error {
-  color: var(--status-error);
-}
-
-.mob-usage-windows {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-}
-
-.mob-usage-windows > div {
-  display: grid;
-  grid-template-columns: minmax(88px, 0.8fr) minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-}
-
-.mob-usage-windows dt {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.mob-usage-windows dd {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  text-align: right;
-}
-
-.mob-usage-windows dd span {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.mob-usage-windows dd small {
-  color: var(--text-secondary);
-  font-size: 12px;
 }
 
 .mob-settings-modal-backdrop {

@@ -207,11 +207,13 @@ describe("work-item production bootstrap", () => {
       workItemId: "work-1", runKey: "run-1", prompt: "Continue",
       invocationKind: "resume_open_run", resumeId: "provider-1",
       displayPrompt: "Follow-up", attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }],
+      connectionIds: [], sandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" },
     });
     expect(launched).toEqual([expect.objectContaining({
       sessionKey: "run-1", workItemId: "work-1", resumeId: "provider-1",
       invocationKind: "resume_open_run", harness: "codex", initialModel: "gpt-5",
       cwd: "/repo/worktree", displayPrompt: "Follow-up",
+      connectionIds: [], sandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" },
       attachments: [{ kind: "image", mediaType: "image/png", data: "AAAA" }],
     })]);
   });

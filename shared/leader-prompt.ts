@@ -1,3 +1,4 @@
+import { graphExperimentGuidance, type TaskGraphExperiments } from "./task-graph-experiments.ts";
 /**
  * Stable, shared Leader prompt text and pure formatting helpers.
  *
@@ -41,7 +42,7 @@ export const TASK_GRAPH_LEADER_TOOL_NAMES: readonly string[] = [
 export const DEFAULT_LEADER_TOOL_NAMES = TASK_GRAPH_LEADER_TOOL_NAMES;
 
 /** Cache-stable core. Dynamic capabilities and session context follow it. */
-export const LEADER_PROMPT_CORE = `You are the Lead Developer agent in a multi-agent canvas. Execute work, plan it, and delegate bounded independent tasks.
+export const LEADER_PROMPT_CORE = `You are the Lead Developer agent in a multi-agent canvas. Execute tasks directly by default. Delegate for concrete benefit or an explicit graph request.
 
 ## Annotated Images
 
@@ -53,7 +54,7 @@ Use a durable label for the user's overall objective: 3–6 words naming its con
 
 ## Token Economy
 
-Delegate broad exploration for conclusions with file:line evidence. Read small files directly; use targeted extraction for large files and summaries for delegated reports over ~2000 characters. Never read multi-thousand-line files when focused evidence suffices. Cite paths instead of pasting long files, diffs, or logs into chat or dashboards.
+Inspect locally first; delegate exploration only for valuable independent investigations, requesting file:line evidence. Read small files directly; use targeted extraction for large files and summaries for delegated reports over ~2000 characters. Never read multi-thousand-line files when focused evidence suffices. Cite paths instead of pasting long files, diffs, or logs into chat or dashboards.
 
 ## Asking the User a Question
 
@@ -79,7 +80,7 @@ Call only tools in the effective inventory. If lifecycle retrieval is excluded b
 
 export const LEGACY_PLANNING_PROMPT = `## Compatibility planning
 
-This compatibility workflow is reserved for sessions without canonical WorkItem identity. Canonical Leaders always use Task Graph.
+This compatibility workflow is reserved for sessions without canonical WorkItem identity. Canonical Leaders execute directly by default and use Task Graph when delegation is justified or explicitly requested.
 
 1. Analyze the goal and follow the Session Naming rule.
 2. Register each distinct work item with \`plan_task\`.
@@ -100,11 +101,13 @@ Selected Leader skills are compiled for this run. Use \`load_subskill\` for adve
 
 export const TASK_GRAPH_PLANNING_PROMPT = `## Task Graph planning
 
-The user-facing names \`Graph\` and \`Crew\` refer to this same Task Graph feature. Treat requests to use either name, including \`/graph\` and \`/crew\`, as requests for graph-assisted planning and orchestration, subject to the current review and start settings.
+Execute tasks directly by default, including substantial, tightly coupled implementation. Use Graph for complicated, multi-model, or parallelizable work only when handoffs, expertise, verification, or concurrency outweigh coordination overhead. Otherwise, process the task yourself unless the user explicitly asks for a graph. Do not create a single-step graph merely to hand off work you can complete directly.
 
-Task Graph is always enabled and is the standard Minion execution path for Leaders. When delegating work to Minions, submit a graph plan and let the server schedule its steps, including a single-step graph for one bounded assignment. Leaders may still execute small, exploratory, review, or integration work themselves. Direct task controls remain available for compatibility and steering existing tasks.
+Honor explicit Graph/Crew requests, including \`/graph\` and \`/crew\`, under review and start settings.
 
-Let the server scheduler own admission and child allocation; do not also delegate its steps directly. Consult the lifecycle procedure index for each phase. Current revisions and committed evidence are authoritative; pattern recommendations are advisory.`;
+Strategies: \`p02.fork_join\` for independent workstreams; \`p03.static_scatter_gather\` for bounded partitions; \`p01.pipeline\` for meaningful dependent stages; \`p07.independent_verification\` for separate verification; \`p08.generate_critique_revise_verify\` for bounded refinement; \`p13.dialectic\` for difficult reasoning with opposing perspectives. Different models should add complementary capabilities or perspectives, not duplicate work.
+
+When delegating work to Minions, submit a graph plan via \`submit_graph_plan\`. Let the server scheduler own admission and child allocation; do not also delegate its steps directly. For graph work only, consult the lifecycle procedure index. Current revisions and committed evidence are authoritative; pattern recommendations are advisory.`;
 
 export type LeaderPromptFeatureId = "task_graph_planning" | "legacy_planning";
 
@@ -143,11 +146,13 @@ export interface LeaderPromptSkill {
   id: string;
   name: string;
   description?: string | undefined;
+  selfServe?: boolean;
 }
 
 export function buildLeaderSkillInventory(skills: readonly LeaderPromptSkill[]): string {
-  if (skills.length === 0) return "";
-  const lines = skills.map((skill) =>
+  const advertised = skills.filter((skill) => skill.selfServe !== false);
+  if (advertised.length === 0) return "";
+  const lines = advertised.map((skill) =>
     `- \`${skill.id}\` — **${skill.name}**: ${skill.description?.trim() || "(no description)"}`
   );
   return `# Available Skills
@@ -158,6 +163,7 @@ ${lines.join("\n")}`;
 }
 
 export interface ComposeLeaderPromptInput extends LeaderCapabilityInput {
+  taskGraphExperiments?: TaskGraphExperiments | undefined;
   promptFeatureIds?: readonly LeaderPromptFeatureId[] | undefined;
   skillsAddendum?: string | null | undefined;
   userPrefix?: string | null | undefined;
@@ -169,6 +175,7 @@ export function composeLeaderPrompt(input: ComposeLeaderPromptInput): string {
   return [
     LEADER_PROMPT_CORE,
     ...buildLeaderPromptFeatures(input.promptFeatureIds ?? ["task_graph_planning"]),
+    graphExperimentGuidance(input.taskGraphExperiments, "leader"),
     buildLeaderCapabilityInventory(input),
     ...input.registeredToolNames.filter(name => name === "load_procedure" || name.endsWith("__load_procedure")).slice(0, 1).map(buildLeaderProcedureDiscovery),
     clean(input.roleSystemAddendum),

@@ -30,18 +30,37 @@ let currentDispatch: React.Dispatch<CanvasAction>;
 const defaultSettings: ProjectSettings = {};
 const graph = { edges: [] };
 const graphDispatch = vi.fn();
-function Harness({ initialNodes = initial, settings = defaultSettings }: { initialNodes?: CanvasNode[]; settings?: ProjectSettings }) {
+function Harness({ initialNodes = initial, settings = defaultSettings, projectPanelRight = 0 }: { initialNodes?: CanvasNode[]; settings?: ProjectSettings; projectPanelRight?: number }) {
   const [nodes, dispatch] = useReducer(canvasReducer, initialNodes);
   const [transform, setTransform] = useState({ x: 80, y: 60, scale: .5 });
   current = nodes;
   currentDispatch = dispatch;
-  return <DockProvider><Canvas nodes={nodes} dispatch={dispatch} graph={graph} graphDispatch={graphDispatch}
+  return <DockProvider><output data-testid="camera">{JSON.stringify(transform)}</output><Canvas projectPanelRight={projectPanelRight} nodes={nodes} dispatch={dispatch} graph={graph} graphDispatch={graphDispatch}
     transform={transform} setTransform={setTransform} projectSettings={settings} /></DockProvider>;
 }
 beforeEach(() => {
   resetFeatureFlags(); canvasScale.current = .5;
   vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
   Object.defineProperty(document, "elementFromPoint", { configurable: true, value: vi.fn(() => null) });
+});
+
+it.each([600, 1200])("centers a dropped node clear of the dashboard at canvas width %s", (width) => {
+  const { container } = render(<Harness initialNodes={[initial[0]!]} projectPanelRight={356} />);
+  const root = container.querySelector<HTMLElement>(".canvas-root")!;
+  Object.defineProperties(root, { clientWidth: { value: width }, clientHeight: { value: 800 } });
+  fireEvent.mouseDown(screen.getByText("Drag this leader"), { button: 0, clientX: 90, clientY: 70 });
+  fireEvent.mouseMove(window, { clientX: 490, clientY: 270 });
+  advanceFrame();
+  fireEvent.mouseUp(window, { clientX: 490, clientY: 270 });
+  for (let frame = 0; frame < 20; frame++) advanceFrame();
+  const camera = JSON.parse(screen.getByTestId("camera").textContent!);
+  const node = current[0]!;
+  const left = node.position.x * camera.scale + camera.x;
+  const right = (node.position.x + node.size.width) * camera.scale + camera.x;
+  expect(left).toBeGreaterThan(372);
+  expect(right).toBeLessThan(width);
+  expect((left + right) / 2).toBeCloseTo((372 + width) / 2);
+  expect(camera.scale).toBeLessThanOrEqual(.5);
 });
 
 const snapScene = [initial[0]!, { ...initial[1]!, position: { x: 400, y: 100 }, size: { width: 300, height: 300 } }];

@@ -8,11 +8,20 @@ import type {
 
 const CACHE_MS = 30_000;
 const PROBE_TIMEOUT_MS = 5_000;
+// Pi may be an npm wrapper. Allow two bounded CLI startups (20s catalog,
+// 8s optional metadata) without treating wrapper latency as an auth failure.
+const PI_PROBE_TIMEOUT_MS = 30_000;
 
 let cached: HarnessReadinessSnapshot | null = null;
 let inFlight: Promise<HarnessReadinessSnapshot> | null = null;
 
 const REMEDIATION: Record<string, Partial<Record<HarnessReadinessState, HarnessReadiness["remediation"]>>> = {
+  copilot: {
+    runtime_missing: { label: "Install Copilot CLI or set COPILOT_CLI_PATH" },
+    unauthenticated: { label: "Sign in to GitHub Copilot", command: "copilot login" },
+    probe_timeout: { label: "Retry the Copilot model check" },
+    probe_failed: { label: "Check Copilot CLI and SDK installation", command: "copilot --version" },
+  },
   claude: {
     runtime_missing: { label: "Install the Claude Agent SDK runtime" },
     unauthenticated: { label: "Sign in to Claude", command: "claude auth login" },
@@ -57,7 +66,7 @@ async function probeHarness(name: string, check: (context: { signal: AbortSignal
     const error = new Error("Readiness probe timed out");
     error.name = "AbortError";
     rejectTimeout?.(error);
-  }, PROBE_TIMEOUT_MS);
+  }, name === "pi" ? PI_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
   timer.unref?.();
   let probe: HarnessReadinessProbe;
   try {
@@ -67,6 +76,7 @@ async function probeHarness(name: string, check: (context: { signal: AbortSignal
       : name === "codex" ? "CODEX_PATH"
       : name === "opencode" ? "OPENCODE_PATH"
       : name === "pi" ? "PI_PATH"
+      : name === "copilot" ? "COPILOT_CLI_PATH"
       : undefined;
     const source = envName && process.env[envName]
       ? "env_override"
@@ -122,8 +132,10 @@ async function collect(): Promise<HarnessReadinessSnapshot> {
 }
 
 export async function getHarnessReadiness(opts: { fresh?: boolean } = {}): Promise<HarnessReadinessSnapshot> {
-  if (!opts.fresh && cached && Date.parse(cached.expiresAt) > Date.now()) return cached;
+  // A refresh also replaces harness model catalogs. Join it instead of using
+  // an old ready snapshot against a catalog that is being rebuilt.
   if (inFlight) return inFlight;
+  if (!opts.fresh && cached && Date.parse(cached.expiresAt) > Date.now()) return cached;
   inFlight = collect().then((snapshot) => {
     cached = snapshot;
     return snapshot;

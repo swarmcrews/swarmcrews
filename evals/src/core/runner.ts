@@ -56,6 +56,15 @@ export class LifecycleRunner {
         if (observerError) throw observerError;
         await atomicJson(join(dirname(this.options.events.path),"participant-tree.json"), state.participants);
         current = await this.requireRun(runId);
+        // Terminal observation can win the race with the final usage event.
+        // Recheck drained totals before assigning the outcome; this cannot undo
+        // token overshoot, but must not label an over-budget run completed.
+        const finalTotal = (await this.options.store.listRuns()).reduce((n, r) => n + (r.usage?.totalTokens ?? 0), 0);
+        if (!current.cancellationRequested && (finalTotal > this.options.aggregateTokenCap
+          || (current.spec && (current.usage?.totalTokens ?? 0) > current.spec.limits.maxTotalTokens))) {
+          await this.cancel(runId, "budget_exceeded");
+          current = await this.requireRun(runId);
+        }
         await this.finishExecution(current, current.stopReason === "timeout" ? "timeout" : current.stopReason === "budget_exceeded" ? "budget_exceeded" : current.cancellationRequested ? "cancelled" : state.terminalOutcome ?? "interrupted"); return;
       }
       if (observerError) { await this.cancel(runId, "controller_shutdown"); }

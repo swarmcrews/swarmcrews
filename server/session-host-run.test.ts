@@ -121,6 +121,17 @@ describe("ensureWorktree safety boundary", () => {
 });
 
 describe("buildHarnessStartOpts — capability gating", () => {
+  it.each([true, false])("documents connection configuration only when allowed (allowed=%s)", canConfigure => {
+    const mcpToolNames = ["mcp__connections__list_connections", "mcp__connections__get_connection_configuration", "mcp__connections__save_connection"];
+    const { startOpts, allowedTools } = buildHarnessStartOpts({ host: fakeHost(),
+      opts: fakeOpts({ toolAllowlist: canConfigure ? mcpToolNames : [mcpToolNames[0]!] }),
+      agentType: fakeAgentType, agentCtx: fakeCtx, toolResult: { toolGroups: {}, mcpToolNames },
+      abortController: new AbortController(), harness: fakeHarness("test", {}), prompt: "hello" });
+    expect(allowedTools.includes("mcp__connections__save_connection")).toBe(canConfigure);
+    expect(startOpts.systemPrompt?.includes("save_connection")).toBe(canConfigure);
+    expect(startOpts.systemPrompt).toContain("mcp__connections__list_connections");
+    expect(startOpts.systemPrompt).toContain("sign-in");
+  });
   it.each([false, true])("passes the effective inventory into prompt assembly (native filesystem=%s)", native => {
     const harness = fakeHarness(native ? "codex" : "claude", { builtInFilesystem: true },
       native ? [] : ["Read", "Write", "Bash"]);
@@ -279,7 +290,7 @@ describe("buildHarnessStartOpts — capability gating", () => {
     expect(allowedTools).toContain("Bash");
   });
 
-  it("merges mcpToolNames and externalMcpToolNames alongside builtInTools", () => {
+  it("uses registered Swarmcrews tools and ignores legacy external harness tool names", () => {
     const harness = fakeHarness("fake", {}, ["Glob"]);
     const toolResult: AgentToolResult = { toolGroups: {}, mcpToolNames: ["mcp__srv__foo"] };
     const opts = fakeOpts({ externalMcpToolNames: ["mcp__ext__bar"] });
@@ -295,7 +306,7 @@ describe("buildHarnessStartOpts — capability gating", () => {
     });
     expect(allowedTools).toContain("Glob");
     expect(allowedTools).toContain("mcp__srv__foo");
-    expect(allowedTools).toContain("mcp__ext__bar");
+    expect(allowedTools).not.toContain("mcp__ext__bar");
   });
 
   it("enforces a task-scoped tool allowlist while retaining graph completion tools",() => {
@@ -507,5 +518,22 @@ describe("buildHarnessStartOpts — capability gating", () => {
         }),
       ).not.toThrow();
     });
+  });
+});
+
+describe("dynamic model thinking at launch", () => {
+  it.each([
+    { supportsReasoning: false, supportedEffortLevels: [] },
+    { supportsReasoning: true, supportedEffortLevels: [] },
+  ])("omits default thinking when the catalog advertises no configurable efforts: %j", (capability) => {
+    const harness = fakeHarness("copilot", { thinking: true });
+    harness.staticInfo = () => ({ models: [{ id: "dynamic", label: "Dynamic", source: "dynamic", ...capability }],
+      commands: [], agents: [], account: { provider: "github" } });
+    const { startOpts } = buildHarnessStartOpts({
+      host: fakeHost({ model: "dynamic", thinkingConfig: { enabled: true, effort: "high", display: "summarized" } }),
+      opts: fakeOpts(), agentType: fakeAgentType, agentCtx: fakeCtx, toolResult: fakeToolResult,
+      abortController: new AbortController(), harness, prompt: "hello",
+    });
+    expect(startOpts.thinking).toBeUndefined();
   });
 });

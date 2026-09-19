@@ -36,6 +36,24 @@ function socketHarness() {
 }
 
 describe("useWorkItemHistory", () => {
+  it("retains the displayed run before replay and clears it when changing work items", () => {
+    const first = emptySessionStreamState("run-1");
+    first.messages = [{ id: "restored", role: "assistant", content: "Visible before replay", timestamp: 11 }];
+    first.historyHighWater = 10;
+    const { result, rerender } = renderHook(
+      ({ workItemId, currentStream }) => useWorkItemHistory({
+        workItemId, runs: [], runNextCursor: undefined, currentStream,
+      }),
+      { initialProps: { workItemId: "work-1", currentStream: first } },
+    );
+    rerender({ workItemId: "work-1", currentStream: emptySessionStreamState("run-2") });
+    expect(result.current.streams["run-1"]).toMatchObject({
+      messages: first.messages, historyHighWater: 10,
+    });
+    rerender({ workItemId: "work-2", currentStream: emptySessionStreamState("other-run") });
+    expect(result.current.streams).toEqual({});
+  });
+
   it("loads every run page and syncs each ledger-linked transcript", () => {
     const socket = socketHarness();
     const send = vi.fn();
@@ -139,6 +157,35 @@ describe("useWorkItemHistory", () => {
 });
 
 describe("buildUnifiedWorkItemMessages", () => {
+  it.each([false, true])("keeps one initial prompt before launch confirmation (replayed=%s)", (replayed) => {
+    const first = emptySessionStreamState("run-1");
+    const prompt = { id: "local", role: "user" as const, content: "Start work", timestamp: 1, optimistic: true };
+    first.messages = replayed ? [
+      { ...prompt, id: "persisted", optimistic: false },
+      { id: "reply", role: "assistant", content: "Starting work", timestamp: 2 },
+    ] : [];
+    const messages = buildUnifiedWorkItemMessages({
+      runs: [{ ...run("run-1", 1, 1), outcome: "none" }], streams: { "run-1": first },
+      currentRunKey: "", currentMessages: [prompt],
+    });
+    expect(messages.map((message) => message.content)).toEqual([
+      "Iteration 1 · Active now", "Start work", ...(replayed ? ["Starting work"] : []),
+    ]);
+    expect(messages[1]?.id).toBe(replayed ? "persisted" : "local");
+  });
+
+  it("preserves an identical submission belonging to a later run", () => {
+    const first = emptySessionStreamState("run-1");
+    first.messages = [{ id: "persisted", role: "user", content: "Continue", timestamp: 1 }];
+    const messages = buildUnifiedWorkItemMessages({
+      runs: [run("run-1", 1, 1)], streams: { "run-1": first }, currentRunKey: "run-2",
+      currentMessages: [{ id: "local", role: "user", content: "Continue", timestamp: 2, optimistic: true }],
+    });
+    expect(messages.map((message) => message.content)).toEqual([
+      "Iteration 1 · completed", "Continue", "Continue",
+    ]);
+  });
+
   it.each([
     { taskPlan: [{ taskId: "node-opaque-guid", title: "Audit session recovery" }], label: "Child run · Audit session recovery" },
     { taskPlan: [], label: "Child run" },

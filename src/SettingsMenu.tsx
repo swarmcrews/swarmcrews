@@ -1,3 +1,4 @@
+import { ConnectionSettings } from "./mcp-connections/ConnectionSettings.tsx";
 import { CanvasLayoutControls } from "./CanvasLayoutControls.tsx";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ProjectSettings } from "./api.ts";
@@ -45,7 +46,6 @@ import {
   Trash2,
 } from "lucide-react";
 import "./settings-menu.css";
-
 interface SettingsMenuProps {
   settings: ProjectSettings;
   onSettingsChange: (settings: ProjectSettings) => void;
@@ -54,21 +54,19 @@ interface SettingsMenuProps {
   socketSend?: ((data: unknown) => void) | undefined;
   socketSubscribe?: SocketSubscribe | undefined;
 }
-
 type SettingsCategory =
   | "general"
   | "agents"
   | "workspace"
+  | "connections"
   | "actions"
   | "governance";
-
 interface SystemModelStatus {
   enabled: boolean;
   mode: "off" | "advisory" | "enforced";
   manifestFound: boolean;
   loadErrors: Array<{ file?: string; message?: string }>;
 }
-
 const SETTINGS_CATEGORIES: ReadonlyArray<{
   id: SettingsCategory;
   label: string;
@@ -98,6 +96,7 @@ const SETTINGS_CATEGORIES: ReadonlyArray<{
     icon: LayoutGrid,
     section: "project",
   },
+  { id: "connections", label: "Connections", description: "Apps and MCP tools", icon: Plus, section: "project" },
   {
     id: "actions",
     label: "Context actions",
@@ -115,7 +114,6 @@ const SETTINGS_CATEGORIES: ReadonlyArray<{
     beta: true,
   },
 ];
-
 /**
  * Header-anchored settings menu. Renders a gear button in the project
  * header; clicking opens a popover with theme + per-project preferences.
@@ -130,7 +128,6 @@ export function SettingsMenu({
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
   // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
@@ -149,7 +146,6 @@ export function SettingsMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
       <button
@@ -194,7 +190,6 @@ export function SettingsMenu({
     </div>
   );
 }
-
 // ── Popover body ────────────────────────────────────────────
 
 function SettingsPopover({
@@ -399,10 +394,11 @@ function SettingsPopover({
               </div>
             ))}
           </nav>
-          <p className="settings-sidebar__note">Changes save automatically for this project.</p>
+          <p className="settings-sidebar__note">{activeCategory === "connections" ? "Save and test a connection to make it available to this project." : "Changes save automatically for this project."}</p>
         </aside>
 
         <main className="settings-content">
+          {activeCategory === "connections" && <ConnectionSettings />}
           {activeCategory === "general" && (
             <>
               <SettingsHeading
@@ -726,6 +722,7 @@ export interface ModelGroup {
 }
 
 const EFFORT_LABELS: Record<EffortLevel, string> = {
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
@@ -734,6 +731,7 @@ const EFFORT_LABELS: Record<EffortLevel, string> = {
 };
 
 const EFFORT_DESCRIPTIONS: Record<EffortLevel, string> = {
+  minimal: "Minimal reasoning when supported",
   low: "Fastest; minimal reasoning when possible",
   medium: "Moderate reasoning for typical delegated work",
   high: "Deep reasoning default for complex work",

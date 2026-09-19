@@ -5,13 +5,13 @@ summary: Evaluators can validate fixtures, lock an explicit experiment, and cont
 constraints: [ constraint.external_evaluation_boundary ]
 decisions: [ decision.standalone_evaluation_boundary ]
 risks: [ risk.evaluation_measurement_overclaim ]
-suggested_files: [ evals/src/cli/main.ts, evals/src/cli/operations.ts, evals/src/core/runner.ts, evals/src/core/registry.ts, evals/tasks/pagination-simple/manifest.json, evals/suites/baseline.json, evals/src/adapters/factory.ts, evals/src/adapters/managed-swarmcrews.ts, evals/src/adapters/codex.ts, evals/src/isolation/docker.ts, evals/docs/extension-contracts.md ]
+suggested_files: [ evals/src/cli/main.ts, evals/src/cli/operations.ts, evals/src/core/runner.ts, evals/src/core/registry.ts, evals/tasks/pagination-simple/manifest.json, evals/suites/baseline.json, evals/src/adapters/factory.ts, evals/src/adapters/managed-swarmcrews.ts, evals/src/adapters/codex.ts, evals/src/isolation/docker.ts, evals/src/core/contracts.ts ]
 suggested_tests: [ evals/tests/cli/operational.test.ts, evals/tests/adapters/external.test.ts, evals/tests/adapters/managed.test.ts, evals/tests/lifecycle/boundaries.test.ts, evals/tests/architecture/no-core-runtime-imports.test.ts ]
 keywords: [ eval, evals, evaluation, benchmark, task, fixture, extension, cli, validate, plan, run, resume, cancel, codex_raw, minion_single, minion_graph, adapter, isolation, durable, token, usage, token_usage ]
 entry_points:
   - surface: surface.external_evaluation
     summary: Run the external CLI or extend its task manifests, suites, and adapter registry; validate oracles before locking experiments. The credential-free demo verifies the harness and provides no benchmark measurements.
-    files: [ evals/src/cli/main.ts, evals/src/cli/operations.ts, evals/src/cli/demo.ts, evals/tasks/pagination-simple/manifest.json, evals/tasks/pagination-simple/fixture.mjs, evals/suites/baseline.json, evals/src/core/registry.ts, evals/src/adapters/factory.ts, evals/docs/extension-contracts.md, evals/README.md ]
+    files: [ evals/src/cli/main.ts, evals/src/cli/operations.ts, evals/src/cli/demo.ts, evals/tasks/pagination-simple/manifest.json, evals/tasks/pagination-simple/fixture.mjs, evals/suites/baseline.json, evals/src/core/registry.ts, evals/src/adapters/factory.ts, evals/src/core/contracts.ts, evals/README.md ]
     tests: [ evals/tests/cli/operational.test.ts, evals/tests/cli/integration-contracts.test.ts ]
     flows: [ flow.run_standalone_agent_evaluation ]
 freshness:

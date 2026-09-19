@@ -8,7 +8,8 @@ function normalizeHost(host: string): string {
 
 function normalizeAddress(address: string): string {
   const host = normalizeHost(address);
-  return host.startsWith("::ffff:") ? host.slice("::ffff:".length) : host;
+  return net.isIP(host) === 6 && host.startsWith("::ffff:")
+    ? host.slice("::ffff:".length) : host;
 }
 
 function isTailscaleIpv4(host: string): boolean {
@@ -24,7 +25,10 @@ function isTailscaleIpv4(host: string): boolean {
 
 export function isLoopbackHost(host: string): boolean {
   const normalized = normalizeAddress(host);
-  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
+  // A DNS name such as 127.attacker.example must never acquire loopback
+  // privileges. Validate the full address before applying the 127/8 range.
+  return normalized === "localhost" || normalized === "::1"
+    || (net.isIP(normalized) === 4 && normalized.startsWith("127."));
 }
 
 export function isTailscaleHost(host: string): boolean {

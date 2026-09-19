@@ -3,6 +3,7 @@
  *
  * Keeps every node-creation path on the same defaults.
  */
+import { getDefaultSkillIds } from "./skills/registry.ts";
 import type { ProjectSettings } from "./api.ts";
 import type { ThinkingConfig } from "./types.ts";
 import { DEFAULT_THINKING_CONFIG, MINION_THINKING_CONFIG } from "./types.ts";
@@ -56,7 +57,7 @@ export function createDefaultNodeData(
         worktreePath: null,
         worktreeBranch: null,
         worktreeStatus: "none",
-        skillIds: [],
+        skillIds: getDefaultSkillIds(),
         skillValues: {},
         skillPanelOpen: false,
         systemPromptPrefix: null,

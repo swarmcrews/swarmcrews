@@ -85,6 +85,8 @@ const createInputSchema = z.object({
     .string()
     .optional()
     .describe("Explicit id; derived from the name when omitted."),
+  isDefault: z.boolean().optional().describe("Automatically select this skill on new leader nodes."),
+  selfServe: z.boolean().optional().describe("Advertise to leaders for on-demand selection; defaults to true."),
   variables: z.array(variableSchema).optional(),
   attachments: z.array(attachmentSchema).optional()
     .describe("Supported text/code documents included whenever this skill is active."),

@@ -185,8 +185,10 @@ export class TaskGraphRepository {
   private attemptRows(runId:string):Row[] {
     const sessionColumns=new Set((this.db.prepare("PRAGMA table_info('sessions')").all() as Row[])
       .map(row=>String(row.name)));
-    const select=sessionColumns.has("final_report")
-      ? `SELECT a.*,s.final_report FROM task_node_attempts a
+    const sessionFields=["final_report","model","harness_name"]
+      .filter(column=>sessionColumns.has(column)).map(column=>`s.${column}`);
+    const select=sessionColumns.has("session_key") && sessionFields.length
+      ? `SELECT a.*,${sessionFields.join(",")} FROM task_node_attempts a
           LEFT JOIN sessions s ON s.session_key=a.session_run_key
           WHERE a.run_id=? ORDER BY a.created_at,a.id`
       : `SELECT * FROM task_node_attempts WHERE run_id=? ORDER BY created_at,id`;

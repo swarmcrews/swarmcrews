@@ -9,6 +9,7 @@ abstract class SwarmcrewsExternalAdapter implements ExecutionAdapter {
   constructor(protected readonly client: SwarmcrewsProtocolClient | undefined) {}
   async preflight(config: AdapterConfig): Promise<CapabilityReport> {
     resolveTreatment(config.settings);
+    graphMinimumNodes(config.settings);
     if (!this.client) return report(this.id, this.version, false, {}, ["no external Swarmcrews protocol client configured"], ["Provide a dedicated-process WS/HTTP protocol client; evals never imports server modules."]);
     const probe = await this.client.probe(); const required = this.requiredCapabilities(); const absent = required.filter((key) => !probe.capabilities[key]);
     const requestedAbsent = config.requiredCapabilities.filter((key) => !probe.capabilities[key]);
@@ -19,14 +20,14 @@ abstract class SwarmcrewsExternalAdapter implements ExecutionAdapter {
     resolveTreatment(run.configuration);
     const existing = this.#handles.get(run.idempotencyKey); if (existing) return existing;
     if (!this.client) throw new Error("Swarmcrews adapter requires an external protocol client");
-    const handle = await this.client.launch({ mode: this.id === "minion-single" ? "single" : "graph", run, restrictions: this.restrictions() });
+    const handle = await this.client.launch({ mode: this.id === "minion-single" ? "single" : "graph", run, restrictions: this.restrictions(run.configuration) });
     this.#handles.set(run.idempotencyKey, handle); return handle;
   }
   observe(handle: RunHandle, afterSequence?: number): AsyncIterable<RunEvent> { if (!this.client) throw new Error("missing protocol client"); return this.client.events(handle, afterSequence); }
   inspect(handle: RunHandle): Promise<ExecutionSnapshot> { if (!this.client) throw new Error("missing protocol client"); return this.client.snapshot(handle); }
   stop(handle: RunHandle, reason: StopReason): Promise<StopReceipt> { if (!this.client) throw new Error("missing protocol client"); return this.client.cancel(handle, reason); }
   collect(handle: RunHandle): Promise<CollectedExecution> { if (!this.client) throw new Error("missing protocol client"); return this.client.collect(handle); }
-  protected abstract requiredCapabilities(): string[]; protected abstract restrictions(): Record<string, unknown>;
+  protected abstract requiredCapabilities(): string[]; protected abstract restrictions(configuration?: Record<string, unknown>): Record<string, unknown>;
 }
 
 export class MinionSingleAdapter extends SwarmcrewsExternalAdapter {
@@ -38,5 +39,11 @@ export class MinionSingleAdapter extends SwarmcrewsExternalAdapter {
 export class MinionGraphAdapter extends SwarmcrewsExternalAdapter {
   readonly id = "minion-graph" as const;
   protected requiredCapabilities(): string[] { return ["dedicated_state", "session_reconnect", "session_tree", "usage_export", "workspace_collection", "stop_descendants", "headless_graph_start", "graph_self_decomposition", "graph_min_nodes_2", "graph_terminal_quiescence"]; }
-  protected restrictions(): Record<string, unknown> { return { role: "leader", taskGraphTools: true, topology: "participant_authored", minimumMeaningfulNodes: 2, humanReview: "preconfigured", requireDedicatedState: true }; }
+  protected restrictions(configuration?: Record<string, unknown>): Record<string, unknown> { return { role: "leader", taskGraphTools: true, topology: "participant_authored", minimumMeaningfulNodes: graphMinimumNodes(configuration), humanReview: "preconfigured", requireDedicatedState: true }; }
+}
+
+export function graphMinimumNodes(configuration?: Record<string, unknown>): 1 | 2 {
+  const value = configuration?.graphMinimumNodes ?? 2;
+  if (value !== 1 && value !== 2) throw new Error("graphMinimumNodes must be 1 or 2");
+  return value;
 }

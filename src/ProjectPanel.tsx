@@ -185,17 +185,24 @@ export function ProjectPanel({
   // Context is optional; loading or updating it must not change the user's tab.
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
 
-  // Load context on mount
+  // Re-read project instructions when opening Context or returning from an editor.
   useEffect(() => {
-    void (async () => {
+    let cancelled = false;
+    const refresh = async () => {
       try {
         const ctx = await getProjectContext(projectId);
-        setContext(ctx);
+        if (!cancelled) setContext(ctx);
       } catch (err) {
         log.error("context_load_failed", { error: err });
       }
-    })();
-  }, [projectId]);
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refresh);
+    };
+  }, [projectId, activeTab, collapsed]);
 
   useEffect(() => subscribeSocketTopic(socketSubscribe, projectTopic(projectId), (raw) => {
     const message = raw as Record<string, unknown>;
@@ -539,9 +546,9 @@ export function ProjectPanel({
                     lineHeight: 1.5,
                   }}
                 >
-                  Context is optional. Share your workspace's purpose, architecture,
-                  and conventions so agents can start with a shared understanding.
-                  You can start working now and add context anytime.
+                  Context is optional and reflects your project's AGENTS.md file.
+                  Write or generate instructions to save them in the project folder,
+                  creating AGENTS.md if it is missing.
                 </div>
                 <div
                   style={{

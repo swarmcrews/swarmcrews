@@ -61,10 +61,12 @@ class OpenCodeHarness implements AgentHarness {
     const controller = new AbortController();
     opts.abortSignal.addEventListener("abort", () => controller.abort(), { once: true });
     if (opts.abortSignal.aborted) controller.abort();
-    const groups = Object.entries(this.registeredGroups)
+    const allowed = new Set(opts.allowedTools);
+    const registeredGroups = Object.fromEntries(Object.entries(this.registeredGroups).map(([group, defs]) =>
+      [group, defs.filter(def => allowed.has(`mcp__${group}__${def.name}`))]));
+    const groups = Object.entries(registeredGroups)
       .filter(([, definitions]) => definitions.length > 0)
       .map(([name]) => name);
-    const registeredGroups = { ...this.registeredGroups };
 
     const events = (async function* (): AsyncGenerator<NormalizedEvent> {
       let bridge: McpBridgeRegistration | undefined;

@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   parsePastedMcpConfig,
   splitArgsLine,
+  joinArgs,
   sanitizeId,
   MAX_PASTE_BYTES,
 } from "./mcp-paste-parser.ts";
@@ -326,5 +327,23 @@ describe("sanitizeId", () => {
     // After stripping leading dashes this is empty → falls back; check a
     // case where cleanup leaves a non-alnum start.
     expect(sanitizeId("_foo")).toMatch(/^[a-z0-9]/);
+  });
+});
+
+
+describe("cross-harness imports", () => {
+  it("round-trips empty, multiline, Windows and quoted arguments", () => {
+    const args = ["", "with spaces", 'say "hello"', "C:\\Tools\\server", "line one\nline two", "apostrophe's"];
+    expect(splitArgsLine(joinArgs(args))).toEqual(args);
+  });
+  it("imports OpenCode local arrays without losing multiline credentials", () => {
+    const env = { TOKEN: "line one\nline two", EMPTY: "" };
+    const result = parsePastedMcpConfig(JSON.stringify({ mcp: { docs: { type: "local", command: ["node", "server.mjs", ""], environment: env } } }));
+    expect(result).toMatchObject({ ok: true, draft: { id: "docs", command: "node", credentialValues: env } });
+    if (result.ok) expect(splitArgsLine(result.draft.args!)).toEqual(["server.mjs", ""]);
+  });
+  it("preserves remote OAuth client settings", () => {
+    const oauth = { clientId: "app", clientSecret: "private", scopes: "read write" };
+    expect(parsePastedMcpConfig(JSON.stringify({ mcp: { docs: { type: "remote", url: "https://example.com/mcp", oauth } } }))).toMatchObject({ ok: true, draft: { oauth: { clientId: "app", clientSecret: "private", scope: "read write" } } });
   });
 });

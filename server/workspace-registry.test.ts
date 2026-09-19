@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   attachWorkspace,
+  createWorkspaceSourceLookup,
   findWorkspaceBySource,
   rebindWorkspace,
   registerWorkspace,
@@ -30,6 +31,35 @@ afterEach(() => {
 });
 
 describe("workspace registry", () => {
+  it("resolves snapshot aliases with one registry read and refreshes on the next snapshot", () => {
+    const workspace = registerWorkspace(sourceRoot)!;
+    const alias = path.join(minionsHome, "source-alias");
+    fs.symlinkSync(sourceRoot, alias, "junction");
+    const reads = vi.spyOn(fs, "readFileSync");
+    try {
+      const lookup = createWorkspaceSourceLookup();
+      for (let i = 0; i < 100; i++) {
+        expect(lookup(sourceRoot)).toEqual(workspace);
+        expect(lookup(alias)).toEqual(workspace);
+      }
+      expect(reads.mock.calls.filter(([file]) => String(file).endsWith("registry.json"))).toHaveLength(1);
+      updateWorkspaceNickname(workspace.id, "Renamed");
+      expect(createWorkspaceSourceLookup()(sourceRoot)?.nickname).toBe("Renamed");
+    } finally {
+      reads.mockRestore();
+    }
+  });
+
+  it("revalidates replaced state roots between snapshots and rejects unregistered sources", () => {
+    const workspace = registerWorkspace(sourceRoot)!;
+    expect(createWorkspaceSourceLookup()(sourceRoot)?.id).toBe(workspace.id);
+    fs.rmSync(workspace.stateRoot, { recursive: true });
+    fs.symlinkSync(sourceRoot, workspace.stateRoot, "junction");
+    const lookup = createWorkspaceSourceLookup();
+    expect(lookup(sourceRoot)).toBeNull();
+    expect(lookup(minionsHome)).toBeNull();
+  });
+
   it("persists a stable UUID and resolves source and central state roots", () => {
     const first = registerWorkspace(sourceRoot)!;
     const second = registerWorkspace(sourceRoot)!;

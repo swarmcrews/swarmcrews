@@ -34,13 +34,15 @@ function compatibleOrFallback(
 
 function isModelCompatibleWithHarness(model: string, harnessName: string | undefined): boolean {
   const effective = harnessName ?? "claude";
+  if (advertisedModels(effective).has(normalizeModel(model, effective))) return true;
   return (["claude", "codex"] as const).every((name) =>
     name === effective || !advertisedModels(name).has(normalizeModel(model, name)),
   );
 }
 
 function normalizeModel(model: string, harnessName: string): string {
-  return (harnessName === "codex" ? resolveCodexModel(model) : resolveModelAlias(model)) ?? model;
+  return (harnessName === "codex" ? resolveCodexModel(model)
+    : harnessName === "claude" ? resolveModelAlias(model) : model.trim()) ?? model;
 }
 
 function advertisedModels(harnessName: string): Set<string> {

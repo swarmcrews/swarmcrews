@@ -2,15 +2,9 @@
  * MCP server catalog types — shared between server and client.
  *
  * Entries live in the registered workspace state root below SWARMCREWS_HOME.
- * The transport field is the discriminant; the remaining fields match
- * the SDK's McpStdioServerConfig / McpSSEServerConfig / McpHttpServerConfig
- * exactly so the store can pass them straight through to `query()`.
- *
- * `toolNames` is optional. When provided the names are formatted as
- * `mcp__<id>__<toolName>` and added to the spawned leader's allowedTools
- * list so the agent may call them without hitting a permission prompt.
- * When omitted, the server still attaches but tools require an
- * auto-permission grant at call time.
+ * Swarmcrews owns transport and credentials. Harnesses receive only the
+ * fixed connections tool group, never these external server configurations.
+ * toolNames is retained as legacy metadata; allowedTools controls access.
  */
 
 import { z } from "zod/v4";
@@ -27,10 +21,15 @@ const baseSchema = z.object({
   name: z.string().min(1).max(160),
   /** Optional description shown in the browser panel. */
   description: z.string().max(2000).optional(),
-  /**
-   * Optional list of tool names this server exposes. Each name is
-   * formatted as `mcp__<id>__<toolName>` and added to allowedTools.
-   */
+  /** Disabled connections remain saved but cannot be used by any agent. */
+  enabled: z.boolean().optional(),
+  /** Preselect for new runs. Independent of discovery. */
+  isDefault: z.boolean().optional(),
+  /** Advertise for on-demand use unless explicitly disabled. */
+  selfServe: z.boolean().optional(),
+  /** Explicit tool restriction. Omitted means all discovered tools. */
+  allowedTools: z.array(z.string().min(1).max(160)).max(256).optional(),
+  /** Legacy discovery metadata. Does not grant tool access. */
   toolNames: z.array(z.string().min(1).max(160)).max(256).optional(),
 });
 
@@ -69,12 +68,14 @@ export const mcpHttpEntrySchema = baseSchema.extend({
   transport: z.literal("http"),
   url: secureMcpUrlSchema,
   headers: headersSchema.optional(),
+  oauth: z.object({ clientId: z.string().max(512).optional(), clientSecret: z.string().max(4096).optional(), scope: z.string().max(2048).optional() }).optional(),
 });
 
 export const mcpSseEntrySchema = baseSchema.extend({
   transport: z.literal("sse"),
   url: secureMcpUrlSchema,
   headers: headersSchema.optional(),
+  oauth: z.object({ clientId: z.string().max(512).optional(), clientSecret: z.string().max(4096).optional(), scope: z.string().max(2048).optional() }).optional(),
 });
 
 export const mcpStdioEntrySchema = baseSchema.extend({

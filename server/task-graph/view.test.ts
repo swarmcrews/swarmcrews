@@ -52,6 +52,19 @@ function projectedNode(view:ReturnType<typeof projectTaskGraphSnapshot>,id:strin
 }
 
 describe("projectTaskGraphSnapshot logical projection",()=>{
+  it("preserves requested models separately from each attempt's session model",()=>{
+    const task=node("task",{model:"gpt-5.6-sol"});
+    const facts=snapshot([task,node("queued",{model:"sonnet"})],[],{attempts:[
+      {...attempt("first","task",1,"failed"),model:"gpt-5.6-sol",harness_name:"codex"},
+      {...attempt("retry","task",2,"succeeded"),model:"gpt-5.6-terra",harness_name:"codex"},
+    ]});
+    const view=projectTaskGraphSnapshot(facts,[],30);
+    expect(projectedNode(view,"task")).toMatchObject({requestedModel:"gpt-5.6-sol",
+      currentAttempt:{model:"gpt-5.6-terra",harness:"codex"},
+      attemptHistory:[{model:"gpt-5.6-sol"},{model:"gpt-5.6-terra"}]});
+    expect(projectedNode(view,"queued")).toMatchObject({requestedModel:"sonnet",currentAttempt:null});
+  });
+
   it("marks untouched nodes as not run after graph failure",()=>{
     const untouched=node("untouched");
     const facts=snapshot([untouched],[],{run:{...snapshot([untouched],[]).run,status:"failed"}});

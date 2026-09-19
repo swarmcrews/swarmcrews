@@ -1,3 +1,4 @@
+import { graphExperimentGuidance, hasTaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 import type { GraphRevisionInput } from "../../shared/task-graph-contracts.ts";
 import { buildMinionSystemPrompt, renderMinionReferences } from "../../shared/prompts/minion-context.ts";
 import type { TaskGraphArtifactReference } from "./artifact-access.ts";
@@ -43,6 +44,8 @@ export function renderTaskGraphNodePrompt(
     `Objective: ${node.objective}`,
     `Attempt: ${attemptNumber} (${attemptId})`,
     `Source snapshot: ${sourceSnapshotId}`,
+    graphExperimentGuidance(revision.taskGraphExperiments, node.completionMode === "verification" ? "verifier" : "worker"),
+    renderExperimentalAssignment(revision, node),
     Object.keys(node.inputBindings).length
       ? `Input contract: ${JSON.stringify(node.inputBindings)}` : "",
     inputArtifacts.length
@@ -126,4 +129,17 @@ export function renderScopedContext(sources:ScopedContext[]):string {
 export function verificationCompletionGuidance():string {
   return `This is a verification-mode step. Check each acceptance criterion independently and cite checks, artifact/source identities, and remaining gaps in summary. Missing evidence or unavailable required execution tools means inconclusive; observed violations mean failed. Only result="passed" satisfies this node; never infer passed from a producer claim or merely completing a check.
 After staging any declared outputs, call report_done with summary containing the serialized verdict JSON, then return the identical JSON as the final assistant report. Here report_done means the verification procedure finished, not that the subject passed. Your final report must be JSON only and exactly match {"result":"passed"|"failed"|"inconclusive","confidence":0..1,"summary":"concise evidence and gaps"}. Use report_blocked only when a Leader decision can unblock further checks; end that turn without a terminal report. Use report_fail for inability to execute the assignment, not for a failed or inconclusive subject verdict.`;
+}
+
+export function renderExperimentalAssignment(revision: GraphRevisionInput, node: GraphRevisionInput["nodes"][number]): string {
+  if (!hasTaskGraphExperiments(revision.taskGraphExperiments)) return "";
+  const analysis = revision.planningAnalysis;
+  const partition = revision.taskGraphExperiments?.semanticPartitioning
+    ? analysis?.semanticPartitions?.find(p => p.stepKey === node.planningStepKey) : undefined;
+  const questions = revision.taskGraphExperiments?.questionGraph
+    ? analysis?.discovery?.questions.filter(q => q.probeStepKey === node.planningStepKey
+      || q.consumerStepKeys.includes(node.planningStepKey ?? "")) : undefined;
+  return [partition ? `Assigned semantic obligations and interfaces:\n${JSON.stringify(partition)}` : "",
+    questions?.length ? `Decision questions (read listed probe artifacts before dependent work):\n${JSON.stringify({ questions, budget: analysis?.discovery?.budget, stopReason: analysis?.discovery?.stopReason })}` : ""
+  ].filter(Boolean).join("\n\n");
 }

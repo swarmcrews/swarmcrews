@@ -4,6 +4,7 @@ import { copyValidFixtureWithSurfaces } from "../../tests/support/system-model-f
 import { createQuerySystemModelToolDef } from "./query-system-model.ts";
 import { computePacketApplicability } from "../system-model/applicability.ts";
 import { findWorkspaceBySource } from "../workspace-registry.ts";
+import { matchSystemModel } from "../system-model/match.ts";
 
 const capabilityId = "capability.workspace_management";
 function fixture() {
@@ -18,6 +19,33 @@ function fixture() {
 }
 
 describe("progressive query_system_model", () => {
+  it("serves the default hybrid with full-corpus weights through typed pages", async () => {
+    const { query, model } = fixture();
+    const request = "workspace approve session";
+    const expected = matchSystemModel({ model, request, objectTypes: ["flow", "capability"], topK: 100 });
+    const matches: Array<{ id: string; score: number }> = [];
+    let cursor: string | undefined;
+    do {
+      const response = await query({ query: request, objectTypes: ["flow", "capability"], topK: 1, cursor });
+      expect(response.ranking).toBe("hybrid");
+      expect(response.matchConfidence).toBe(expected.matchConfidence);
+      expect(response.linked).toEqual([]);
+      matches.push(...response.matches);
+      cursor = response.page.nextCursor;
+    } while (cursor);
+    expect(matches.map(({ id, score }) => ({ id, score }))).toEqual(expected.candidates.map(({ id, score }) => ({ id, score })));
+  });
+
+  it("rejects a cursor bound to the pre-hybrid search snapshot", async () => {
+    const { query } = fixture();
+    const input = { query: "workspace approve session", topK: 1 };
+    const first = await query(input);
+    const cursor = JSON.parse(Buffer.from(first.page.nextCursor, "base64url").toString());
+    cursor.m = first.modelVersion;
+    const response = await query({ ...input, cursor: Buffer.from(JSON.stringify(cursor)).toString("base64url") });
+    expect(response.status).toBe("stale_cursor");
+  });
+
   it("defaults to compact search without neighbors, even global constraints", async () => {
     const { query, model } = fixture();
     const global = { ...model.constraints[0]!, id: "constraint.global", scope: "global" as const, guards: [] };

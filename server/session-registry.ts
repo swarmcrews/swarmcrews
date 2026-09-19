@@ -16,7 +16,8 @@ import {
 } from "./session-persist.ts";
 import type { RuntimeSessionInfo, TaskManagerState } from "./task-tools.ts";
 import type { WorktreeLifecycle } from "./worktree-types.ts";
-import { buildSessionListItem, type SessionListItem } from "./session-list-item.ts";
+import { buildSessionListItems, type SessionListItem } from "./session-list-item.ts";
+import { withoutArchivedWork } from "./session-list-visibility.ts";
 import { serverLogger } from "./logging.ts";
 import { restoreSessionContinuity } from "./session-continuity.ts";
 import { loadLatestContextCheckpoint } from "./context-checkpoint-store.ts";
@@ -266,10 +267,10 @@ export class SessionRegistry {
   }
 
   /** Flatten the current registry into the `session_list` broadcast shape. */
-  snapshot(): SessionListItem[] {
-    return Array.from(this.map.entries()).map(([key, s]) =>
-      buildSessionListItem(key, s),
-    );
+  snapshot(options: { includeArchived?: boolean } = {}): SessionListItem[] {
+    const entries = Array.from(this.map.entries());
+    return buildSessionListItems(options.includeArchived ? entries
+      : withoutArchivedWork(entries, persistenceDb()));
   }
 
   /**

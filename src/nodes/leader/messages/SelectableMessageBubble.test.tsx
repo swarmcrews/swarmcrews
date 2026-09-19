@@ -126,7 +126,7 @@ it.each([0.5, 1, 1.5])("keeps the toolbar inside the selected range while scroll
     observe() {}
     disconnect = disconnect;
   });
-  const { container } = render(<div className="leader-message-feed"><SelectionProbe /></div>);
+  const { container } = render(<div className="leader-message-feed" data-selection-viewport="canvas"><SelectionProbe /></div>);
   const feed = container.firstElementChild as HTMLElement;
   const toolbar = container.querySelector<HTMLElement>(".message-selection-toolbar")!;
   const controls = container.querySelector<HTMLElement>(".message-selection-toolbar__controls")!;

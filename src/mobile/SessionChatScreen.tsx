@@ -1,6 +1,7 @@
 import { ChatLinkScope } from "../components/ChatLink.tsx";
 import { AgentMessageText } from "../components/AgentMessageText.tsx";
 import { CrewIcon } from "../components/CrewIcon.tsx";
+import { LeaderLoadingScreen } from "../LeaderLoadingScreen.tsx";
 import { useChatFollow } from "./use-chat-follow.ts";
 import { ChatFollow } from "./ChatFollow.tsx";
 import { FormSubmissionProvider } from "../nodes/render/FormSubmissionProvider.tsx";
@@ -8,6 +9,10 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 
 import type { DisplayMessage } from "../sdk-messages.ts";
+import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
+import type { TranscriptBoundary, TranscriptEntry } from "../components/SessionTranscript.tsx";
+import { buildUnifiedWorkItemMessages } from "../WorkItemTranscript.tsx";
+import { useWorkItemHistory } from "../use-work-item-history.ts";
 import { copyText } from "../components/CopyButton.tsx";
 import { formatToolInputDetail, toolDisplayInfo } from "../nodes/leader-message-helpers.ts";
 import { DashboardSurface } from "../nodes/render/DashboardSurface.tsx";
@@ -79,6 +84,9 @@ interface SessionChatScreenProps {
   sessionKey: string;
   session?: MobileSessionInfo | undefined;
   sessionOptions?: MobileSessionInfo[] | undefined;
+  runs?: WorkItemRunSnapshot[];
+  runNextCursor?: string | null | undefined;
+  onLoadRuns?: (workItemId: string, cursor?: string) => void;
   subscribe: SocketSubscribe;
   send: (data: unknown) => void;
   onBack: () => void;
@@ -203,6 +211,7 @@ export function MessageBubble({ message, detail = false }: { message: DisplayMes
 }
 
 type MobileMessageGroup =
+  | TranscriptBoundary
   | { kind: "message"; message: DisplayMessage }
   | { kind: "activity"; messages: DisplayMessage[] };
 
@@ -210,7 +219,7 @@ function isAuxiliaryMessage(message: DisplayMessage): boolean {
   return message.role === "tool" || message.role === "system" || message.role === "thinking";
 }
 
-export function groupMobileMessages(messages: DisplayMessage[]): MobileMessageGroup[] {
+export function groupMobileMessages(messages: TranscriptEntry[]): MobileMessageGroup[] {
   const groups: MobileMessageGroup[] = [];
   let activity: DisplayMessage[] = [];
   const flush = () => {
@@ -220,7 +229,10 @@ export function groupMobileMessages(messages: DisplayMessage[]): MobileMessageGr
   };
 
   for (const message of messages) {
-    if (isAuxiliaryMessage(message)) activity.push(message);
+    if ("kind" in message) {
+      flush();
+      groups.push(message);
+    } else if (isAuxiliaryMessage(message)) activity.push(message);
     else {
       flush();
       groups.push({ kind: "message", message });
@@ -674,6 +686,7 @@ function SessionChatContent({
   sessionKey,
   session,
   sessionOptions = [],
+  runs = [], runNextCursor, onLoadRuns,
   subscribe,
   send,
   onBack,
@@ -703,8 +716,33 @@ function SessionChatContent({
   useLayoutEffect(() => {
     if (memory) Object.assign(memory, { prompt, attachments, textAttachments, reading, workTab });
   }, [memory, prompt, attachments, textAttachments, reading, workTab]);
-  const groupedMessages = useMemo(() => groupMobileMessages(state.messages), [state.messages]);
-  const follow = useChatFollow(sessionKey, `${state.messages.length}:${state.streamingText}`, activeTab === "chat", reading);
+  const historyWorkItemId = session?.role === "leader" && session.runKind !== "child"
+    ? session.workItemId : undefined;
+  const primaryRuns = useMemo(() => historyWorkItemId
+    ? runs.filter((run) => run.workItemId === historyWorkItemId && run.runKind === "primary")
+    : [], [historyWorkItemId, runs]);
+  const loadRuns = useCallback((cursor?: string) => {
+    if (historyWorkItemId) onLoadRuns?.(historyWorkItemId, cursor);
+  }, [historyWorkItemId, onLoadRuns]);
+  const history = useWorkItemHistory({
+    workItemId: historyWorkItemId, runs: primaryRuns, runNextCursor,
+    ...(onLoadRuns ? { onLoadRuns: loadRuns } : {}),
+    socketSend: send, socketSubscribe: subscribe,
+  });
+  const transcript = useMemo(() => buildUnifiedWorkItemMessages({
+    runs: history.orderedRuns, streams: history.streams,
+    currentRunKey: sessionKey, currentMessages: state.messages,
+  }), [history.orderedRuns, history.streams, sessionKey, state.messages]);
+  const groupedMessages = useMemo(() => groupMobileMessages(transcript), [transcript]);
+  const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
+  const boundaryRefs = useRef(new Map<string, HTMLElement>());
+  const follow = useChatFollow(sessionKey, `${transcript.length}:${state.streamingText}`, activeTab === "chat", reading);
+  function jumpToIteration(boundary: TranscriptBoundary) {
+    const target = boundaryRefs.current.get(boundary.id);
+    target?.scrollIntoView({ block: "start" });
+    target?.focus({ preventScroll: true });
+    follow.onScroll();
+  }
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const renderState = session?.renderState ?? emptyRenderState();
   const graph = useTaskGraphView({
@@ -727,9 +765,10 @@ function SessionChatContent({
 
 
   const title = useMemo(() => {
-    if (!session) return sessionKey;
+    if (loading) return session?.taskName?.trim() || "Session";
+    if (!session) return "Session";
     return sessionDisplayTitle(session);
-  }, [session, sessionKey]);
+  }, [session, loading]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -848,9 +887,12 @@ function SessionChatContent({
         ))}
       </nav>
       {!connected ? <p className="mob-session-offline" role="status">Updates may be out of date. Your draft is kept while reconnecting.</p> : null}
-      {unavailable || loading ? <div className="mob-empty" role="status">
-        <h2>{unavailable ? "Session unavailable" : "Loading session…"}</h2>
-        <p>{unavailable ? "This session is no longer available. Return to Activity to choose another task." : "Retrieving the current session."}</p>
+      {unavailable ? <div className="mob-empty" role="status">
+        <h2>Session unavailable</h2>
+        <p>This session is no longer available. Return to Activity to choose another task.</p>
+        <button type="button" className="mob-header-action" onClick={onBack}>Return to Activity</button>
+      </div> : loading ? <div className="mob-empty">
+        <LeaderLoadingScreen message="Loading session" size={80} />
         <button type="button" className="mob-header-action" onClick={onBack}>Return to Activity</button>
       </div> : null}
       {approval && workspaceView === "chat" && !unavailable && !loading ? <div className="mob-session-decision">
@@ -909,14 +951,34 @@ function SessionChatContent({
         <>
           <div className="mob-chat-feed" ref={follow.feedRef} onScroll={follow.onScroll} tabIndex={-1} aria-label="Conversation">
             {isLeader ? null : <SessionCallout session={session} />}
-            {state.messages.length === 0 && !state.streamingText ? (
+            {history.loading ? <div role="status">Loading iteration history…</div> : null}
+            {transcript.length === 0 && !state.streamingText && !history.loading ? (
               <EmptyChatState session={session} />
             ) : null}
-            {groupedMessages.map((group) => group.kind === "activity" ? (
-              <ActivityMessageGroup key={`activity-${group.messages[0]!.id}`} messages={group.messages} />
-            ) : (
-              <MessageBubble key={group.message.id} message={group.message} />
-            ))}
+            {groupedMessages.map((group) => {
+              if (group.kind === "run-boundary") {
+                const index = boundaries.indexOf(group);
+                const previous = boundaries[index - 1];
+                const next = boundaries[index + 1];
+                return <nav key={group.id} className="mob-iteration-boundary" tabIndex={-1}
+                  aria-label={`${group.label} navigation`}
+                  ref={(element) => {
+                    if (element) boundaryRefs.current.set(group.id, element);
+                    else boundaryRefs.current.delete(group.id);
+                  }}>
+                  <span>{group.content}</span>
+                  {previous ? <button type="button" aria-label={`Previous: ${previous.label}`}
+                    onClick={() => jumpToIteration(previous)}>↑</button> : null}
+                  {next ? <button type="button" aria-label={`Next: ${next.label}`}
+                    onClick={() => jumpToIteration(next)}>↓</button> : null}
+                </nav>;
+              }
+              return group.kind === "activity" ? (
+                <ActivityMessageGroup key={`activity-${group.messages[0]!.id}`} messages={group.messages} />
+              ) : (
+                <MessageBubble key={group.message.id} message={group.message} />
+              );
+            })}
             {state.streamingText ? (
               <article
                 className="mob-message mob-message--assistant mob-message--streaming"

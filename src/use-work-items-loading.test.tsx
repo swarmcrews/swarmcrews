@@ -35,13 +35,13 @@ describe("progressive activity loading", () => {
   it("publishes the first small page before requesting the next batch and settles only after the last page", () => {
     const h = setup();
     expect(h.result.current.loading).toBe(true);
-    expect(h.send).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
+    expect(h.send).toHaveBeenCalledWith(expect.objectContaining({ limit: 20, includeArchived: false }));
     h.page([item("recent")], "older");
     expect(h.result.current.orderedItems.map((i) => i.id)).toEqual(["recent"]);
     expect(h.result.current.loading).toBe(true);
     expect(h.send).toHaveBeenCalledTimes(1);
     act(() => vi.advanceTimersByTime(0));
-    expect(h.send).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 100, cursor: "older" }));
+    expect(h.send).toHaveBeenLastCalledWith(expect.objectContaining({ limit: 100, cursor: "older", includeArchived: false }));
     h.page([item("older")]);
     expect(h.result.current.orderedItems).toHaveLength(2);
     expect(h.result.current.loading).toBe(false);

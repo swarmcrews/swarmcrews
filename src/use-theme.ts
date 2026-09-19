@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { ThemeDefinition } from "./themes.ts";
-import { themes, themeMap, DEFAULT_THEME_ID } from "./themes.ts";
+import { themes, themeMap, DEFAULT_THEME_ID, THEME_STORAGE_KEY } from "./themes.ts";
 
 // ── Context ───────────────────────────────────────────────
 
@@ -26,12 +26,10 @@ export function useTheme(): ThemeContextValue {
 
 // ── localStorage persistence ──────────────────────────────
 
-const STORAGE_KEY = "canvas-theme";
-
 export function loadPersistedThemeId(): string {
   try {
-    const storedThemeId = localStorage.getItem(STORAGE_KEY);
-    return storedThemeId && themeMap[storedThemeId] ? storedThemeId : DEFAULT_THEME_ID;
+    const storedThemeId = localStorage.getItem(THEME_STORAGE_KEY);
+    return storedThemeId && Object.hasOwn(themeMap, storedThemeId) ? storedThemeId : DEFAULT_THEME_ID;
   } catch {
     return DEFAULT_THEME_ID;
   }
@@ -39,7 +37,7 @@ export function loadPersistedThemeId(): string {
 
 export function persistThemeId(id: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, id);
+    localStorage.setItem(THEME_STORAGE_KEY, id);
   } catch {
     // localStorage might be unavailable
   }

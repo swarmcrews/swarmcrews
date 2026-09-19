@@ -445,7 +445,7 @@ describe("createSession — rejection routing", () => {
     });
   });
 
-  it("loads persisted project MCP servers into a Claude launch", async () => {
+  it("keeps project MCP connections out of the harness launch options", async () => {
     const project = fs.mkdtempSync(path.join(process.cwd(), ".minions-mcp-launch-"));
     registerProjectPath(project);
     saveMcpServer(project, {
@@ -483,16 +483,9 @@ describe("createSession — rejection routing", () => {
         ws as unknown as Parameters<typeof createSession>[2],
       );
 
-      expect(starts[0]?.externalMcpServers).toEqual({
-        "local-tools": {
-          type: "stdio",
-          command: "node",
-          args: ["server.mjs"],
-        },
-      });
-      expect(starts[0]?.externalMcpToolNames).toEqual([
-        "mcp__local-tools__inspect",
-      ]);
+      expect(starts).toHaveLength(1);
+      expect(starts[0]?.externalMcpServers).toBeUndefined();
+      expect(starts[0]?.externalMcpToolNames).toBeUndefined();
     } finally {
       unregisterProjectPath(project);
       fs.rmSync(project, { recursive: true, force: true });

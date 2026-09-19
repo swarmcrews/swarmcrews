@@ -44,6 +44,7 @@ function titleCase(name: string): string {
 export function launchModelProviderLabel(harness: HarnessInfo): string {
   const provider = String(harness.account?.provider ?? harness.name).toLowerCase();
   if (provider === "openai") return "OpenAI";
+  if (harness.name === "copilot") return "GitHub Copilot";
   if (provider === "anthropic" || provider === "claude") return "Anthropic";
   if (provider === "echo") return "Echo";
   return titleCase(harness.name);

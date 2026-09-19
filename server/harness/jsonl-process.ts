@@ -25,18 +25,30 @@ export async function* streamJsonlProcess(input: {
   signal: AbortSignal;
   stdin?: string;
 }): AsyncGenerator<JsonlRecord, JsonlCompletion> {
+  if (input.signal.aborted) return { code: -1, stderr: "Process aborted before launch" };
   let spawnErrorMessage = "";
   const child = spawn(input.executable, [...input.args], {
     cwd: input.cwd,
     env: input.env,
     shell: false,
+    detached: process.platform !== "win32",
     windowsHide: true,
     stdio: [input.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
   });
-  if (input.stdin !== undefined) child.stdin?.end(input.stdin);
-  const onAbort = (): void => { child.kill(); };
-  input.signal.addEventListener("abort", onAbort, { once: true });
-
+  let closed = false;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const kill = (signal: NodeJS.Signals) => {
+    // Own the process group so shell grandchildren cannot outlive cancellation.
+    if (process.platform !== "win32" && child.pid) {
+      try { process.kill(-child.pid, signal); return; } catch { /* Already exited or no group. */ }
+    }
+    child.kill(signal);
+  };
+  const onAbort = (): void => {
+    if (closed || killTimer) return;
+    killTimer = setTimeout(() => { if (!closed) kill("SIGKILL"); }, 1_000);
+    kill("SIGTERM");
+  };
   let stderr = "";
   const childStderr = child.stderr;
   const childStdout = child.stdout;
@@ -47,8 +59,19 @@ export async function* streamJsonlProcess(input: {
   });
   child.once("error", (error) => { spawnErrorMessage = error.message; });
   const completion = new Promise<number>((resolve) => {
-    child.once("close", (code) => resolve(code ?? -1));
+    child.once("close", (code) => {
+      closed = true;
+      clearTimeout(killTimer);
+      resolve(code ?? -1);
+    });
   });
+  child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+    // A CLI may exit before reading its prompt; preserve its actual exit error.
+    if (error.code !== "EPIPE" && error.code !== "ERR_STREAM_DESTROYED") spawnErrorMessage = error.message;
+  });
+  input.signal.addEventListener("abort", onAbort, { once: true });
+  if (input.signal.aborted) onAbort();
+  else if (input.stdin !== undefined) child.stdin?.end(input.stdin);
 
   let pending = "";
   childStdout.setEncoding("utf8");
@@ -70,6 +93,8 @@ export async function* streamJsonlProcess(input: {
     return { code, stderr: stderr.trim() };
   } finally {
     input.signal.removeEventListener("abort", onAbort);
+    if (!closed) onAbort();
+    await completion;
   }
 }
 

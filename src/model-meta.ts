@@ -25,6 +25,7 @@ export interface ModelCapability {
 }
 
 const STANDARD_EFFORTS: EffortLevel[] = ["low", "medium", "high"];
+const ALL_EFFORTS: EffortLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const CODEX_MAX_EFFORTS: EffortLevel[] = [
   "low",
   "medium",
@@ -128,6 +129,16 @@ export function getModelCapability(
   if (harness && !harness.capabilities.thinking) {
     return NO_THINKING;
   }
+  const reported = harness?.models.find((entry) => entry.id === model);
+  if (reported?.supportsReasoning === false) return NO_THINKING;
+  if (reported?.supportedEffortLevels !== undefined) {
+    const supportedEffortLevels = reported.supportedEffortLevels.filter(
+      (level): level is EffortLevel => ALL_EFFORTS.includes(level as EffortLevel),
+    );
+    return { supportsAdaptiveThinking: supportedEffortLevels.length > 0, supportedEffortLevels };
+  }
+  // A dynamic catalog must advertise effort values before we offer controls.
+  if (reported?.source === "dynamic") return NO_THINKING;
   const claudeCap = CLAUDE_MODEL_CAPABILITIES[model];
   if (claudeCap) return claudeCap;
   if (harness?.name === "codex" && CODEX_MAX_EFFORT_MODELS.has(model)) {

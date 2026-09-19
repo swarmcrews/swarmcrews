@@ -86,6 +86,8 @@ export interface SkillDraftInput {
   icon?: string;
   accentColor?: string;
   template?: string;
+  isDefault?: boolean;
+  selfServe?: boolean;
   variables?: SkillVariable[];
   attachments?: SkillAttachment[];
   subskills?: Array<Omit<SubSkill, "id"> & { id?: string }>;
@@ -178,6 +180,10 @@ export function buildSkillDraft(
       accentColor: input.accentColor ?? base?.accentColor ?? DEFAULT_ACCENT,
       template,
       variables: [...declared, ...implicit],
+      ...(input.isDefault !== undefined || base?.isDefault !== undefined
+        ? { isDefault: input.isDefault ?? base?.isDefault } : {}),
+      ...(input.selfServe !== undefined || base?.selfServe !== undefined
+        ? { selfServe: input.selfServe ?? base?.selfServe } : {}),
       ...(attachments && attachments.length > 0 ? { attachments } : {}),
       ...(subskills ? { subskills } : {}),
     },

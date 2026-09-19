@@ -890,3 +890,32 @@ async function withEnv(
     }
   }
 }
+
+
+describe("Swarmcrews connections in Codex", () => {
+  it("calls the shared broker through the internal bridge with no external endpoint configuration", async () => {
+    const { createConnectionTools } = await import("../../mcp-connections/tools.ts");
+    const { closeConnectionScope } = await import("../../mcp-connections/runtime.ts");
+    const { saveMcpServer } = await import("../../mcp-server-store.ts");
+    const { createMcpFixtureFetch } = await import("../../../tests/fixtures/mcp/http-fixture.ts");
+    const project = await fs.mkdtemp(path.join(os.tmpdir(), "codex-connections-"));
+    vi.stubGlobal("fetch", createMcpFixtureFetch());
+    try {
+      saveMcpServer(project, { id: "fixture", name: "Fixture", transport: "http", url: "https://fixture.example/mcp" });
+      codexHarness.registerTools({ connections: createConnectionTools(project, "codex-connection") });
+      sdkMock.setNextEvents((async function* () {
+        const group = bridgeMock.calls.register.at(-1)!.groups["connections"] as NormalizedToolDef[];
+        expect(group.map(t => t.name)).toEqual(["call_tool"]);
+        const result = await dispatchMethod({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "call_tool", arguments: { connectionId: "fixture", name: "echo", arguments: { message: "Codex broker" } } } }, group);
+        expect(JSON.stringify(result)).toContain("Codex broker");
+        yield { type: "thread.started", thread_id: "connection-thread" };
+        yield { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } };
+      })());
+      const events = await collect(codexHarness.start(baseOpts({ cwd: project, allowedTools: ["mcp__connections__call_tool"] })).events);
+      expect(events.find(e => e.kind === "done" && e.reason === "error")).toBeUndefined();
+      expect(bridgeMock.calls.register).toHaveLength(1);
+      expect(JSON.stringify(sdkMock.calls.constructor)).not.toContain("fixture.example");
+      expect(bridgeMock.calls.dispose).toEqual(["session-1"]);
+    } finally { await closeConnectionScope("codex-connection"); vi.unstubAllGlobals(); await fs.rm(project, { recursive: true, force: true }); }
+  });
+});

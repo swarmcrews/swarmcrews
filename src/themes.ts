@@ -999,6 +999,7 @@ export const themeMap = Object.fromEntries(themes.map((t) => [t.id, t])) as Reco
 >;
 
 export const DEFAULT_THEME_ID = "midnight";
+export const THEME_STORAGE_KEY = "canvas-theme";
 
 /**
  * Apply a theme's CSS variables and fonts to the document root.

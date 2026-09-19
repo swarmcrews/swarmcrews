@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { createPiTranslator } from "./translate.ts";
 
 describe("Pi event translation", () => {
+  it("uses authoritative message text after incomplete deltas", () => {
+    const translator = createPiTranslator("local/model", "fallback");
+    translator.translate({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "Partial" } });
+    translator.translate({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "Complete" }] } });
+    translator.translate({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: " answer" }] } });
+    expect(translator.result()).toBe("Complete answer");
+  });
+
+  it("reports retries without treating a truncated answer as completed", () => {
+    const translator = createPiTranslator("local/model", "fallback");
+    translator.ensureInit();
+    expect(translator.translate({ type: "auto_retry_start", attempt: 2, errorMessage: "Overloaded" }))
+      .toEqual([{ kind: "api_retry", attempt: 2, reason: "Overloaded" }]);
+    translator.translate({ type: "message_end", message: { role: "assistant", stopReason: "length", content: [] } });
+    expect(translator.translate({ type: "agent_end" }))
+      .toEqual([expect.objectContaining({ kind: "done", reason: "error", error: expect.stringContaining("output limit") })]);
+  });
+
   it("translates session, deltas, tools, usage, and completion", () => {
     vi.useFakeTimers();
     try {
@@ -23,10 +41,10 @@ describe("Pi event translation", () => {
       expect(translator.translate({ type: "message_end", message: {
         role: "assistant", content: [{ type: "text", text: "Hello" }],
         usage: { input: 5, output: 2, cacheRead: 1, cacheWrite: 0, cost: { total: 0.001 } },
-      } })).toEqual([{ kind: "usage", source: "assistant", input: 5, output: 2,
+      } })).toEqual([{ kind: "text", role: "assistant", text: "Hello" },
+        { kind: "usage", source: "assistant", input: 5, output: 2,
         cacheRead: 1, cacheCreation: 0, costUSD: 0.001 }]);
       expect(translator.translate({ type: "agent_end", messages: [] })).toEqual([
-        { kind: "stream_end" },
         { kind: "done", reason: "completed", result: "Hello", turns: 1 },
       ]);
     } finally {

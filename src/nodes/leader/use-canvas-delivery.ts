@@ -128,11 +128,12 @@ export function useCanvasDelivery(options: Input) {
     frozenPromptRef.current = frozen;
     const followUp = buildFrozenLeaderFollowUpPrompt({ frozen, current, prompt });
     const extras = { displayPrompt: text, systemPrompt: followUp.systemPrompt,
+      sandboxPolicy: current.sandboxPolicy,
       thinkingConfig: current.thinkingConfig ?? DEFAULT_THINKING_CONFIG,
-      skillIds: current.skillIds ?? [], skillValues: current.skillValues ?? {},
+      connectionIds: current.connectionIds, skillIds: current.skillIds ?? [], skillValues: current.skillValues ?? {},
       ...(attachments.length ? { attachments } : {}) };
     emitUpdate({ ...current, messages: [...current.messages,
-      { id, role: "user", content: text, timestamp: Date.now() }],
+      { id, role: "user", content: text, timestamp: Date.now(), optimistic: true }],
       messageDelivery: { ...current.messageDelivery, [id]: { state: "sending", text } } });
     const attempt = () => {
       let submitted = false;

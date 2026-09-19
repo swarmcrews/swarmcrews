@@ -88,6 +88,7 @@ export const COMMAND_SCHEMAS = {
     cwd,
     ...workspaceLaunchFields,
     role: z.enum(SESSION_ROLES).optional(),
+    connectionIds: z.array(z.string().min(1).max(80)).max(256).optional(),
     skillIds: z.array(z.string()).optional(),
     skillValues: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     worktreeIsolation: z.boolean().optional(),
@@ -117,7 +118,7 @@ export const COMMAND_SCHEMAS = {
   }),
   stop_session: sessionScoped("stop_session"),
   sync_session: sessionScoped("sync_session"),
-  list_sessions: command("list_sessions", {}),
+  list_sessions: command("list_sessions", { includeArchived: z.boolean().optional() }),
   list_harnesses: command("list_harnesses", {}),
   acknowledge_session: command("acknowledge_session", {
     sessionKey: z.string().min(1),
@@ -156,6 +157,7 @@ export const COMMAND_SCHEMAS = {
     displayPrompt: z.string().min(1).optional(),
     harness: requiredId.optional(), model: requiredId.optional(),
     permissionMode: requiredId.optional(), thinkingConfig: z.unknown().optional(),
+    connectionIds: z.array(z.string().min(1).max(80)).max(256).optional(),
     skillIds: z.array(requiredId).optional(), systemPrompt: requiredId.optional(),
     skillValues: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     attachments: z.array(z.unknown()).optional(),
@@ -168,6 +170,7 @@ export const COMMAND_SCHEMAS = {
     orchestrationMode: leaderOrchestrationModeSchema.optional(),
     harness: requiredId.optional(), model: requiredId.optional(),
     permissionMode: requiredId.optional(), thinkingConfig: z.unknown().optional(),
+    connectionIds: z.array(z.string().min(1).max(80)).max(256).optional(),
     skillIds: z.array(requiredId).optional(), systemPrompt: requiredId.optional(),
     skillValues: z.record(z.string(), z.record(z.string(), z.string())).optional(),
     attachments: z.array(z.unknown()).optional(),
@@ -299,10 +302,6 @@ export const COMMAND_SCHEMAS = {
   }),
   // Info queries
   get_context_usage: sessionScoped("get_context_usage"),
-  get_usage_report: sessionScoped("get_usage_report"),
-  get_provider_usage_report: command("get_provider_usage_report", {
-    harness: z.string().optional(),
-  }),
   get_supported_models: sessionScoped("get_supported_models"),
   get_supported_commands: sessionScoped("get_supported_commands"),
   get_supported_agents: sessionScoped("get_supported_agents"),

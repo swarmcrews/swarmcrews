@@ -364,7 +364,7 @@ export function SkillsBrowser({
               style={{ "--skill-accent": skill.accentColor } as React.CSSProperties} aria-label={`View ${skill.name}`}
               onClick={() => { scrollTop.current = listRef.current?.scrollTop ?? 0; setSelectedId(skill.id); }}>
               <span className="skills-browser__skill-icon"><SkillIcon skill={skill} size={20} /></span>
-              <span className="skills-browser__row-copy"><strong>{skill.name}</strong><span>{skill.description || CATEGORY_LABELS[skill.category]}</span></span>
+              <span className="skills-browser__row-copy"><strong>{skill.name}{skill.isDefault === true && " · Default"}{skill.selfServe === false && " · Self-serve off"}</strong><span>{skill.description || CATEGORY_LABELS[skill.category]}</span></span>
               <ChevronRight size={15} aria-hidden="true" />
             </button>)}
             {!filtered.length && <div className="skills-browser__empty">

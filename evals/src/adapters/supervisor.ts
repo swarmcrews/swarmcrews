@@ -9,7 +9,15 @@ const save = (name,value) => { fs.writeFileSync(path.join(root,name+'.tmp'),JSON
 const out = fs.openSync(path.join(root,'stdout.jsonl'),'a');
 const err = fs.openSync(path.join(root,'stderr.log'),'a');
 let stopping = false, finished = false;
-const child = spawn(spec.executable,spec.args,{cwd:spec.cwd,env:spec.env,detached:true,stdio:['ignore',out,err]});
+// Regular-file stdin survives delayed CLI startup under restricted process sandboxes.
+// Pi can otherwise emit only a session header after failing to consume a pipe.
+let input = 'ignore';
+if (typeof spec.stdin === 'string') {
+  fs.writeFileSync(path.join(root,'stdin.txt'),spec.stdin,{mode:0o600});
+  input = fs.openSync(path.join(root,'stdin.txt'),'r');
+}
+const child = spawn(spec.executable,spec.args,{cwd:spec.cwd,env:spec.env,detached:true,stdio:[input,out,err]});
+if (typeof input === 'number') fs.closeSync(input);
 save('process.json',{supervisorPid:process.pid,pid:child.pid ?? null,startedAt:new Date().toISOString()});
 const kill = signal => { if (child.pid) { try {process.kill(-child.pid,signal);} catch {} } };
 const stop = () => {

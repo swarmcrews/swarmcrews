@@ -100,8 +100,6 @@ export type WsCommandType =
   | "seed_read_state"
   // Info queries
   | "get_context_usage"
-  | "get_usage_report"
-  | "get_provider_usage_report"
   | "get_supported_models"
   | "get_supported_commands"
   | "get_supported_agents"
@@ -166,7 +164,7 @@ export interface WsCommand {
   systemPrompt?: string;
   role?: SessionRole;
   /** Skill IDs tagged on a leader session; gate opt-in tools. */
-  skillIds?: string[];
+  connectionIds?: string[] | undefined; skillIds?: string[];
   /** Template values configured for tagged skills. */
   skillValues?: Record<string, Record<string, string>>;
   orchestrationMode?: LeaderOrchestrationMode;

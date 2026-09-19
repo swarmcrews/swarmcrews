@@ -18,6 +18,7 @@ export function inheritRunContinuity(db: Database.Database, previous: WorkItemRu
   config.canvasAttachments = saved.continuity.canvasAttachments ?? saved.continuity.attachments ?? [];
   config.promptAttachments = saved.continuity.promptAttachments ?? [];
   delete config.attachments;
+  config.connectionIds = saved.connectionIds ?? config.connectionIds;
   config.skillIds = saved.skillIds;
   config.skillValues = saved.skillValues;
   if (saved.continuity.canvasContext !== undefined) {

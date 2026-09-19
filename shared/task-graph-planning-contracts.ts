@@ -1,3 +1,4 @@
+import { graphPlanningAnalysisSchema } from "./task-graph-experiments.ts";
 import { z } from "zod/v4";
 import { minionContextSchema, minionContextSummarySchema } from "./minion-context.ts";
 import {
@@ -52,6 +53,8 @@ export const semanticGraphPlanStepSchema = z.object({
   constraints: z.array(z.string().trim().min(1)).default([]),
   skillIds: z.array(z.string().trim().min(1)).optional()
     .describe("Exact skills for this step from the frozen catalog. Omit to inherit selected Leader skills; [] excludes all optional playbooks. Project constraints still apply."),
+  systemModelObjectIds: z.array(idSchema).min(1).optional()
+    .describe("Explicit Work Packet object selections for this child's context, combined with declared path matches. Use for tasks without file hints. Omit both paths and selections to retain shared packet context; applicable safeguards always remain."),
   dependsOn: z.array(semanticGraphDependencySchema).default([]),
   contextSelectors: z.array(z.string().trim().min(1)).default([])
     .describe("Task-scoped source selectors. Prefix connected-canvas selectors with canvas:; use repo: for repository paths or symbols."),
@@ -90,6 +93,7 @@ export const semanticGraphPlanStepSchema = z.object({
 });
 
 export const semanticTaskGraphPlanSchema = z.object({
+  planningAnalysis: graphPlanningAnalysisSchema.optional().describe("Experimental semantic obligation partitions and bounded decision-question probes; required only by the corresponding frozen treatment."),
   objective: z.string().trim().min(1),
   acceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
   nonGoals: z.array(z.string().trim().min(1)).default([]),
@@ -202,6 +206,7 @@ export const taskGraphPlanReviewRequirementSchema = z.object({
 });
 
 export const taskGraphPlanSnapshotViewSchema = z.object({
+  planningAnalysis: graphPlanningAnalysisSchema.optional(),
   proposalId: idSchema,
   workItemId: idSchema,
   primaryRunKey: idSchema,

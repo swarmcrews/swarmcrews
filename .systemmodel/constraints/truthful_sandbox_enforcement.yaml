@@ -11,9 +11,12 @@ applies_to:
     - server/harness/sandbox-policy.ts
     - server/harness/codex/index.ts
     - server/harness/codex/options.ts
+    - server/harness/copilot/index.ts
+    - server/harness/copilot/sandbox.ts
+    - server/harness/copilot/permissions.ts
     - src/nodes/leader/SandboxPolicyControls.tsx
 severity: critical
-agent_instruction: Keep Git change mode separate from process sandbox policy; honor an explicit sandbox policy before the legacy plan-mode read-only fallback, default authorized roots to workspace-write, require explicit unrestricted access, enforce both axes in Codex, and label unsupported axes unmanaged without claiming enforcement by other harnesses.
+agent_instruction: Keep Git change mode separate from process sandbox policy; honor an explicit sandbox policy before legacy plan mode, default to workspace-write, and require explicit unrestricted access. Codex uses its native policy. Copilot must apply its native per-session sandbox before prompting on create and resume, deny bypass, check in-process file writes, and fail closed on policy setup errors. Verify native backend behavior with the opt-in integration test before asserting live enforcement; mocked RPC tests alone are insufficient. Label unsupported axes unmanaged.
 review_gate: gate.sandbox_guarantees
 suggested_tests: [ shared/workspace-contracts.test.ts, server/harness/sandbox-policy.test.ts, server/harness/codex/index.test.ts, server/harness/codex/options.test.ts, src/nodes/leader/SandboxPolicyControls.test.tsx ]
 evidence: [ decision.portable_workspace_roots ]

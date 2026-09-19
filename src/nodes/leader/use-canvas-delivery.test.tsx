@@ -67,6 +67,7 @@ describe("Canvas message delivery", () => {
     const test = setup(false, { contextDelivery: seedContextDelivery([existing, image], 1) }, () => sources);
     fireEvent.click(screen.getByText("Send"));
     const first = test.commands()[0]!;
+    expect(test.data().messages[0]).toMatchObject({ role: "user", optimistic: true });
     expect(first['prompt']).toContain('source-id="added"');
     expect(first['prompt']).toContain('update="add"');
     expect(first['prompt']).not.toContain('<connected-context>');

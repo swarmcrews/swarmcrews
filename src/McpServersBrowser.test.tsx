@@ -1,170 +1,76 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { useState } from "react";
-import { McpServerForm } from "./McpServersBrowser.tsx";
-
-type Draft = Parameters<typeof McpServerForm>[0]["draft"];
-
-function emptyDraft(): Draft {
-  return {
-    id: "",
-    name: "",
-    description: "",
-    transport: "stdio",
-    command: "",
-    args: "",
-    env: "",
-    url: "",
-    headers: "",
-    toolNames: "",
-  };
-}
-
-function populatedDraft(): Draft {
-  return {
-    id: "filesystem",
-    name: "Filesystem",
-    description: "Local fs",
-    transport: "stdio",
-    command: "npx",
-    args: "-y @modelcontextprotocol/server-filesystem",
-    env: "",
-    url: "",
-    headers: "",
-    toolNames: "",
-  };
-}
-
-function FormHost(props: { isNew: boolean; initial?: Draft }) {
-  const [draft, setDraft] = useState<Draft>(props.initial ?? emptyDraft());
-  return (
-    <McpServerForm
-      draft={draft}
-      isNew={props.isNew}
-      saving={false}
-      error=""
-      onChange={setDraft}
-      onSave={() => {}}
-      onCancel={() => {}}
-    />
-  );
-}
-
-describe("McpServerForm — paste-first UX", () => {
-  it("shows the paste box when adding a new server", () => {
-    render(<FormHost isNew />);
-    expect(screen.queryByPlaceholderText(/npx -y/i)).not.toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /prefill form/i }),
-    ).not.toBeNull();
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ConnectionForm } from "./mcp-connections/ConnectionForm.tsx";
+import { ConnectionsPanel } from "./mcp-connections/ConnectionsPanel.tsx";
+import * as api from "./api.ts";
+vi.mock("./api.ts", () => ({ listProjectMcpServers: vi.fn(), saveProjectMcpServer: vi.fn(), deleteProjectMcpServer: vi.fn(), testProjectConnection: vi.fn(), authorizeProjectConnection: vi.fn(), disconnectProjectConnection: vi.fn() }));
+beforeEach(() => { vi.resetAllMocks(); vi.mocked(api.listProjectMcpServers).mockResolvedValue({ entries: [], invalid: [] }); });
+describe("Connections setup", () => {
+  it("imports a Codex command and saves the server process, not the installer", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<ConnectionForm existingIds={[]} busy={false} onSave={save} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/Have an install/), { target: { value: 'codex mcp add files -- node server.mjs "a b"' } });
+    fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save & test connection" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ command: "node", args: ["server.mjs", "a b"], id: "files" })));
   });
-
-  it("hides the manual-fields ID input by default when adding", () => {
-    render(<FormHost isNew />);
-    expect(screen.queryByPlaceholderText("my-server")).toBeNull();
+  it("editing a display name preserves argument boundaries and empty arguments", async () => {
+    const save = vi.fn().mockResolvedValue(undefined); const args = ["--directory", "/tmp/My Project", "", 'a"b', "C:\\tools"];
+    render(<ConnectionForm entry={{ id: "files", name: "Files", transport: "stdio", command: "node", args }} existingIds={["files"]} busy={false} onSave={save} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & test connection" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ name: "Renamed", args })));
   });
-
-  it("shows an Advanced toggle when adding", () => {
-    render(<FormHost isNew />);
-    const toggle = screen.getByRole("button", { name: /advanced/i });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  it("imports and edits named credentials while preserving multiline values", async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<ConnectionForm existingIds={[]} busy={false} onSave={save} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/Have an install/), { target: { value: JSON.stringify({ mcp: { files: { type: "local", command: ["node", "server.mjs"], environment: { TOKEN: "line one\nline two" } } } }) } });
+    fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+    expect(screen.getByLabelText("Variable name 1")).toHaveValue("TOKEN");
+    fireEvent.click(screen.getByRole("button", { name: "Add argument" }));
+    fireEvent.change(screen.getByLabelText("Argument 2"), { target: { value: "a folder with spaces" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & test connection" }));
+    await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ args: ["server.mjs", "a folder with spaces"], env: { TOKEN: "line one\nline two" } })));
   });
-
-  it("expands the Advanced section when the toggle is clicked", () => {
-    render(<FormHost isNew />);
-    const toggle = screen.getByRole("button", { name: /advanced/i });
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.queryByPlaceholderText("my-server")).not.toBeNull();
+  it("requires unique credential names instead of overwriting values", async () => {
+    const save = vi.fn();
+    render(<ConnectionForm entry={{ id: "docs", name: "Docs", transport: "http", url: "https://example.com/mcp", headers: { Authorization: "masked" } }} existingIds={["docs"]} busy={false} onSave={save} onCancel={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add header" }));
+    fireEvent.change(screen.getByLabelText("Header name 2"), { target: { value: "Authorization" } });
+    expect(screen.getByLabelText("Header name 2")).toBeInvalid();
+    fireEvent.click(screen.getByRole("button", { name: "Save & test connection" }));
+    expect(save).not.toHaveBeenCalled();
   });
-
-  it("does NOT show the paste box when editing", () => {
-    render(<FormHost isNew={false} initial={populatedDraft()} />);
-    expect(screen.queryByPlaceholderText(/npx -y/i)).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /prefill form/i }),
-    ).toBeNull();
+  it("blocks duplicate names without overwriting a saved connection", async () => {
+    const save = vi.fn(); render(<ConnectionForm existingIds={["example-com"]} busy={false} onSave={save} onCancel={() => {}} />);
+    fireEvent.change(screen.getByLabelText("Server URL"), { target: { value: "https://example.com/mcp" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & test connection" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("already exists"); expect(save).not.toHaveBeenCalled();
   });
-
-  it("opens the manual fields by default when editing", () => {
-    render(<FormHost isNew={false} initial={populatedDraft()} />);
-    expect(screen.queryByRole("button", { name: /advanced/i })).toBeNull();
-    expect(screen.queryByDisplayValue("filesystem")).not.toBeNull();
+  it("distinguishes a load failure from an empty catalog and supports retry", async () => {
+    vi.mocked(api.listProjectMcpServers).mockRejectedValueOnce(new Error("Storage unavailable"));
+    render(<ConnectionsPanel projectId="project" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Storage unavailable");
+    expect(screen.queryByText("Bring your tools into the conversation")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Bring your tools into the conversation")).toBeInTheDocument();
   });
-
-  it("auto-expands Advanced after a successful paste-prefill", () => {
-    render(<FormHost isNew />);
-
-    expect(
-      screen.getByRole("button", { name: /advanced/i }).getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("false");
-
-    const textarea = screen.getByPlaceholderText(/npx -y/i);
-    fireEvent.change(textarea, {
-      target: {
-        value: "npx -y @modelcontextprotocol/server-filesystem ~/Documents",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /prefill form/i }));
-
-    expect(
-      screen.getByRole("button", { name: /advanced/i }).getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("true");
-    expect(screen.queryByDisplayValue("npx")).not.toBeNull();
-    expect(screen.queryByText(/prefilled/i)).not.toBeNull();
+  it("does not report zero tools when only the connection handshake was verified", async () => {
+    vi.mocked(api.listProjectMcpServers).mockResolvedValue({ entries: [{ id: "docs", name: "Docs", transport: "http", url: "https://example.com/mcp" }], invalid: [], statuses: { docs: { state: "ready", checkedAt: 1 } } });
+    render(<ConnectionsPanel projectId="project" />);
+    const card = await screen.findByRole("article", { name: "Docs" });
+    expect(within(card).getByText("Verified", { exact: true })).toBeInTheDocument();
+    expect(within(card).queryByText(/0 tools available/)).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /Sign in/ })).not.toBeInTheDocument();
   });
-
-  it("shows the parser error inline when a paste cannot be parsed", () => {
-    render(<FormHost isNew />);
-    const textarea = screen.getByPlaceholderText(/npx -y/i);
-    fireEvent.change(textarea, { target: { value: "npx foo | grep bar" } });
-    fireEvent.click(screen.getByRole("button", { name: /prefill form/i }));
-
-    expect(screen.queryByText(/metacharacter/i)).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: /advanced/i }).getAttribute(
-        "aria-expanded",
-      ),
-    ).toBe("false");
-  });
-
-  it("disables the Prefill button when the textarea is empty", () => {
-    render(<FormHost isNew />);
-    const button = screen.getByRole("button", { name: /prefill form/i });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it("forwards a parsed draft through onChange", () => {
-    const onChange = vi.fn();
-    render(
-      <McpServerForm
-        draft={emptyDraft()}
-        isNew
-        saving={false}
-        error=""
-        onChange={onChange}
-        onSave={() => {}}
-        onCancel={() => {}}
-      />,
-    );
-
-    const textarea = screen.getByPlaceholderText(/npx -y/i);
-    fireEvent.change(textarea, {
-      target: {
-        value:
-          "claude mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem ~",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /prefill form/i }));
-
-    expect(onChange).toHaveBeenCalledTimes(1);
-    const next = onChange.mock.calls[0]?.[0] as Draft | undefined;
-    expect(next?.id).toBe("filesystem");
-    expect(next?.command).toBe("npx");
-    expect(next?.transport).toBe("stdio");
+  it("shows authentication as the next action when a saved connection fails its test", async () => {
+    vi.mocked(api.listProjectMcpServers).mockResolvedValue({ entries: [{ id: "docs", name: "Docs", transport: "http", url: "https://example.com/mcp" }], invalid: [] });
+    vi.mocked(api.testProjectConnection).mockResolvedValue({ status: { state: "auth_required", message: "Sign in to continue" } });
+    render(<ConnectionsPanel projectId="project" />);
+    const card = await screen.findByRole("article", { name: "Docs" });
+    fireEvent.click(within(card).getByRole("button", { name: "Test connection" }));
+    expect(await screen.findByText("Sign-in required")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: /Sign in/ })).toBeEnabled();
+    expect(screen.queryByText("Verified")).not.toBeInTheDocument();
   });
 });

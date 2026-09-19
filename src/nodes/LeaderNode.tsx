@@ -1,3 +1,4 @@
+import { ConnectionsPicker } from "../mcp-connections/ConnectionsPicker.tsx";
 import { ChatLinkScope } from "../components/ChatLink.tsx";
 import { LiveChangesPanel } from "../LiveChangesPanel.tsx";
 import { StatusMessage } from "../components/StatusMessage.tsx";
@@ -22,7 +23,11 @@ import { debugFlagStore } from "../debug.ts";
 import { useLeaderFullscreenRequest } from "../use-leader-fullscreen-request.ts";
 import { ConfirmModal } from "../components/ConfirmModal.tsx";
 import { canvasScale } from "../canvas-scale.ts";
-import { groupMessages } from "./leader-message-helpers.ts";
+import { groupTranscript } from "../components/SessionTranscript.tsx";
+import { buildUnifiedWorkItemMessages } from "../WorkItemTranscript.tsx";
+import { useCanvasRunHistory } from "./leader/use-canvas-run-history.ts";
+import { useChatFollow } from "../use-chat-follow.ts";
+import { JumpToLatest } from "../components/JumpToLatest.tsx";
 import { sessionTopic } from "../../shared/ws-envelope.ts";
 import { applyRenderMessage, emptyRenderState, renderMessageSchema } from "../../shared/render-dsl.ts";
 import { flattenRenderStateToText } from "../render-flatten.ts";
@@ -203,7 +208,6 @@ export function LeaderNodeRenderer({
   // Anchor for the SkillFlyout when triggered from the fullscreen cockpit
   // (different DOM tree from skillAnchorRef which lives in the in-canvas card).
   const fullscreenSkillAnchorRef = useRef<HTMLElement | null>(null);
-  const outputRef = useRef<HTMLDivElement>(null);
   const scrollZoneRef = useRef<HTMLDivElement>(null);
   const nodeRootRef = useRef<HTMLDivElement | null>(null);
   const promptTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -216,7 +220,18 @@ export function LeaderNodeRenderer({
     debugFlagStore.getSnapshot,
     debugFlagStore.getSnapshot,
   );
-  const groupedMessages = useMemo(() => groupMessages(data.messages), [data.messages]);
+  const history = useCanvasRunHistory({
+    workItemId: data.workItemId ?? data.workItemSnapshot?.id ?? null,
+    currentStream: data,
+    socketSend, socketSubscribe,
+  });
+  const transcript = useMemo(() => buildUnifiedWorkItemMessages({
+    runs: history.orderedRuns, streams: history.streams,
+    currentRunKey: data.sessionKey ?? "", currentMessages: data.messages,
+  }), [history.orderedRuns, history.streams, data.sessionKey, data.messages]);
+  const groupedMessages = useMemo(() => groupTranscript(transcript), [transcript]);
+  const chatFollow = useChatFollow(data.sessionKey ?? "new-leader",
+    `${transcript.length}:${data.streamingText}`, !isFullscreen);
   const minionTasks = useMemo(
     () => (data.taskPlan ?? []).filter((task) => task.executor === "minion"),
     [data.taskPlan],
@@ -315,12 +330,6 @@ export function LeaderNodeRenderer({
   }, []);
 
   useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [data.messages.length]);
-
-  useEffect(() => {
     if (data.sessionKey) syncedRef.current = true;
   }, [data.sessionKey]);
 
@@ -389,7 +398,8 @@ export function LeaderNodeRenderer({
         status: next.status,
         // A sync rebuild may omit optimistic user turns. Re-graft
         // them so the user's own messages never disappear between agent turns.
-        messages: preserveOptimisticUserMessages(current.messages, next.messages),
+        messages: preserveOptimisticUserMessages(current.messages, next.messages,
+          new Set(Object.keys(current.messageDelivery ?? {}))),
         streamingText: next.streamingText,
         streamingBlockIndex: next.streamingBlockIndex,
         totalCost: next.totalCost,
@@ -728,8 +738,7 @@ export function LeaderNodeRenderer({
   }, [socketSubscribe, data.sessionKey, emitUpdate, processNormalizedEvent, onResize, node.size.width, node.size.height]);
 
   const launchFeedback = useLaunchFeedback(data, nodeRootRef,
-    (prompt) => {
-      setInput((draft) => draft === prompt ? "" : draft);
+    () => {
       promptAttachments.remove(submittedAttachmentIds.current);
       submittedAttachmentIds.current = [];
     },
@@ -752,6 +761,8 @@ export function LeaderNodeRenderer({
 
     if (projectId && projectPath) {
       syncedRef.current = true;
+      // The submitted prompt is now in the feed; leave the composer for the next draft.
+      setInput("");
       emitUpdate({ ...dataRef.current, status: "creating", contextDelivery,
         messages: [...prevMessages, { id: msgId(), role: "user" as const,
           content: userPrompt, timestamp: Date.now(), optimistic: true }] });
@@ -761,6 +772,7 @@ export function LeaderNodeRenderer({
           const uncertain = !(error instanceof WorkItemCommandError);
           launchFeedback.failed(uncertain);
           syncedRef.current = uncertain;
+          setInput((draft) => draft || input);
           emitUpdate({ ...dataRef.current, status: "error",
             error: error instanceof Error ? error.message : String(error) });
         });
@@ -905,6 +917,7 @@ export function LeaderNodeRenderer({
     canvasContextSignatureRef.current = null;
     emitUpdate({
       ...LEADER_DEFAULT_DATA,
+      connectionIds: data.connectionIds,
       skillIds: data.skillIds,
       skillValues: data.skillValues,
       model: data.model,
@@ -939,6 +952,7 @@ export function LeaderNodeRenderer({
       messages: current.messages,
       taskPlan: current.taskPlan,
       taskName: current.taskName,
+      connectionIds: current.connectionIds,
       skillIds: current.skillIds,
       skillValues: current.skillValues,
       model: current.model,
@@ -1014,7 +1028,7 @@ export function LeaderNodeRenderer({
   const statusColor: Record<string, string> = {
     disconnected: "var(--text-muted)",
     creating: "var(--status-creating)",
-    running: "var(--success-color)",
+    running: "var(--status-running)",
     idle: "var(--status-idle)",
     inactive: "var(--status-idle)",
     stopped: "var(--status-error)",
@@ -1030,12 +1044,16 @@ export function LeaderNodeRenderer({
   const minionsSurface = <MinionsSurface tasks={minionTasks} selectedTaskId={selectedMinionTaskId}
     onSelectTask={setSelectedMinionTaskId} socketSend={socketSend} socketSubscribe={socketSubscribe} />;
 
+  const connectionsPicker = <ConnectionsPicker projectId={projectId} connectionIds={data.connectionIds}
+    onChange={connectionIds => onUpdateData({ ...dataRef.current, connectionIds })}
+    policy={data.sandboxPolicy} harness={data.harness}
+    onPolicyChange={sandboxPolicy => onUpdateData({ ...dataRef.current, sandboxPolicy })} />;
   const taggedSkillCount = (data.skillIds ?? []).length;
 
   if (launchMode) {
     return (
       <FormSubmissionProvider key={data.sessionKey} sessionKey={data.sessionKey ?? ""} socketSend={socketSend} socketSubscribe={socketSubscribe}><CanvasDeliveryContext.Provider value={delivery}><PromptAttachmentsContext.Provider value={promptAttachments}><LeaderSlashCommandsProvider commands={slashCommands} onSelect={handleContextActionSelect}><LeaderPromptSkillsContext.Provider value={handleSkillSelect}>
-        <ActivityLaunchForm workspaceControl={launchWorkspaceControl} nodeId={node.id} data={data} input={input} slashCommands={slashCommands}
+        <ActivityLaunchForm connectionsControl={connectionsPicker} workspaceControl={launchWorkspaceControl} nodeId={node.id} data={data} input={input} slashCommands={slashCommands}
           promptPlaceholder={promptPlaceholder} submitDisabled={promptSubmitDisabled} submitActive={promptSubmitActive} pending={launchFeedback.pending} unavailableReason={!socketSend ? "Connection unavailable" : undefined} textareaRef={promptTextareaRef}
           onInputChange={setInput} onKeyDown={handleKeyDown} onSubmit={handlePromptSubmit} onUpdate={(patch) => onUpdateData({ ...dataRef.current, ...patch })} />
         {launchFeedback.notice || launchNotice ? <div className="leader-launch-notice" role="status">{launchFeedback.notice ?? launchNotice}</div> : null}
@@ -1162,6 +1180,7 @@ export function LeaderNodeRenderer({
             ref={skillAnchorRef}
             className="leader-node__skills"
           >
+            {connectionsPicker}
             <SkillsPill
               skillIds={data.skillIds ?? []}
               open={skillFlyoutOpen}
@@ -1229,7 +1248,9 @@ export function LeaderNodeRenderer({
         chat={
           <>
       <LeaderMessageFeed
-        outputRef={outputRef}
+        outputRef={chatFollow.feedRef}
+        onScroll={chatFollow.onScroll}
+        historyLoading={history.loading}
         data={data}
         groupedMessages={groupedMessages}
         messageContextSelection={messageContextSelection}
@@ -1241,6 +1262,7 @@ export function LeaderNodeRenderer({
         isWorking={displayStatus === "running"}
       />
 
+      {!chatFollow.isFollowing && <JumpToLatest onClick={chatFollow.resume} hasNewActivity={chatFollow.hasNewActivity} />}
       {configFooter}
 
       <LeaderPromptBar
@@ -1281,6 +1303,8 @@ export function LeaderNodeRenderer({
       {isFullscreen && (
         <LeaderFullscreen
           data={data}
+          transcript={transcript}
+          historyLoading={history.loading}
           isWorking={displayStatus === "running"}
           onUpdateData={(next) => emitUpdate(next)}
           onExit={exitFullscreen}
@@ -1335,6 +1359,7 @@ export function LeaderNodeRenderer({
               harness={data.harness ?? "claude"}
               onHarnessChange={handleHarnessChange}
               accent="var(--accent)"
+              skillsContent={connectionsPicker}
             />
           }
           bannerSlot={

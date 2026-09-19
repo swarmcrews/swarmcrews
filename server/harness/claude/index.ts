@@ -113,7 +113,6 @@ interface SdkQueryHandle extends AsyncIterable<SDKMessage> {
   setModel?(model: string): Promise<void>;
   setPermissionMode?(mode: never): Promise<void>;
   getContextUsage?(): Promise<unknown>;
-  usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?(): Promise<unknown>;
   mcpServerStatus?(): Promise<unknown>;
   rewindFiles?(userMessageId: string, opts?: { dryRun?: boolean }): Promise<unknown>;
   seedReadState?(path: string, mtime: number): Promise<unknown>;
@@ -189,7 +188,7 @@ class ClaudeHarness implements AgentHarness {
     const registeredGroups = Object.fromEntries(
       sortedRecordEntries(this.registeredGroups).map(([serverName, defs]) => [
         serverName,
-        [...defs],
+        defs.filter(def => opts.allowedTools.includes(`mcp__${serverName}__${def.name}`)),
       ]),
     );
 
@@ -367,9 +366,6 @@ class ClaudeHarness implements AgentHarness {
       setPermissionMode: (mode: string) =>
         handle?.setPermissionMode?.(mode as never) ?? Promise.resolve(),
       getContextUsage: () => handle?.getContextUsage?.() ?? Promise.resolve(undefined),
-      getUsageReport: () =>
-        handle?.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?.() ??
-        Promise.resolve(undefined),
       mcpServerStatus: () => handle?.mcpServerStatus?.() ?? Promise.resolve(undefined),
       rewindFiles: (args) =>
         handle?.rewindFiles?.(

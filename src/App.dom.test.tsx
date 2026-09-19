@@ -121,6 +121,7 @@ vi.mock("./BottomRightDock.tsx", () => ({
   DockProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
   DockBar: () => null,
   SkillsNavButton: () => null,
+  ConnectionsNavButton: () => null,
 }));
 
 vi.mock("./LeaderLoadingScreen.tsx", () => ({
@@ -292,7 +293,8 @@ describe("MCP servers feature flag gating", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Go To Canvas" }));
   }
 
-  it("does not mount the MCP browser by default (flag off)", async () => {
+  it("does not mount the MCP browser when explicitly disabled", async () => {
+    window.localStorage.setItem(FLAGS_KEY, JSON.stringify({ "mcp-servers": false }));
     await openProjectCanvas();
     // SkillsBrowser mounts unconditionally in the same dock; wait for the
     // canvas tree, then assert the gated browser is absent.
@@ -300,11 +302,7 @@ describe("MCP servers feature flag gating", () => {
     expect(screen.queryByTestId("mcp-browser")).toBeNull();
   });
 
-  it("mounts the MCP browser when the flag is enabled", async () => {
-    window.localStorage.setItem(
-      FLAGS_KEY,
-      JSON.stringify({ "mcp-servers": true }),
-    );
+  it("mounts the MCP browser by default", async () => {
     await openProjectCanvas();
     expect(await screen.findByTestId("mcp-browser")).toBeInTheDocument();
   });

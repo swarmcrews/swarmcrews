@@ -165,6 +165,7 @@ export function projectTaskGraphSnapshot(
       kind:node.expansionPolicy ? "map" as const
         : snapshot.revision.terminalNodeIds.includes(node.id) ? "terminal" as const : "task" as const,
       completionMode:node.completionMode??"task",
+      ...(node.model ? {requestedModel:node.model} : {}),
       groupId:`executor:${node.executorClass}`,logicalState,readiness,currentAttempt,
       attemptHistory:history.map(row => projectAttempt(row,node.executorClass,now,
         usageByAttempt.get(text(row,"id","id")??""),node.completionMode==="verification",
@@ -255,6 +256,7 @@ export function projectTaskGraphSnapshot(
   const estimatedRemainingMs = criticalPath.filter(id => !satisfiedIds.has(id))
     .reduce((sum,id) => sum+(snapshot.revision.nodes.find(node => node.id === id)?.timeoutMs ?? 0),0);
   return taskGraphSnapshotViewSchema.parse({ graphRunId:snapshot.run.id,revision:snapshot.run.revision,
+    ...(snapshot.revision.taskGraphExperiments ? { taskGraphExperiments: snapshot.revision.taskGraphExperiments } : {}),
     title:snapshot.revision.objective,status:runStatus(snapshot),updatedAt:new Date(snapshot.run.updatedAt).toISOString(),
     nodes,edges,groups,evidence,timeline,capacity:{ running,limit:snapshot.run.maxActiveAttempts },
     budget:{ spentUsd:actualCost,
@@ -281,6 +283,8 @@ function projectAttempt(row:JsonRow,executor:string,now:number,usage?:JsonRow,
   const rawResponse=text(row,"final_report","finalReport")?.trim();
   const response=rawResponse && !withholdText ? redactTaskGraphText(rawResponse):null;
   return { id:text(row,"id","id")!,number:number(row,"attempt_number","attemptNumber") ?? 1,state,executor,
+    ...(text(row,"model","model")?.trim() ? {model:text(row,"model","model")!.trim()} : {}),
+    ...(text(row,"harness_name","harnessName")?.trim() ? {harness:text(row,"harness_name","harnessName")!.trim()} : {}),
     ...(text(row,"session_run_key","sessionRunKey") ? { sessionId:text(row,"session_run_key","sessionRunKey")! } : {}),
     ...(iso(created) ? { startedAt:iso(created)! } : {}),
     ...(runtime === "terminal" && iso(updated) ? { finishedAt:iso(updated)! } : {}),

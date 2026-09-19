@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import {
   DockBar,
   SkillsNavButton,
+  ConnectionsNavButton,
   DockPanel,
   DockProvider,
   DOCK_COMPACT_BREAKPOINT_PX,
@@ -52,6 +53,7 @@ function renderDock() {
       <PanelProbe id="sessions" />
       <PanelProbe id="map" />
       <PanelProbe id="mcp" />
+      <ConnectionsNavButton />
       <SkillsNavButton />
       <PanelProbe id="skills" />
       <DockBar />
@@ -89,7 +91,7 @@ describe("BottomRightDock", () => {
     renderDock();
     fireEvent.click(pill("Sessions"));
     expect(screen.queryByTestId("panel-sessions-body")).not.toBeNull();
-    fireEvent.click(pill("MCP"));
+    fireEvent.click(pill("Connections"));
     expect(screen.queryByTestId("panel-sessions-body")).toBeNull();
     expect(screen.queryByTestId("panel-mcp-body")).not.toBeNull();
   });
@@ -103,7 +105,7 @@ describe("BottomRightDock", () => {
 
   it("Escape closes the active panel", () => {
     renderDock();
-    fireEvent.click(pill("MCP"));
+    fireEvent.click(pill("Connections"));
     expect(screen.queryByTestId("panel-mcp-body")).not.toBeNull();
     act(() => {
       fireEvent.keyDown(window, { key: "Escape" });
@@ -117,7 +119,8 @@ describe("BottomRightDock", () => {
         <div data-testid="outside" style={{ width: 100, height: 100 }}>
           outside
         </div>
-        <SkillsNavButton />
+        <ConnectionsNavButton />
+      <SkillsNavButton />
         <PanelProbe id="skills" />
         <DockBar />
       </DockProvider>,
@@ -238,7 +241,7 @@ describe("BottomRightDock", () => {
       // Label text is rendered inside the pill; getByText finds it
       // regardless of the aria-label on the button wrapper.
       expect(screen.getByText("Sessions")).toBeInTheDocument();
-      expect(screen.getByText("MCP")).toBeInTheDocument();
+      expect(screen.getByText("Connections")).toBeInTheDocument();
       // BadgeProbe sets tail="$0.42" on sessions.
       expect(screen.getByText("$0.42")).toBeInTheDocument();
       const bar = document.querySelector("[data-dock-bar]");
@@ -268,7 +271,7 @@ describe("BottomRightDock", () => {
       setViewportWidth(1280);
       renderDock();
       expect(screen.queryByText("Sessions")).toBeNull();
-      expect(screen.queryByText("MCP")).toBeNull();
+      expect(screen.getByText("Connections")).toBeInTheDocument();
       const bar = document.querySelector("[data-dock-bar]");
       expect(bar?.getAttribute("data-density")).toBe("compact");
       expect(bar?.getAttribute("data-compact")).toBe("true");
@@ -283,7 +286,7 @@ describe("BottomRightDock", () => {
       setViewportWidth(DOCK_COMPACT_BREAKPOINT_PX - 200);
 
       expect(screen.queryByText("Sessions")).toBeNull();
-      expect(screen.queryByText("MCP")).toBeNull();
+      expect(screen.getByText("Connections")).toBeInTheDocument();
       // The button itself (and its aria-label) still exists so the pill
       // stays operable and screen-readable.
       expect(pill("Sessions")).toBeInTheDocument();
@@ -302,7 +305,7 @@ describe("BottomRightDock", () => {
   });
 });
 
-describe("DockBar MCP feature-flag gating", () => {
+describe("Connections header feature-flag gating", () => {
   beforeEach(() => {
     window.localStorage.clear();
   });
@@ -315,23 +318,33 @@ describe("DockBar MCP feature-flag gating", () => {
     return render(
       <DockProvider>
         <PanelProbe id="mcp" />
+        <ConnectionsNavButton />
         <DockBar />
       </DockProvider>,
     );
   }
 
-  it("omits the MCP dock button by default (flag off)", () => {
+  it("allows the Connections shortcut to be explicitly hidden", () => {
+    setFeatureFlag(FLAG_MCP_SERVERS, false);
     renderBar();
-    expect(screen.queryByLabelText("MCP")).toBeNull();
+    expect(screen.queryByLabelText("Connections")).toBeNull();
     // Sessions is unaffected — the bar still renders its other tools.
     expect(screen.getByLabelText("Sessions")).toBeInTheDocument();
   });
 
-  it("renders the MCP dock button when the flag is enabled", () => {
+  it("renders the Connections header button when the flag is enabled", () => {
     setFeatureFlag(FLAG_MCP_SERVERS, true);
     renderBar();
-    expect(screen.getByLabelText("MCP")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("MCP"));
+    expect(screen.getByLabelText("Connections")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Connections"));
     expect(screen.queryByTestId("panel-mcp-body")).not.toBeNull();
   });
+});
+
+ it("places Connections beside Skills above the canvas, outside the bottom dock", () => {
+  renderDock();
+  expect(pill("Connections").closest("[data-dock-bar]")).toBeNull();
+  expect(pill("Skills").closest("[data-dock-bar]")).toBeNull();
+  fireEvent.click(pill("Connections"));
+  expect(document.querySelector('[data-dock-panel="mcp"]')).toHaveStyle({ top: "52px" });
 });

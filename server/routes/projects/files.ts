@@ -48,34 +48,37 @@ export function mountFileRoutes(router: Router): void {
       return;
     }
 
-    if (!fs.existsSync(resolved)) {
-      res.status(404).json({ error: "File not found" });
-      return;
-    }
-
-    const stat = fs.statSync(resolved);
-    if (!stat.isFile()) {
-      res.status(400).json({ error: "Not a file" });
-      return;
-    }
-
-    // Cap at 512KB to avoid huge payloads
-    const MAX_SIZE = 512 * 1024;
-    if (stat.size > MAX_SIZE) {
-      res.json({
-        path: relFile,
-        size: stat.size,
-        truncated: true,
-        content: fs.readFileSync(resolved, "utf-8").slice(0, MAX_SIZE),
-      });
-      return;
-    }
-
+    let handle: fs.promises.FileHandle | undefined;
     try {
-      const content = fs.readFileSync(resolved, "utf-8");
-      res.json({ path: relFile, size: stat.size, truncated: false, content });
-    } catch {
-      res.status(500).json({ error: "Failed to read file" });
+      // O_NONBLOCK prevents a substituted FIFO from holding a worker open.
+      handle = await fs.promises.open(resolved, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+      const stat = await handle.stat();
+      if (!stat.isFile()) {
+        res.status(400).json({ error: "Not a file" });
+        return;
+      }
+
+      // Bound the read and allocation, including if the file grows after stat.
+      // readFile(...).slice(...) still loads the entire file into memory.
+      const MAX_SIZE = 512 * 1024;
+      const buffer = Buffer.alloc(Math.min(stat.size, MAX_SIZE));
+      let offset = 0;
+      while (offset < buffer.length) {
+        const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, offset);
+        if (bytesRead === 0) break;
+        offset += bytesRead;
+      }
+      res.json({
+        path: relFile, size: stat.size, truncated: stat.size > MAX_SIZE,
+        content: buffer.toString("utf-8", 0, offset),
+      });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") res.status(404).json({ error: "File not found" });
+      else if (code === "EISDIR") res.status(400).json({ error: "Not a file" });
+      else res.status(500).json({ error: "Failed to read file" });
+    } finally {
+      await handle?.close();
     }
   });
 

@@ -122,6 +122,27 @@ describe("GET /file — read file", () => {
     expect(res.status).toBe(404);
   });
 
+  it("reads only the preview prefix of a large file", async () => {
+    const file = path.join(project, "bounded.txt");
+    fs.writeFileSync(file, "a".repeat(600 * 1024));
+    const readFile = fs.readFileSync.bind(fs);
+    const spy = vi.spyOn(fs, "readFileSync").mockImplementation(((target: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+      // Simulate refusing an unbounded allocation without creating an enormous
+      // fixture or risking the test runner's memory.
+      if (target === file) throw new Error("Unbounded file read");
+      return Reflect.apply(readFile, fs, [target, ...args]);
+    }) as typeof fs.readFileSync);
+    try {
+      const response = await fetch(`${baseUrl}/${encoded}/file?path=bounded.txt`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({
+        size: 600 * 1024, truncated: true, content: "a".repeat(512 * 1024),
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("returns 400 when the path query is missing", async () => {
     const res = await fetch(`${baseUrl}/${encoded}/file`);
     expect(res.status).toBe(400);

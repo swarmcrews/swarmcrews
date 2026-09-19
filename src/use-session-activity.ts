@@ -208,6 +208,12 @@ export function reduceSessionActivity(
 ): { sessions: SessionInfo[]; activities: ActivityMap; attention: AttentionMap } {
   let { sessions, activities, attention } = prev;
 
+  // Explicit history sync remains available without reintroducing archived
+  // work into the default Activity list (including persisted canvas nodes).
+  if (msg.type === "sync_response" && msg.archived) {
+    return { ...prev, sessions: sessions.filter((session) => session.sessionKey !== msg.sessionKey) };
+  }
+
   if (msg.type === "session_list") {
     return { sessions: sessionsFromList(sessions, msg.sessions), activities, attention };
   }
@@ -293,7 +299,8 @@ export function useSessionActivity(subscribe: SocketSubscribe): SessionActivityS
       sessions.map((session) => ({
         ...session,
         lastActivity: activities[session.sessionKey]?.text ?? null,
-        lastActivityAt: activities[session.sessionKey]?.timestamp ?? session.lastActivityAt ?? null,
+        lastActivityAt: activities[session.sessionKey]?.timestamp == null ? session.lastActivityAt ?? null
+          : Math.max(activities[session.sessionKey]!.timestamp, session.lastActivityAt ?? 0),
         pendingAttention: attention[session.sessionKey] === true,
       })),
     [activities, attention, sessions],

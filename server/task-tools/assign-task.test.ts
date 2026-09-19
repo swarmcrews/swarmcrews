@@ -608,7 +608,7 @@ describe("assign_task", () => {
       expect(prompt).toContain("CLAUDE.md");
     });
 
-    it("injects configured Swarmcrews project context and omits the empty placeholder", async () => {
+    it("injects configured AGENTS.md context and omits empty content", async () => {
       writeContext(projectDir, "# Architecture\n\nUse the typed event bus.");
       await callAssign(harness.ctx, {
         taskId: "t-project-context",
@@ -620,7 +620,7 @@ describe("assign_task", () => {
       expect(lastSpawnPrompt(harness)).toContain("## Swarmcrews project context");
       expect(lastSpawnPrompt(harness)).toContain("Use the typed event bus.");
 
-      writeContext(projectDir, "# Project\n\nProject context has not been configured yet.\n");
+      writeContext(projectDir, "   \n");
       await callAssign(harness.ctx, {
         taskId: "t-empty-project-context",
         title: "Ignore placeholder",
@@ -726,7 +726,9 @@ describe("assign_task", () => {
       fs.mkdirSync(path.join(projectDir, ".systemmodel"), { recursive: true });
       fs.writeFileSync(path.join(projectDir, ".systemmodel/manifest.yaml"), "name: test\n");
       writeSettings(projectDir, { systemModel: "advisory" });
-      saveWorkPacket(projectDir, packet, "Suggested files are hints, not truth.\nConstraint constraint.bus_only: use the bus", 100);
+      harness.ctx.systemModel = FIXTURE_MODEL;
+      saveWorkPacket(projectDir, { ...packet, scope: { ...packet.scope, constraints: ["constraint.bus_only"] } },
+        "Legacy pack with omitted constraints", 100);
 
       await callAssign(harness.ctx, {
         taskId: "t-packet",
@@ -739,6 +741,20 @@ describe("assign_task", () => {
       const prompt = lastSpawnPrompt(harness);
       expect(prompt).toContain("## System Model Context");
       expect(prompt).toContain("Constraint constraint.bus_only");
+      expect(prompt).toContain(FIXTURE_MODEL.constraints[0]!.statement);
+    });
+
+    it("rejects an oversized required pack before creating or spawning a task", async () => {
+      fs.mkdirSync(path.join(projectDir, ".systemmodel"), { recursive: true });
+      fs.writeFileSync(path.join(projectDir, ".systemmodel/manifest.yaml"), "name: test\n");
+      writeSettings(projectDir, { systemModel: "advisory" });
+      harness.ctx.systemModel = structuredClone(FIXTURE_MODEL);
+      harness.ctx.systemModel.policies.contextBudgets.minionContextPack = 45;
+      saveWorkPacket(projectDir, packet, "Legacy pack with omitted constraints", 100);
+      await expect(callAssign(harness.ctx, { taskId: "pressure", title: "Pressure", description: "details",
+        priority: "high", workPacketId: packet.id })).rejects.toThrow(/mandatory guidance cannot be omitted/);
+      expect(harness.spawns).toHaveLength(0);
+      expect(harness.ctx.taskState.tasks.has("pressure")).toBe(false);
     });
   });
 

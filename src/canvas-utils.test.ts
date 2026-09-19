@@ -10,6 +10,7 @@ import {
   shouldRelocateOnDrop,
   centerTransformOnRect,
   focusTransformOnRects,
+  unobstructedCanvasViewport,
   didReposition,
 } from "./canvas-utils.ts";
 import { makeNode } from "../tests/fixtures/builders.ts";
@@ -21,6 +22,13 @@ describe("snapToGrid", () => {
 });
 
 describe("centerTransformOnRect", () => {
+  it("centers within an offset usable viewport", () => {
+    expect(centerTransformOnRect(
+      { x: 100, y: 100, width: 200, height: 100 },
+      { x: 360, y: 40, width: 640, height: 560 },
+      1,
+    )).toEqual({ x: 480, y: 170, scale: 1 });
+  });
   it("centers a rect's midpoint in the viewport at scale 1", () => {
     const t = centerTransformOnRect(
       { x: 100, y: 100, width: 200, height: 100 },
@@ -41,6 +49,24 @@ describe("centerTransformOnRect", () => {
     // rect center = (200, 200); x = 400 - 200*0.5 = 300
     expect(t.scale).toBe(0.5);
     expect(t).toEqual({ x: 300, y: 300, scale: 0.5 });
+  });
+});
+
+describe("unobstructedCanvasViewport", () => {
+  it("converts the dashboard edge to canvas coordinates and adds a gutter", () => {
+    expect(unobstructedCanvasViewport({ left: 100, width: 1000, height: 700 }, 456))
+      .toEqual({ x: 372, y: 0, width: 628, height: 700 });
+  });
+
+  it("uses the entire canvas when the panel does not overlap it", () => {
+    expect(unobstructedCanvasViewport({ left: 100, width: 1000, height: 700 }, 0))
+      .toEqual({ x: 0, y: 0, width: 1000, height: 700 });
+  });
+
+  it("does not produce negative space when the panel covers the canvas", () => {
+    const viewport = unobstructedCanvasViewport({ left: 0, width: 300, height: 700 }, 356);
+    expect(viewport.width).toBe(0);
+    expect(focusTransformOnRects([{ x: 0, y: 0, width: 100, height: 100 }], viewport, { padding: 80, maxScale: 1 })).toBeNull();
   });
 });
 

@@ -82,6 +82,10 @@ export interface SkillTemplate {
    * get a default text input.
    */
   variables: SkillVariable[];
+  /** Automatically selected on new leader nodes. */
+  isDefault?: boolean;
+  /** Advertise to agents for on-demand selection; enabled when omitted. */
+  selfServe?: boolean;
   /** Frozen text files/context included whenever this skill is active. */
   attachments?: SkillAttachment[];
   /**

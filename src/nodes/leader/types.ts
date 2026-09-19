@@ -96,6 +96,7 @@ export interface LeaderData {
   worktreeBranch: string | null;
   worktreeStatus: "none" | "creating" | "active" | "merging" | "merged" | "discarded" | "failed";
   /** IDs of skills tagged onto this leader */
+  connectionIds?: string[] | undefined;
   skillIds: string[];
   /** Variable values for each skill: { [skillId]: { [varName]: value } } */
   skillValues: Record<string, Record<string, string>>;

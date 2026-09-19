@@ -5,6 +5,8 @@
 import { sanitizeAttachments } from "./attachment-sanitize.ts";
 import { unicastGlobal, unicastToSession } from "../bus.ts";
 import type { CommandHandler } from "./types.ts";
+import { setSessionConnectedLeaderGraphSources, setSessionCanvasContextItems } from "../canvas-context-store.ts";
+import { enrichConnectedGraphContext } from "../task-graph/connected-graph-context.ts";
 
 interface CanvasContextItem {
   nodeId: string;
@@ -17,6 +19,7 @@ interface CanvasContextItem {
     mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
     data: string;
   }>;
+  leaderGraphSource?: { workItemId: string; primaryRunKey: string };
 }
 
 export { buildConnectedContextBlock as buildCanvasContextBlock } from "../../shared/connected-context.ts";
@@ -30,6 +33,10 @@ function isCanvasContextItem(value: unknown): value is CanvasContextItem {
     typeof item.nodeType === "string" &&
     typeof item.label === "string" &&
     typeof item.content === "string"
+    && (item.leaderGraphSource === undefined || (typeof item.leaderGraphSource === "object"
+      && item.leaderGraphSource !== null
+      && typeof (item.leaderGraphSource as Record<string, unknown>).workItemId === "string"
+      && typeof (item.leaderGraphSource as Record<string, unknown>).primaryRunKey === "string"))
   );
 }
 
@@ -58,5 +65,13 @@ export const canvasContext: CommandHandler = (ctx, cmd, ws) => {
     return;
   }
 
-  host.setCanvasContext(buildCanvasContextBlock(cmd.items), sanitizeAttachments(uniqueContextSources(cmd.items).flatMap(item => item.attachments ?? [])) ?? []);
+  const items=uniqueContextSources(cmd.items);
+  const enriched = ctx.taskGraphPlanning && host.workItemId
+    ? enrichConnectedGraphContext({ coordinator: ctx.taskGraphPlanning, recipientWorkItemId: host.workItemId,
+      recipientPrimaryRunKey: host.runKey, items }) : { items, sources: [] };
+  // Store only the validated server-derived bindings. The browser-supplied
+  // source metadata remains presentation input and can never become a grant.
+  setSessionCanvasContextItems(cmd.sessionKey, items);
+  setSessionConnectedLeaderGraphSources(cmd.sessionKey, enriched.sources);
+  host.setCanvasContext(buildCanvasContextBlock(enriched.items), sanitizeAttachments(enriched.items.flatMap(item => item.attachments ?? [])) ?? []);
 };

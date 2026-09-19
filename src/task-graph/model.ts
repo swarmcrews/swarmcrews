@@ -8,7 +8,7 @@ import type {
 
 export const MAX_TOPOLOGY_NODES = 72;
 export const MAX_TOPOLOGY_EDGES = 96;
-export const WORK_QUEUE_ROW_HEIGHT = 58;
+export const WORK_QUEUE_ROW_HEIGHT = 70;
 export const WORK_QUEUE_OVERSCAN = 4;
 
 export function matchesGraphFilter(node: TaskGraphNodeView, filter: GraphFilter): boolean {

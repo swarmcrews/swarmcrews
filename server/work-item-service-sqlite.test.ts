@@ -14,6 +14,7 @@ import type { RunContinuationInput } from "./work-item-continuation.ts";
 import { encodePath } from "./routes/projects/helpers.ts";
 import { registerWorkspace } from "./workspace-registry.ts";
 import { ensureWorktreeIntegrationSchema } from "./worktree-integration-schema.ts";
+import * as projectStore from "./project-store.ts";
 
 describe("SqliteWorkItemService", () => {
   let db: Database.Database;
@@ -55,6 +56,36 @@ describe("SqliteWorkItemService", () => {
       title: `Task ${requestId}`, changeMode: "live",
     });
   }
+
+  it("excludes archives from default pages while explicit archive listing and direct history still work", async () => {
+    const old = await draft("old");
+    const visible = await draft("visible");
+    await service.archive({ requestId: "archive-old", workItemId: old.workItem.id,
+      expectedLifecycleRevision: 0, expectedCurrentRunKey: null });
+    const listed = await service.list({ projectId: "project-1", limit: 1 });
+    expect(listed.items.map((item) => item.id)).toEqual([visible.workItem.id]);
+    expect(listed.nextCursor).toBeNull();
+    expect((await service.list({ projectId: "project-1", includeArchived: true })).items).toHaveLength(2);
+    expect((await service.get(old.workItem.id))?.workItem.lifecycle.resolution).toBe("archived");
+  });
+
+  it("captures project treatments before launch and preserves them on an idempotent replay", async () => {
+    const settings = vi.spyOn(projectStore, "readSettings").mockReturnValue({ taskGraphExperiments: { questionGraph: true } });
+    try {
+      const created = await draft("treatment");
+      const input = { requestId: "treatment-start", workItemId: created.workItem.id, prompt: "Go",
+        expectedLifecycleRevision: 0, expectedCurrentRunKey: null };
+      const started = await service.startRun(input);
+      const row = () => db.prepare("SELECT run_config_json FROM sessions WHERE session_key=?")
+        .get(started.currentRun!.runKey) as { run_config_json: string };
+      expect(JSON.parse(row().run_config_json).taskGraphExperiments.questionGraph).toBe(true);
+      settings.mockReturnValue({ taskGraphExperiments: { questionGraph: false, semanticPartitioning: true } });
+      await service.startRun(input);
+      expect(JSON.parse(row().run_config_json).taskGraphExperiments).toEqual({
+        questionGraph: true, semanticPartitioning: false, decisionContinuations: true,
+      });
+    } finally { settings.mockRestore(); }
+  });
 
   it("lazily migrates encoded project identities when listing by workspace UUID", async () => {
     const minionsHome = fs.mkdtempSync(path.join(os.tmpdir(), "work-item-alias-home-"));
@@ -410,14 +441,16 @@ describe("SqliteWorkItemService", () => {
       workItemId: created.workItem.id, prompt: "start",
       expectedLifecycleRevision: 0, expectedCurrentRunKey: null });
     const intent = { requestId: "live-guidance", workItemId: created.workItem.id,
-      prompt: "steer this turn",
+      prompt: "steer this turn", connectionIds: ["private-docs"],
+      sandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" } as const,
       skillIds: ["review"], skillValues: { review: { depth: "high" } },
       expectedLifecycleRevision: started.workItem.lifecycle.lifecycleRevision,
       expectedCurrentRunKey: "run-live-start" };
     await service.continue(intent);
     await service.continue(intent);
     expect(queued).toHaveLength(1);
-    expect(queued[0]).toMatchObject({ skillIds: ["review"],
+    expect(queued[0]).toMatchObject({ connectionIds: ["private-docs"],
+      sandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" }, skillIds: ["review"],
       skillValues: { review: { depth: "high" } } });
     await expect(service.continue({ ...intent, requestId: "stale",
       expectedLifecycleRevision: 0 })).rejects.toMatchObject({

@@ -114,7 +114,9 @@ export const LEADER_LOADING_SVG = `
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .ll-pupil, .ll-crown { animation: none; }
+      .ll-pupil, .ll-crown,
+      .ll-once .ll-pupil, .ll-once .ll-crown { animation: none; }
+      .ll-pupil { transform: translate(0px,10px) scale(0.6); }
       .ll-crown            { opacity: 1; stroke-dashoffset: 0; }
     }
   </style>
@@ -177,6 +179,7 @@ export const LeaderLoadingScreen = memo(function LeaderLoadingScreen({
   return (
     <div
       data-testid="leader-loading"
+      role="status"
       style={{
         width: "100%",
         height: "100%",
@@ -191,6 +194,7 @@ export const LeaderLoadingScreen = memo(function LeaderLoadingScreen({
       }}
     >
       <div
+        aria-hidden="true"
         style={{ width: size, height: size, color: "var(--accent)" }}
         // Inline the same SVG used by the data: URI so animations
         // run inside the document (data: URIs sandbox CSS in some
@@ -228,4 +232,7 @@ const LL_DOTS_CSS = `
   50%  { content: '..'; }
   75%  { content: '...'; }
   100% { content: ''; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ll-dots::after { animation: none; content: '...'; }
 }`;

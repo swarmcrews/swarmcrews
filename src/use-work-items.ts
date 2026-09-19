@@ -153,11 +153,13 @@ export function mergeCanonicalActivity(
       sessionId: base?.sessionId ?? null,
       workItemId: item.id,
       canonicalWorkItem: true,
-      status: item.lifecycle.runtimeState === "working" ? "running" : item.lifecycle.runtimeState,
+      workItemPresentation: presentation,
+      status: item.lifecycle.runtimeState === "working" ? "running"
+        : item.lifecycle.runtimeState === "starting" ? "creating" : item.lifecycle.runtimeState,
       cwd: item.projectPath,
       role: "leader",
       taskName: item.title,
-      lastActivityAt: item.updatedAt,
+      lastActivityAt: Math.max(item.updatedAt, base?.lastActivityAt ?? 0),
       lastActivity: formatCoordinatedLabel(presentation.label, liveEditAwareness),
       ...(liveEditAwareness ? { liveEditAwareness } : {}),
       pendingAttention: presentation.needsAttention,
@@ -211,7 +213,14 @@ export function activityEntryId(session: Pick<MobileSessionInfo, "sessionKey" | 
   return session.workItemId ? `work-item:${session.workItemId}` : `session:${session.sessionKey}`;
 }
 
+export interface WorkItemPromptOptions {
+  displayPrompt?: string;
+  skillIds?: string[];
+  skillValues?: Record<string, Record<string, string>>;
+}
+
 export interface PromptFailure {
+  options?: WorkItemPromptOptions;
   prompt: string;
   contextItems?: ContextItem[];
   error: string;
@@ -261,8 +270,8 @@ export function useWorkItems(input: {
       type: "list_work_items",
       requestId,
       projectId,
-      includeArchived: true,
-      // Paint a small recent page first, then fetch history in efficient batches.
+      includeArchived: false,
+      // Complete visible membership for reconciliation, without paging archives.
       limit: cursor ? 100 : 20,
       ...(cursor ? { cursor } : {}),
     });
@@ -372,9 +381,13 @@ export function useWorkItems(input: {
       setPromptFailures((current) => ({
         ...current,
         [pending.workItemId]: {
-          prompt: pending.contextItems?.length && typeof pending.options?.["displayPrompt"] === "string"
+          prompt: typeof pending.options?.["displayPrompt"] === "string"
             ? pending.options["displayPrompt"] : pending.prompt,
           ...(pending.contextItems?.length ? { contextItems: pending.contextItems } : {}),
+          ...(pending.options?.["skillIds"] ? { options: {
+            skillIds: pending.options["skillIds"] as string[],
+            skillValues: pending.options["skillValues"] as Record<string, Record<string, string>>,
+          } } : {}),
           error: message.error ?? "Work-item command failed",
         },
       }));
@@ -407,7 +420,7 @@ export function useWorkItems(input: {
     extra: Record<string, unknown> = {}, contextItems: ContextItem[] = []) => {
     if (contextItems.length && typeof extra["prompt"] === "string") {
       const attachments = contextItems.flatMap(item => item.attachments ?? []);
-      extra = { ...extra, displayPrompt: extra["prompt"],
+      extra = { ...extra, displayPrompt: extra["displayPrompt"] ?? extra["prompt"],
         prompt: [buildContextUpdateBlock(contextItems.map(item => ({ ...item, kind: "add" as const }))),
           extra["prompt"]].filter(Boolean).join("\n\n"),
         ...(attachments.length ? { attachments } : {}) };
@@ -419,7 +432,7 @@ export function useWorkItems(input: {
         prompt: extra["prompt"], attempts: 1,
         projectId: item.projectId, workItemId: item.id,
         contextItems,
-        options: { ...(extra["attachments"] ? { attachments: extra["attachments"] } : {}), displayPrompt: typeof extra["displayPrompt"] === "string"
+        options: { ...extra, displayPrompt: typeof extra["displayPrompt"] === "string"
           ? extra["displayPrompt"] : displayTextFromPrompt(extra["prompt"]) },
       });
     }
@@ -462,8 +475,8 @@ export function useWorkItems(input: {
     review: (item: WorkItemSnapshot) => mutate("review_work_item", item),
     archive: (item: WorkItemSnapshot) => mutate("archive_work_item", item),
     restore: (item: WorkItemSnapshot) => mutate("restore_work_item", item),
-    start: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[]) => mutate("continue_work_item", item, { prompt }, contextItems),
-    reply: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[]) => mutate("continue_work_item", item, { prompt }, contextItems),
+    start: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[], options?: WorkItemPromptOptions) => mutate("continue_work_item", item, { ...options, prompt }, contextItems),
+    reply: (item: WorkItemSnapshot, prompt: string, contextItems?: ContextItem[], options?: WorkItemPromptOptions) => mutate("continue_work_item", item, { ...options, prompt }, contextItems),
     launch,
   }), [state, listLoad, retryLoad, orderedItems, promptFailures, clearPromptFailure, input.projectId, input.send, mutate, launch]);
 }

@@ -1,8 +1,8 @@
 /**
  * Contract tests for the per-project settings/context/skills/MCP routes.
  *
- *   GET  /:encodedPath/context        read context.md
- *   PUT  /:encodedPath/context        write context.md
+ *   GET  /:encodedPath/context        read project AGENTS.md
+ *   PUT  /:encodedPath/context        write project AGENTS.md
  *   GET  /:encodedPath/settings       read settings.json
  *   PUT  /:encodedPath/settings       write settings.json
  *   GET  /:encodedPath/skills         read skills.json
@@ -111,6 +111,16 @@ describe("context routes", () => {
     const body = (await getRes.json()) as { content: string; exists: boolean };
     expect(body.exists).toBe(true);
     expect(body.content).toBe(md);
+    expect(fs.readFileSync(path.join(project, "AGENTS.md"), "utf8")).toBe(md);
+  });
+
+  it("GET reflects source instructions without initializing a missing file", async () => {
+    expect(await (await fetch(`${baseUrl}/${encoded}/context`)).json())
+      .toEqual({ content: "", exists: false });
+    expect(fs.existsSync(path.join(project, "AGENTS.md"))).toBe(false);
+    fs.writeFileSync(path.join(project, "AGENTS.md"), "Existing project instructions");
+    expect(await (await fetch(`${baseUrl}/${encoded}/context`)).json())
+      .toEqual({ content: "Existing project instructions", exists: true });
   });
 
   it("GET on an unregistered project returns 403", async () => {
@@ -121,6 +131,23 @@ describe("context routes", () => {
 });
 
 describe("settings routes", () => {
+  it("accepts independent experiment flags and rejects misspelled or nonboolean treatments", async () => {
+    for (const taskGraphExperiments of [{ questionGraph: "true" }, { questionGrah: true }]) {
+      const result = await fetch(`${baseUrl}/${encoded}/settings`, { method: "PUT",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ taskGraphExperiments }) });
+      expect(result.status).toBe(400);
+    }
+    const result = await fetch(`${baseUrl}/${encoded}/settings`, { method: "PUT",
+      headers: { "content-type": "application/json" }, body: JSON.stringify({ taskGraphExperiments: { semanticPartitioning: true } }) });
+    expect(result.status).toBe(200);
+    const settings = await (await fetch(`${baseUrl}/${encoded}/settings`)).json();
+    expect(settings.taskGraphExperiments).toEqual({ decisionContinuations: true, semanticPartitioning: true, questionGraph: false });
+    const rollback = await fetch(`${baseUrl}/${encoded}/settings`, { method: "PUT",
+      headers: { "content-type": "application/json" }, body: JSON.stringify({ taskGraphExperiments: { decisionContinuations: false } }) });
+    expect(rollback.status).toBe(200);
+    const restored = await (await fetch(`${baseUrl}/${encoded}/settings`)).json();
+    expect(restored.taskGraphExperiments).toEqual({ decisionContinuations: false, semanticPartitioning: false, questionGraph: false });
+  });
   it("PUT then GET round-trips the settings object", async () => {
     const settings = {
       defaultModel: "opus",
@@ -263,5 +290,40 @@ describe("MCP servers routes", () => {
       body: JSON.stringify({ id: "x", name: "X" /* missing transport */ }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+
+describe("Connections setup to agent use", () => {
+  it("saves secrets privately, tests MCP, calls via tools, and revokes access", async () => {
+    const { createMcpFixtureFetch } = await import("../fixtures/mcp/http-fixture.ts");
+    const { createConnectionTools } = await import("../../server/mcp-connections/tools.ts");
+    const { closeConnectionScope } = await import("../../server/mcp-connections/runtime.ts");
+    const { listMcpServers } = await import("../../server/mcp-server-store.ts");
+    vi.stubGlobal("fetch", createMcpFixtureFetch());
+    const url = `${baseUrl}/${encoded}/mcp-servers/fixture`;
+    const put = (entry: object) => fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(entry) });
+    try {
+      const entry = { id: "fixture", name: "Fixture", transport: "http", url: "https://fixture.example/mcp", headers: { Authorization: "Bearer private-value" } };
+      const saved = await put(entry); expect(saved.status).toBe(200);
+      const masked = await saved.json(); expect(JSON.stringify(masked)).not.toContain("private-value");
+      expect((await put({ ...masked, name: "Renamed" })).status).toBe(200);
+      expect(listMcpServers(project).entries[0]).toMatchObject({ headers: entry.headers });
+      expect(await (await fetch(`${url}/test`, { method: "POST" })).json()).toMatchObject({ status: { state: "ready", toolCount: 1 }, inventory: { tools: [{ name: "echo" }] } });
+      const invoke = createConnectionTools(project, "routes-e2e").find(t => t.name === "call_tool")!.handler;
+      const input = { connectionId: "fixture", name: "echo", arguments: { message: "Full journey" } };
+      expect(JSON.stringify(await invoke(input))).toContain("Full journey");
+      await put({ ...masked, enabled: false });
+      const denied = await invoke(input); expect(denied.isError).toBe(true); expect(JSON.stringify(denied)).toContain("disabled");
+      expect((await fetch(url, { method: "DELETE" })).status).toBe(200);
+      expect((await invoke(input)).isError).toBe(true);
+      const list = await fetch(`${baseUrl}/${encoded}/mcp-servers`);
+      expect(list.headers.get("cache-control")).toBe("no-store"); expect(await list.json()).toMatchObject({ entries: [] });
+    } finally { await closeConnectionScope("routes-e2e"); vi.unstubAllGlobals(); }
+  });
+  it("rejects a mismatched ID and an unregistered project", async () => {
+    const entry = { id: "wrong", name: "Mismatch", transport: "http", url: "https://example.com/mcp" };
+    expect((await fetch(`${baseUrl}/${encoded}/mcp-servers/expected`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(entry) })).status).toBe(400);
+    expect((await fetch(`${baseUrl}/${encodePath(path.join(project, "unregistered"))}/mcp-servers`)).status).toBe(403);
   });
 });

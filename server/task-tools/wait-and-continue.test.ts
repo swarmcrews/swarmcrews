@@ -41,6 +41,16 @@ async function call(
 }
 
 describe("wait_and_continue", () => {
+  it("arms the same durable wait but gives the treatment an explicit end-turn instruction", async () => {
+    const ctx = makeCtx(); ctx.decisionContinuations = true;
+    const tool = createWaitAndContinueToolDef(ctx);
+    expect(tool.description).toContain("END THE TURN");
+    const result = await call(tool, { duration_seconds: 600, reason: "Integrate committed outputs", wake_on: "all_terminal" });
+    expect(ctx.taskState.pendingWait).toMatchObject({ durationMs: 600000, wakeOn: "all_terminal" });
+    expect(result.content[0]!.text).toContain("End this turn now");
+    expect(ctx.scheduleWaitContinue).toHaveBeenCalledOnce();
+    expect(createWaitAndContinueToolDef(makeCtx()).description).toContain("periodically check");
+  });
   it("rejects garbage input before scheduling the wait — parse guard", async () => {
     const ctx = makeCtx();
     const tool = createWaitAndContinueToolDef(ctx);

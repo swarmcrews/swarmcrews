@@ -1,3 +1,4 @@
+import { resolveTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 import type Database from "better-sqlite3";
 import type { LeaderOrchestrationMode } from "../../shared/task-graph-planning-contracts.ts";
 import {
@@ -27,4 +28,12 @@ export function planningContextForRun(db: Database.Database, runKey: string): st
     const value = (JSON.parse(row.run_config_json) as Record<string, unknown>)["planningContext"];
     return typeof value === "string" && value.trim() ? value : null;
   } catch { return null; }
+}
+
+/** Missing legacy treatment means control; never reread mutable project settings. */
+export function taskGraphExperimentsForRun(db: Database.Database, runKey: string): TaskGraphExperiments {
+  const row = db.prepare("SELECT run_config_json FROM sessions WHERE session_key=?")
+    .get(runKey) as { run_config_json: string | null } | undefined;
+  try { return resolveTaskGraphExperiments(JSON.parse(row?.run_config_json ?? "{}").taskGraphExperiments); }
+  catch { return resolveTaskGraphExperiments(); }
 }

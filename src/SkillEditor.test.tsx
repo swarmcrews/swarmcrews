@@ -110,3 +110,27 @@ it("saves a chosen library icon with the skill and restores it when editing", ()
   fireEvent.click(screen.getByRole("button", { name: /Appearance/ }));
   expect(screen.getByRole("button", { name: "Rocket" })).toHaveAttribute("aria-pressed", "true");
 });
+
+
+describe("skill launch controls", () => {
+  it("keeps legacy skills optional and self-serve, and saves independent toggles", () => {
+    const onSave = vi.fn();
+    render(<SkillEditor skill={baseSkill} onSave={onSave} onClose={() => {}} />);
+    expect(screen.getByRole("checkbox", { name: "Default" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Self-serve" })).toBeChecked();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Default" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Self-serve" }));
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isDefault: true, selfServe: false }));
+  });
+
+  it("restores saved controls when editing a built-in override", () => {
+    const onSave = vi.fn();
+    render(<SkillEditor skill={{ ...baseSkill, builtIn: true, isDefault: true, selfServe: false }} onSave={onSave} onClose={() => {}} />);
+    expect(screen.getByRole("checkbox", { name: "Default" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Self-serve" })).not.toBeChecked();
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ isDefault: true, selfServe: false }));
+    expect(onSave.mock.calls[0]![0]).not.toHaveProperty("builtIn");
+  });
+});

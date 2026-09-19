@@ -189,11 +189,13 @@ export function LeaderSlashMenu({
       </div>
 
       <div
+        data-scroll-capture
         style={{
           maxHeight: 240,
           minHeight: 0,
           flex: "1 1 auto",
           overflowY: "auto",
+          overscrollBehavior: "contain",
           padding: 6,
           display: "flex",
           flexDirection: "column",

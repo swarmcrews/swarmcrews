@@ -11,6 +11,7 @@ import { TaskGraphPlanningCoordinator } from "./planning-coordinator.ts";
 import type { CapturedPlanningSource, PlanningSourceContext } from "./planning-source.ts";
 import { migrateTaskGraph } from "./schema.ts";
 import {storeInlineTaskGraphArtifact} from "./artifact-store.ts";
+import { attachWorkItemBinding } from "../work-item-binding-repo.ts";
 
 const HASH_A = `sha256:${"a".repeat(64)}`;
 const HASH_B = `sha256:${"b".repeat(64)}`;
@@ -84,6 +85,40 @@ function setup() {
 }
 
 describe("TaskGraphPlanningCoordinator", () => {
+  it("permits connected inspection only for the current same-project source run", async () => {
+    const { db, coordinator } = setup();
+    createWorkItem(db, { id: "source", projectId: "project", projectPath: process.cwd(),
+      title: "Source", changeMode: "live", at: 3 });
+    startWorkItemIteration(db, { workItemId: "source", runKey: "source-run", idempotencyKey: "source",
+      expectedLifecycleRevision: 0, expectedCurrentRunKey: null, at: 4 });
+    db.prepare("INSERT INTO projects(id,name) VALUES (?,?)").run("project", "Project");
+    attachWorkItemBinding(db, { workItemId: "work", surface: "canvas", bindingId: "recipient-node", at: 4 });
+    attachWorkItemBinding(db, { workItemId: "source", surface: "canvas", bindingId: "leader-node", at: 4 });
+    db.prepare(`INSERT INTO edges(id,project_id,source_node_id,source_port_id,target_node_id,target_port_id,protocol,context_mode)
+      VALUES ('full-edge','project','leader-node','out','recipient-node','in','context','full')`).run();
+    await coordinator.submit({ workItemId: "source", primaryRunKey: "source-run", mode: "plan",
+      requestId: "source-plan", baseProposalRevision: null, plan: semanticPlan() });
+    expect(coordinator.inspectConnected({ recipientWorkItemId: "work", recipientPrimaryRunKey: "primary",
+      source: { nodeId: "leader-node", workItemId: "source", primaryRunKey: "source-run" } }).plan)
+      .toMatchObject({ workItemId: "source" });
+
+    createWorkItem(db, { id: "other", projectId: "other-project", projectPath: process.cwd(),
+      title: "Other", changeMode: "live", at: 5 });
+    startWorkItemIteration(db, { workItemId: "other", runKey: "other-run", idempotencyKey: "other",
+      expectedLifecycleRevision: 0, expectedCurrentRunKey: null, at: 6 });
+    expect(() => coordinator.inspectConnected({ recipientWorkItemId: "work", recipientPrimaryRunKey: "primary",
+      source: { nodeId: "forged", workItemId: "other", primaryRunKey: "other-run" } }))
+      .toThrow("no longer authorized");
+    db.prepare("UPDATE work_items SET current_run_key='continued-source' WHERE id='source'").run();
+    expect(coordinator.inspectConnected({ recipientWorkItemId: "work", recipientPrimaryRunKey: "primary",
+      source: { nodeId: "leader-node", workItemId: "source", primaryRunKey: "continued-source" } }).plan)
+      .toMatchObject({ workItemId: "source", canStart: false, autoStartEligible: false });
+    db.prepare("UPDATE edges SET context_mode='lean' WHERE id='full-edge'").run();
+    expect(() => coordinator.inspectConnected({ recipientWorkItemId: "work", recipientPrimaryRunKey: "primary",
+      source: { nodeId: "leader-node", workItemId: "source", primaryRunKey: "continued-source" } }))
+      .toThrow("no longer authorized");
+  });
+
   it("keeps full context in the revision and returns only metadata in plan inspections", async () => {
     const { coordinator, service } = setup();
     const plan = semanticPlan();

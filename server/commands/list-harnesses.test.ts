@@ -20,6 +20,7 @@ import "../harness/echo/index.ts";
 import "../harness/codex/index.ts";
 import "../harness/opencode/index.ts";
 import "../harness/pi/index.ts";
+import "../harness/copilot/index.ts";
 
 describe("listHarnesses", () => {
   it("emits a global harness_list envelope including registered harness metadata", async () => {
@@ -69,6 +70,11 @@ describe("listHarnesses", () => {
     expect(pi!.capabilities["mcp"]).toBe(false);
     expect(pi!.capabilities["partialMessages"]).toBe(true);
     expect(pi!.account.provider).toBe("pi");
+
+    const copilot = byName.get("copilot");
+    expect(copilot).toBeDefined();
+    expect(copilot!.capabilities["resume"]).toBe(true);
+    expect(copilot!.account.provider).toBe("github");
 
     // Echo is a test-only placeholder harness and must not be exposed to the
     // client — see HIDDEN_HARNESSES in list-harnesses.ts.

@@ -84,6 +84,7 @@ const PERMISSION_DESCRIPTIONS: Record<PermissionMode, string> = {
 };
 
 const EFFORT_LABELS: Record<EffortLevel, string> = {
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
@@ -92,6 +93,7 @@ const EFFORT_LABELS: Record<EffortLevel, string> = {
 };
 
 const EFFORT_DESCRIPTIONS: Record<EffortLevel, string> = {
+  minimal: "Minimal reasoning when supported",
   low: "Skip thinking when possible — fastest, cheapest",
   medium: "Light reasoning on harder requests",
   high: "Always think (default) — deep reasoning",
@@ -128,6 +130,7 @@ function modelColor(model: string): string | undefined {
 function providerLabel(harness: HarnessInfo | undefined, fallbackName: string): string {
   const provider = String(harness?.account.provider ?? fallbackName).toLowerCase();
   if (provider === "openai") return "OpenAI";
+  if ((harness?.name ?? fallbackName) === "copilot") return "GitHub Copilot";
   if (provider === "anthropic" || provider === "claude") return "Anthropic";
   if (provider === "echo") return "Echo";
   return titleCase(harness?.name ?? fallbackName);
@@ -485,6 +488,7 @@ export function ModelSelectionMenu({
       {isOpen && (
         <div
           role={expanded ? "group" : "dialog"}
+          data-scroll-capture
           aria-label={expanded ? triggerLabel : `${triggerLabel} menu`}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
@@ -496,6 +500,7 @@ export function ModelSelectionMenu({
             maxWidth: isInline ? "100%" : "calc(100vw - 24px)",
             maxHeight: isInline ? "none" : "min(60vh, 420px)",
             overflowY: "auto",
+            overscrollBehavior: "contain",
             background: "var(--bg-elevated)",
             border: "1px solid var(--border-default)",
             borderRadius: 6,

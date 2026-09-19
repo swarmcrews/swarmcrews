@@ -111,6 +111,8 @@ export interface ContextItem {
    * server payload isn't doubled (see `sendCanvasContextSnapshotIfChanged`).
    */
   blocks?: string[];
+  /** Present only for full Leader context; the server validates before use. */
+  leaderGraphSource?: { workItemId: string; primaryRunKey: string } | undefined;
 }
 
 // ── Adaptive thinking ────────────────────────────────────
@@ -125,7 +127,7 @@ export interface ContextItem {
 // We deliberately do not expose budget_tokens / maxThinkingTokens —
 // it is deprecated on 4.6+ and rejected on 4.8.
 
-export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type ThinkingDisplay = "summarized" | "omitted";
 
 export interface ThinkingConfig {

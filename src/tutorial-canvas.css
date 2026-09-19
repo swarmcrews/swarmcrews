@@ -1,0 +1,27 @@
+/* Keep the practice nodes at actual canvas dimensions; scroll the viewport
+   instead of shrinking the composer and connection targets into mock cards. */
+.tutorial-canvas-label { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; color: var(--text-muted); background: var(--bg-secondary); border: 1px solid var(--border-default); border-bottom: 0; border-radius: 8px 8px 0 0; font: 11px/1.5 var(--font-mono); }
+.tutorial-canvas-scroll { overflow: auto; border: 1px solid var(--border-default); border-radius: 0 0 8px 8px; overscroll-behavior: contain; }
+.tutorial-canvas-world { position: relative; width: 980px; height: 520px; background-color: var(--bg-primary); background-image: radial-gradient(var(--border-default) 1px, transparent 1px); background-size: 20px 20px; }
+.tutorial-canvas-node { position: absolute; z-index: 1; }
+.tutorial-canvas-node .canvas-port { touch-action: none; }
+.tutorial-canvas-node .leader-node__title { font-size: 13px; font-weight: 600; }
+.tutorial-chat-log { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.65; }
+.tutorial-chat-log p { margin: 0 0 14px; color: var(--text-secondary); }
+.tutorial-chat-log .tutorial-user-message { padding: 10px 12px; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tutorial-chat-log .tutorial-context-receipt { font: 10px/1.5 var(--font-mono); color: var(--text-muted); }
+.tutorial-build-body { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.tutorial-canvas-drop { position: absolute; left: 530px; top: 40px; width: 400px; height: 430px; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 34px; color: var(--text-secondary); border: 1px dashed var(--accent); border-radius: var(--radius-node); background: color-mix(in srgb, var(--accent) 3%, transparent); }
+.tutorial-canvas-drop strong { color: var(--text-primary); font-size: 15px; }
+.tutorial-canvas-drop small { color: var(--text-muted); }
+.tutorial-canvas-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
+.tutorial-drag-edge { position: absolute; inset: 0; width: 980px; height: 520px; pointer-events: none; z-index: 2; }
+.tutorial-drag-edge path { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; }
+@media (max-width: 650px) {
+  .tutorial-canvas-label { flex-direction: column; gap: 2px; }
+  .tutorial-canvas-scroll { max-height: 55dvh; }
+}
+.tutorial-canvas-world[data-tutorial-step="0"] .leader-prompt-bar__surface,
+.tutorial-canvas-world[data-tutorial-step="2"] .tutorial-build-body .leader-prompt-bar__surface { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.tutorial-canvas-world[data-tutorial-step="1"] [data-port-id="context-out"] { filter: drop-shadow(0 0 5px var(--accent)); }
+.tutorial-canvas-node .tg-graph-row { flex: 0 0 auto; max-height: 215px; overflow-y: auto; }

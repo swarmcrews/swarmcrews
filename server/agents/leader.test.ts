@@ -157,7 +157,8 @@ describe("leader agent wiring", () => {
       "read_graph_artifact", "cancel_graph_run", "moderate_dialectic", "adjudicate_graph_node",
     ]);
     expect(result.mcpToolNames).toContain("mcp__task-manager__plan_task");
-    expect(leader.buildSystemPrompt(ctx)).toMatch(/Task Graph is always enabled/i);
+    expect(leader.buildSystemPrompt(ctx)).toContain("Execute tasks directly by default");
+    expect(leader.buildSystemPrompt(ctx)).toContain("unless the user explicitly asks for a graph");
     expect(leader.buildSystemPrompt(ctx)).toContain("- **plan_task**");
   });
 

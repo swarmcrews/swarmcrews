@@ -10,6 +10,9 @@ import { randomUuid } from "../random-id.ts";
 import { previousPrimaryRuns } from "../work-item-run-history.ts";
 import {
   activeMinionSummary,
+  activityStatusLabel,
+  activityStatusTone,
+  isActivityWorking,
   attentionAction,
   attentionKind,
   attentionReason,
@@ -74,7 +77,7 @@ function matchesSummaryFilter(
     case "needs-you":
       return needsAttention(session);
     case "active":
-      return session.status === "running" || session.status === "creating";
+      return isActivityWorking(session);
     case "waiting":
       return session.status === "waiting" ||
         session.reviewLifecycle?.reviewState === "decision_needed";
@@ -305,8 +308,8 @@ function SessionCard({
       >
         <span className="mob-card-topline">
           <span className="mob-card-role">{sessionRoleLabel(session)}</span>
-          <span className={`mob-status-pill mob-status-pill--${session.status}`}>
-            {session.status}
+          <span className={`mob-status-pill mob-status-pill--${activityStatusTone(session)}`}>
+            {session.workItemPresentation ? activityStatusLabel(session) : session.status}
           </span>
         </span>
         <span className="mob-card-title">{sessionDisplayTitle(session)}</span>

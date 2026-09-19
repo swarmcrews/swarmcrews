@@ -4,10 +4,33 @@ import {
   isAllowedAuthRequestHost,
   isAllowedDevHost,
   isAllowedOrigin,
+  isLoopbackHost,
   isTailscaleHost,
 } from "./network-access.ts";
 
 describe("network access allowlist", () => {
+  it.each([
+    "127.attacker.example", "127.0.0.1.attacker.example", "127.0.0.999",
+    "127.0.0.1:3141", "127.1", "::ffff:localhost", "::ffff:127.attacker.example",
+  ])("rejects loopback lookalike %s", (host) => {
+    expect(isLoopbackHost(host)).toBe(false);
+    expect(isAllowedDevHost(host)).toBe(false);
+    expect(isAllowedAuthBootstrapRequest({ hostname: host, remoteAddress: "127.0.0.1" })).toBe(false);
+  });
+
+  it.each(["127.0.0.1", "127.255.255.254", "::1", "[::1]", "::ffff:127.0.0.1"])(
+    "preserves valid loopback address %s", (host) => {
+      expect(isLoopbackHost(host)).toBe(true);
+    },
+  );
+
+  it("rejects rebinding domains at both the origin and token-bootstrap boundaries", () => {
+    const hostname = "127.attacker.example";
+    const origin = `http://${hostname}:3141`;
+    expect(isAllowedOrigin(origin)).toBe(false);
+    expect(isAllowedAuthBootstrapRequest({ hostname, origin, remoteAddress: "127.0.0.1" })).toBe(false);
+  });
+
   it("allows loopback hosts", () => {
     expect(isAllowedDevHost("localhost")).toBe(true);
     expect(isAllowedDevHost("127.0.0.1")).toBe(true);

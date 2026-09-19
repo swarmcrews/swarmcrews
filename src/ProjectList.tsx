@@ -12,11 +12,12 @@ import {
   type ProjectGitAction,
 } from "./api.ts";
 import { browserLogger } from "./logging.ts";
-import { sessionBelongsToProject } from "./mobile/mobile-selectors.ts";
-import { useSessionActivity } from "./use-session-activity.ts";
-import { useSocket, type SessionInfo } from "./use-socket.ts";
-import { buildWsUrl } from "./ws-url.ts";
+import type { ProjectActivitySummary } from "../shared/project-activity.ts";
+import { ProjectSessionActivity } from "./ProjectSessionActivity.tsx";
 import { ProjectGitWarning } from "./ProjectGitWarning.tsx";
+import { ProjectsTutorial } from "./ProjectsTutorial.tsx";
+import { RepositoryPathPicker } from "./components/RepositoryPathPicker.tsx";
+import { ConfirmModal } from "./components/ConfirmModal.tsx";
 import {
   ArrowRight,
   Clock3,
@@ -28,20 +29,6 @@ import {
 import "./project-list.css";
 
 const log = browserLogger.child("project-list");
-const WS_URL = buildWsUrl();
-
-function countActiveSessions(
-  sessions: SessionInfo[],
-  projectPath: string,
-  projectId: string,
-): number {
-  return sessions.filter(
-    (session) =>
-      session.role !== "minion" &&
-      sessionBelongsToProject(session, projectPath, projectId) &&
-      (session.status === "running" || session.status === "creating" || session.status === "waiting"),
-  ).length;
-}
 
 interface ProjectListProps {
   onOpenProject: (id: string, projectPath: string) => void;
@@ -50,8 +37,7 @@ interface ProjectListProps {
 type PendingGitDecision = { mode: "open" | "create"; path: string; name?: string };
 
 export function ProjectList({ onOpenProject }: ProjectListProps) {
-  const socket = useSocket(WS_URL);
-  const { sessions } = useSessionActivity(socket.subscribe);
+  const [activity, setActivity] = useState<ProjectActivitySummary[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [folderPath, setFolderPath] = useState("");
@@ -61,18 +47,23 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
   const [readiness, setReadiness] = useState<HarnessReadinessSnapshot | null>(null);
   const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [pendingGitDecision, setPendingGitDecision] = useState<PendingGitDecision | null>(null);
+  const [projectToRemove, setProjectToRemove] = useState<ProjectSummary | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [projectsResult, readinessResult] = await Promise.allSettled([
-      listProjects(),
-      getHarnessReadiness(),
-    ]);
-    if (projectsResult.status === "fulfilled") setProjects(projectsResult.value);
-    else log.error("projects_load_failed", { error: projectsResult.reason });
-    if (readinessResult.status === "fulfilled") setReadiness(readinessResult.value);
-    else log.warn("harness_readiness_load_failed", { error: readinessResult.reason });
-    setLoading(false);
+  useEffect(() => {
+    let active = true;
+    void listProjects().then((result) => {
+      if (active) setProjects(result);
+    }).catch((error: unknown) => {
+      log.error("projects_load_failed", { error });
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    void getHarnessReadiness().then((result) => {
+      if (active) setReadiness(result);
+    }).catch((error: unknown) => {
+      log.warn("harness_readiness_load_failed", { error });
+    });
+    return () => { active = false; };
   }, []);
 
   const retryReadiness = useCallback(async () => {
@@ -86,24 +77,9 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!socket.connected) return;
-    socket.send({ type: "list_sessions" });
-  }, [socket.connected, socket.send]);
-
   const runningSessionsByProject = useMemo(
-    () =>
-      new Map(
-        projects.map((project) => [
-          project.id,
-          countActiveSessions(sessions, project.path, project.id),
-        ]),
-      ),
-    [projects, sessions],
+    () => new Map(activity.map((summary) => [summary.projectId, summary.activeSessions])),
+    [activity],
   );
 
   const finishProjectInitialization = async (decision: PendingGitDecision, gitAction?: ProjectGitAction) => {
@@ -156,8 +132,8 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
     await preflightProjectInitialization({ mode: "create", path: p, ...(name ? { name } : {}) });
   };
 
-  const handleRemoveRecent = async (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
+  const handleRemoveRecent = async (id: string) => {
+    setProjectToRemove(null);
     try {
       await deleteProject(id);
       setProjects((prev) => prev.filter((p) => p.id !== id));
@@ -184,15 +160,19 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
 
   return (
     <main className="project-list-page">
+      {!loading && <ProjectSessionActivity projectIds={projects.map((p) => p.id)} onSummaryChange={setActivity} />}
       <div className="project-list-shell">
         <header className="project-list-header">
           <div className="project-list-brand"><Brand /></div>
           <div className="project-list-heading">
             <span>Workspace</span>
             <h1>Projects</h1>
+            {!loading && projects.length > 0 && <ProjectsTutorial />}
             <p>Open a folder to resume your canvas, or create a new project.</p>
           </div>
         </header>
+
+        {!loading && projects.length === 0 && <ProjectsTutorial prominent />}
 
         <section className="project-list-card" aria-labelledby="project-action-title">
           <div className="project-list-card__heading">
@@ -238,21 +218,17 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             </div>
 
             <div className="project-list-fields">
-              <label className="project-list-field">
-                <span>Repository path</span>
-                <input
-                  type="text"
-                  placeholder={mode === "open" ? "/path/to/existing/project..." : "/path/to/new/project..."}
-                  value={folderPath}
-                  onChange={(e) => {
-                    setFolderPath(e.target.value);
-                    setPendingGitDecision(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void (mode === "open" ? handleOpen() : handleCreate());
-                  }}
-                />
-              </label>
+              <RepositoryPathPicker
+                className="project-list-field"
+                value={folderPath}
+                disabled={creating}
+                placeholder={mode === "open" ? "/path/to/existing/project..." : "/path/to/new/project..."}
+                onChange={(path) => {
+                  setFolderPath(path);
+                  setPendingGitDecision(null);
+                }}
+                onSubmit={() => { if (!projectActionDisabled) void (mode === "open" ? handleOpen() : handleCreate()); }}
+              />
               {mode === "create" && (
                 <label className="project-list-field">
                   <span>Project name</span>
@@ -334,9 +310,10 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             ) : (
               <div className="project-list-recents">
                 {projects.map((p) => {
+                  const countKnown = runningSessionsByProject.has(p.id);
                   const activeSessions = runningSessionsByProject.get(p.id) ?? 0;
                   const hasActiveSessions = activeSessions > 0;
-                  const activeLabel = `${activeSessions} active ${activeSessions === 1 ? "session" : "sessions"}`;
+                  const activeLabel = countKnown ? `${activeSessions} active ${activeSessions === 1 ? "session" : "sessions"}` : "Activity unavailable";
 
                   return (
                     <div
@@ -352,12 +329,12 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                       <span
                         className={`project-list-recent__activity ${hasActiveSessions ? "project-list-recent__activity--active" : "project-list-recent__activity--sleeping"}`}
                         role="img"
-                        aria-label={hasActiveSessions ? `${p.name} has ${activeLabel}` : `${p.name} is sleeping with no active sessions`}
+                        aria-label={!countKnown ? `${p.name} activity unavailable` : hasActiveSessions ? `${p.name} has ${activeLabel}` : `${p.name} is sleeping with no active sessions`}
                       >
                         {hasActiveSessions ? (
                           <img src="/icons/minion.svg" alt="" aria-hidden="true" />
                         ) : (
-                          <span className="project-list-recent__zzz" aria-hidden="true">ZZZ</span>
+                          <span className="project-list-recent__zzz" aria-hidden="true">{countKnown ? "ZZZ" : "…"}</span>
                         )}
                       </span>
                       <span className="project-list-recent__details">
@@ -378,7 +355,10 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                         className="project-list-remove"
                         aria-label="Remove"
                         title="Remove from recent projects"
-                        onClick={(e) => void handleRemoveRecent(e, p.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProjectToRemove(p);
+                        }}
                       >
                         <Trash2 size={13} aria-hidden="true" />
                         <span>Remove</span>
@@ -391,6 +371,18 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
           </div>
         </section>
       </div>
+      {projectToRemove && (
+        <ConfirmModal
+          title={`Remove "${projectToRemove.name}" from recent projects?`}
+          description="This removes the project from your recent projects list. Your project folder and files will remain on disk. You can open the folder again later."
+          onClose={() => setProjectToRemove(null)}
+          actions={[{
+            label: "Remove project",
+            variant: "danger",
+            onClick: () => void handleRemoveRecent(projectToRemove.id),
+          }]}
+        />
+      )}
     </main>
   );
 }

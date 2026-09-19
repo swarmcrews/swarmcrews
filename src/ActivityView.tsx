@@ -31,7 +31,10 @@ import {
   attentionAction,
   sessionDisplayTitle,
   sessionRoleLabel,
-  sessionStatusLabel,
+  activityStatusLabel,
+  activityStatusTone,
+  isActivityWorking,
+  isActivityReady,
 } from "./mobile/mobile-selectors.ts";
 import {
   canAcknowledge,
@@ -81,7 +84,7 @@ import { selectRecentAgentWork } from "./activity-recent-work.ts";
 import { randomUuid } from "./random-id.ts";
 import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
 export { lifecycleActionError } from "./use-activity-lifecycle.ts";
-import { activityEntryId, type PromptFailure } from "./use-work-items.ts";
+import { activityEntryId, type PromptFailure, type WorkItemPromptOptions } from "./use-work-items.ts";
 import {
   emptySessionStreamState,
   preserveOptimisticUserMessages,
@@ -93,8 +96,14 @@ import { previousPrimaryRuns } from "./work-item-run-history.ts";
 import type { DisplayMessage } from "./sdk-messages.ts";
 import { LeaderTaskGraphBridge } from "./task-graph/LeaderTaskGraphBridge.tsx";
 import { useLeaderTaskGraphController } from "./task-graph/use-leader-task-graph-controller.ts";
-import { usePromptAttachments } from "./nodes/leader/prompt/use-prompt-attachments.ts";
-import { PromptAttachmentList, PromptAttachmentPicker } from "./nodes/leader/prompt/PromptAttachmentControls.tsx";
+import { PromptAttachmentsContext, usePromptAttachments } from "./nodes/leader/prompt/use-prompt-attachments.ts";
+import { LeaderPromptBar, LeaderSlashCommandsProvider } from "./nodes/leader/prompt/LeaderPromptBar.tsx";
+import { LeaderPromptSkillsContext } from "./nodes/leader/prompt/LeaderPromptSkillsContext.ts";
+import { buildSlashCommands, type SlashCommand } from "./nodes/leader/prompt/slash-commands.ts";
+import { SkillFlyout } from "./nodes/leader/skills/SkillFlyout.tsx";
+import { SkillsPill } from "./nodes/leader/skills/SkillsPill.tsx";
+import { getSkill } from "./skills/registry.ts";
+import { compileSkills } from "./skills/types.ts";
 import { buildContextUpdateBlock } from "./context-delivery.ts";
 import "./activity.css";
 
@@ -162,7 +171,7 @@ export interface ActivityViewProps extends ActivityLoadingProps {
   runNextCursor?: Record<string, string | null>;
   onLoadRuns?: (workItemId: string, cursor?: string) => void;
   /** Canonical prompt path; false preserves input while the item is loading. */
-  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[], options?: WorkItemPromptOptions) => boolean | void;
   promptFailures?: Record<string, PromptFailure>;
   onClearPromptFailure?: (workItemId: string) => void;
 }
@@ -221,9 +230,9 @@ function matchesSummaryFilter(
     case "needs-you":
       return needsAttention(session);
     case "working":
-      return !needsAttention(session) && (session.status === "running" || session.status === "creating");
+      return isActivityWorking(session);
     case "ready":
-      return !needsAttention(session) && (session.status === "idle" || session.status === "inactive");
+      return isActivityReady(session);
   }
 }
 
@@ -246,8 +255,8 @@ function buildLeaderNodeIndex(nodes: CanvasNode[]): Map<string, LeaderNodeRef> {
   return index;
 }
 
-function StatusPill({ status }: { status: string }) {
-  return <span className={`act-pill act-pill--${status}`}>{sessionStatusLabel(status)}</span>;
+function StatusPill({ session }: { session: MobileSessionInfo }) {
+  return <span className={`act-pill act-pill--${activityStatusTone(session)}`}>{activityStatusLabel(session)}</span>;
 }
 
 function isRetainedInactive(session: MobileSessionInfo): boolean {
@@ -440,14 +449,15 @@ function SessionCard({
   onToggleSelect: () => void;
   onAction: (action: LifecycleAction, session: ActivitySession) => void;
 }) {
-  const tone = session.status === "running" || session.status === "creating"
+  const statusTone = activityStatusTone(session);
+  const tone = statusTone === "running" || statusTone === "creating"
     ? "running"
-    : session.status === "completed"
+    : statusTone === "completed"
       ? "completed"
-    : session.status === "idle" || session.status === "inactive"
+    : statusTone === "idle" || statusTone === "inactive"
       ? "idle"
       : "other";
-  const stateLabel = sessionStatusLabel(session.status);
+  const stateLabel = activityStatusLabel(session);
   const reportedActivity = session.lastActivity?.trim();
   const genericActivity = reportedActivity && new Set([
     "active",
@@ -578,8 +588,9 @@ function Inspector({
   onPromptWorkItem,
   promptFailure,
   onClearPromptFailure,
-  runs = [], runNextCursor, onLoadRuns,
+  runs = [], runNextCursor, onLoadRuns, projectSettings,
 }: {
+  projectSettings?: ProjectSettings | undefined;
   session: ActivitySession;
   actionRequest: InspectorActionRequest | null;
   leader: LeaderNodeRef | undefined;
@@ -596,7 +607,7 @@ function Inspector({
   onAcknowledge: () => void;
   onDismiss: () => void;
   onReopen: () => void;
-  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[]) => boolean | void;
+  onPromptWorkItem?: (workItemId: string, prompt: string, contextItems?: ContextItem[], options?: WorkItemPromptOptions) => boolean | void;
   promptFailure?: PromptFailure;
   onClearPromptFailure?: () => void;
   runs?: WorkItemRunSnapshot[];
@@ -617,6 +628,31 @@ function Inspector({
   );
   const [reply, setReply] = useState("");
   const promptAttachments = usePromptAttachments();
+  const slashCommands = useMemo(() => buildSlashCommands(projectSettings), [projectSettings]);
+  const [skillIds, setSkillIds] = useState<string[]>(() => leader?.data.skillIds ?? []);
+  const [skillValues, setSkillValues] = useState<Record<string, Record<string, string>>>(
+    () => leader?.data.skillValues ?? {},
+  );
+  const [skillsConfigured, setSkillsConfigured] = useState(Boolean(leader?.data.skillIds?.length));
+  const [skillFlyoutOpen, setSkillFlyoutOpen] = useState(false);
+  const [skillNotice, setSkillNotice] = useState<string | null>(null);
+  const skillAnchorRef = useRef<HTMLDivElement>(null);
+  const selectedSkills = skillIds.map(getSkill).filter(skill => skill !== undefined);
+  const missingSkillValues = selectedSkills.some(skill => skill.variables.some(variable =>
+    variable.required && !(skillValues[skill.id]?.[variable.name] ?? variable.defaultValue ?? "").trim()));
+  const selectSkill = (id: string) => {
+    if (getSkill(id)) {
+      setSkillIds(current => [...new Set([...current, id])]);
+      setSkillsConfigured(true);
+    }
+  };
+  const selectCommand = (command: SlashCommand) => {
+    const available = (command.skillIds ?? []).filter(id => getSkill(id));
+    const missing = (command.skillIds ?? []).filter(id => !getSkill(id));
+    setSkillIds(current => [...new Set([...current, ...available])]);
+    if (available.length) setSkillsConfigured(true);
+    setSkillNotice(missing.length ? `Unavailable skills were not selected: ${missing.join(", ")}.` : null);
+  };
   const [compactPane, setCompactPane] = useState<"conversation" | "context">("conversation");
   const conversationToggle = useRef<HTMLButtonElement>(null);
   const [conversation, setConversation] = useState(
@@ -656,6 +692,11 @@ function Inspector({
   useEffect(() => {
     if (promptFailure) {
       setReply(promptFailure.prompt);
+      if (promptFailure.options?.skillIds) {
+        setSkillIds(promptFailure.options.skillIds);
+        setSkillsConfigured(true);
+      }
+      if (promptFailure.options?.skillValues) setSkillValues(promptFailure.options.skillValues);
       if (promptFailure.contextItems) promptAttachments.restore(promptFailure.contextItems);
       setAwaitingResponse(null);
     }
@@ -687,7 +728,7 @@ function Inspector({
       if (target !== "conversation") section?.scrollIntoView?.({ block: "start" });
       const control = target === "decision"
         ? section?.querySelector('.dashboard-questions')?.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled])')
-        : null;
+        : target === "reply" ? section?.querySelector<HTMLTextAreaElement>("textarea") : null;
       (control ?? section)?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
@@ -744,24 +785,32 @@ function Inspector({
     const canonical = Boolean(session.workItemId && session.canonicalWorkItem);
     const blockedCanonicalWait = Boolean(canonical && session.status === "waiting"
       && session.reviewLifecycle?.reviewState !== "decision_needed");
-    if (!displayPrompt || !socketSend || blockedCanonicalWait || !promptAttachments.canSubmit()) return;
+    if (!displayPrompt || !socketSend || blockedCanonicalWait || missingSkillValues || !promptAttachments.canSubmit()) return;
+    const skillsAddendum = compileSkills(selectedSkills, skillValues)
+      || (skillsConfigured ? "No leader skills are currently active." : "");
+    const messagePrompt = skillsAddendum
+      ? `<system-reminder>\n${skillsAddendum}\n</system-reminder>\n\n${displayPrompt}` : displayPrompt;
+    const options: WorkItemPromptOptions | undefined = skillsConfigured
+      ? { displayPrompt, skillIds, skillValues } : undefined;
     if (canonical && session.workItemId && onPromptWorkItem) {
-      const accepted = contextItems.length
-        ? onPromptWorkItem(session.workItemId, displayPrompt, contextItems)
-        : onPromptWorkItem(session.workItemId, displayPrompt);
+      const accepted = options
+        ? onPromptWorkItem(session.workItemId, messagePrompt, contextItems, options)
+        : contextItems.length
+          ? onPromptWorkItem(session.workItemId, displayPrompt, contextItems)
+          : onPromptWorkItem(session.workItemId, displayPrompt);
       if (accepted !== false) markPromptSubmitted(displayPrompt);
       return;
     }
     const prompt = [buildContextUpdateBlock(contextItems.map(item => ({ ...item, kind: "add" as const }))),
-      displayPrompt].filter(Boolean).join("\n\n");
+      messagePrompt].filter(Boolean).join("\n\n");
     const attachments = contextItems.flatMap(item => item.attachments ?? []);
     socketSend(canonical ? {
       type: "continue_work_item",
-      requestId: randomUuid(), workItemId: session.workItemId, prompt, displayPrompt,
+      requestId: randomUuid(), workItemId: session.workItemId, prompt, displayPrompt, ...options,
       ...(attachments.length ? { attachments } : {}),
       expectedLifecycleRevision: session.reviewLifecycle?.lifecycleRevision ?? 0,
       expectedCurrentRunKey: session.sessionKey.startsWith("work-item:") ? null : session.sessionKey,
-    } : { type: "send_message", sessionKey: session.sessionKey, prompt, displayPrompt,
+    } : { type: "send_message", sessionKey: session.sessionKey, prompt, displayPrompt, ...options,
       ...(attachments.length ? { attachments } : {}) });
     markPromptSubmitted(displayPrompt);
   };
@@ -851,7 +900,7 @@ function Inspector({
           <div>
             <div className="act-inspector-meta">
               <span className="act-inspector-kicker">{sessionRoleLabel(session)} session</span>
-              <StatusPill status={session.status} />
+              <StatusPill session={session} />
             </div>
             <h2 tabIndex={-1}>{sessionDisplayTitle(session)}</h2>
           </div>
@@ -979,31 +1028,43 @@ function Inspector({
           )}
           <div className="act-composer">
             <div className="act-composer-inner">
-              <PromptAttachmentList attachments={promptAttachments} />
-              <textarea
-                rows={3}
-                value={reply}
-                onChange={(event) => setReply(event.target.value)}
-                onPaste={promptAttachments.onPaste}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    submitReply();
-                  }
-                }}
-                data-activity-target="reply"
-                placeholder="Reply or steer this agent…"
-                aria-label="Reply or steer this agent"
-              />
-              <div className="act-composer-actions">
-                <PromptAttachmentPicker attachments={promptAttachments} />
-                <button type="button" onClick={submitReply}
-                  disabled={(!reply.trim() && !promptAttachments.items.length) || promptAttachments.blocked || !socketSend
-                    || Boolean(session.workItemId && session.status === "waiting"
-                      && session.reviewLifecycle?.reviewState !== "decision_needed")}>
-                  Send
-                </button>
+              <div ref={skillAnchorRef}>
+                <SkillsPill skillIds={skillIds} open={skillFlyoutOpen} onOpen={() => setSkillFlyoutOpen(true)} />
               </div>
+              {skillNotice && <p role="status">{skillNotice}</p>}
+              {missingSkillValues && <p role="status">Complete required skill settings before sending.</p>}
+              <div data-activity-target="reply">
+                <PromptAttachmentsContext.Provider value={promptAttachments}>
+                  <LeaderSlashCommandsProvider commands={slashCommands} onSelect={selectCommand}>
+                    <LeaderPromptSkillsContext.Provider value={selectSkill}>
+                      <LeaderPromptBar
+                        input={reply} onInputChange={setReply} onSubmit={submitReply}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                            event.preventDefault();
+                            submitReply();
+                          }
+                        }}
+                        placeholder="Reply or steer this agent…" ariaLabel="Reply or steer this agent"
+                        submitLabel="Send" active={Boolean(reply.trim() || promptAttachments.items.length)}
+                        disabled={(!reply.trim() && !promptAttachments.items.length) || promptAttachments.blocked || !socketSend
+                          || missingSkillValues || Boolean(session.canonicalWorkItem && session.workItemId && session.status === "waiting"
+                            && session.reviewLifecycle?.reviewState !== "decision_needed")}
+                        portalSlashMenu
+                      />
+                    </LeaderPromptSkillsContext.Provider>
+                  </LeaderSlashCommandsProvider>
+                </PromptAttachmentsContext.Provider>
+              </div>
+              <SkillFlyout skillIds={skillIds} skillValues={skillValues} open={skillFlyoutOpen}
+                readOnly={false} anchorRef={skillAnchorRef} onClose={() => setSkillFlyoutOpen(false)}
+                onUpdate={(patch) => {
+                  if (patch.skillIds) {
+                    setSkillIds(patch.skillIds);
+                    setSkillsConfigured(true);
+                  }
+                  if (patch.skillValues) setSkillValues(patch.skillValues);
+                }} />
             </div>
           </div>
         </main>
@@ -1199,7 +1260,7 @@ function Inspector({
                 <details className="act-content-card act-session-metadata">
                   <summary className="act-content-card__head">Session information<ChevronRight size={15} aria-hidden /></summary>
                   <dl className="act-detail-list">
-                    <div><dt>Status</dt><dd><StatusPill status={session.status} /></dd></div>
+                    <div><dt>Status</dt><dd><StatusPill session={session} /></dd></div>
                     <div><dt>Role</dt><dd>{sessionRoleLabel(session)}</dd></div>
                     <div><dt>Model</dt><dd>{session.model ?? "Not reported"}</dd></div>
                     <div><dt>Harness</dt><dd>{session.harness ?? "Not reported"}</dd></div>
@@ -2047,6 +2108,7 @@ export function ActivityView({
         <Inspector
           key={activityEntryId(selectedSession)}
           session={selectedSession}
+          projectSettings={projectSettings}
           actionRequest={actionRequest}
           leader={leaderIndex.get(selectedSession.sessionKey)}
           onClose={() => setSelectedKey(null)}

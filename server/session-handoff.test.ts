@@ -17,6 +17,8 @@ import { createSqliteWorkItemService, type WorkItemInvocation } from "./work-ite
 import { createBus } from "./bus.ts";
 import { upsertRenderState } from "./session-repo.ts";
 import { displayTextFromPrompt } from "../shared/handoff-text.ts";
+import { setSessionCanvasContextItems } from "./canvas-context-store.ts";
+import { attachWorkItemBinding } from "./work-item-binding-repo.ts";
 
 beforeEach(() => openPersistDb(":memory:"));
 afterEach(() => closePersistDb());
@@ -47,6 +49,36 @@ function boundary(host: SessionHost, opts: StartSessionOptions) {
 }
 
 describe("provider-boundary handoff regressions", () => {
+  it.each(["provider_continuation", "resume_open_run"] as const)("delivers the saved Full-edge overview on %s and revokes it after downgrade", (invocationKind) => {
+    const host = leader();
+    const db = openPersistDb();
+    db.prepare("INSERT INTO projects(id,name) VALUES (?,?)").run("project", "Project");
+    createWorkItem(db, { id: "source-work", projectId: "project", projectPath: host.cwd,
+      title: "Source", changeMode: "live", at: 3 });
+    startWorkItemIteration(db, { workItemId: "source-work", runKey: "source-run", idempotencyKey: "source",
+      expectedLifecycleRevision: 0, expectedCurrentRunKey: null, at: 4 });
+    attachWorkItemBinding(db, { workItemId: host.workItemId!, surface: "canvas", bindingId: "recipient-node", at: 4 });
+    attachWorkItemBinding(db, { workItemId: "source-work", surface: "canvas", bindingId: "source-node", at: 4 });
+    db.prepare(`INSERT INTO edges(id,project_id,source_node_id,source_port_id,target_node_id,target_port_id,protocol,context_mode)
+      VALUES ('full-edge','project','source-node','out','recipient-node','in','context','full')`).run();
+    setSessionCanvasContextItems(host.id, [{ nodeId: "source-node", nodeType: "leader", label: "Source", content: "TRANSCRIPT",
+      leaderGraphSource: { workItemId: "forged", primaryRunKey: "forged" } }]);
+    const planning = { repo: { db }, inspectConnected: () => ({ plan: { objective: "Ship safely", state: "running",
+      steps: [{ key: "verify", title: "Verify provider delivery" }], graphRunId: "graph" }, runtime: { nodes: [{}] } }) };
+    const opts = options("Resume", { resumeId: "old-provider", invocationKind });
+    const delivered = buildHarnessStartOpts({ host, opts, prompt: opts.prompt, abortController: new AbortController(),
+      agentCtx: { taskGraphPlanning: planning } as unknown as AgentTypeContext,
+      agentType: { id: "default", wantsWorktree: false, buildSystemPrompt: () => "", getToolGroups: () => ({ toolGroups: {}, mcpToolNames: [] }) },
+      toolResult: { toolGroups: {}, mcpToolNames: [] }, harness: { name: "test", builtInTools: [], capabilities: {}, resolveModel: () => null } as unknown as AgentHarness }).startOpts;
+    expect(delivered.prompt).toContain("Connected Task Graph overview");
+    expect(delivered.prompt).toContain("Ship safely");
+    db.prepare("UPDATE edges SET context_mode='lean' WHERE id='full-edge'").run();
+    const revoked = buildHarnessStartOpts({ host, opts, prompt: opts.prompt, abortController: new AbortController(),
+      agentCtx: { taskGraphPlanning: planning } as unknown as AgentTypeContext,
+      agentType: { id: "default", wantsWorktree: false, buildSystemPrompt: () => "", getToolGroups: () => ({ toolGroups: {}, mcpToolNames: [] }) },
+      toolResult: { toolGroups: {}, mcpToolNames: [] }, harness: { name: "test", builtInTools: [], capabilities: {}, resolveModel: () => null } as unknown as AgentHarness }).startOpts;
+    expect(revoked.prompt).not.toContain("Connected Task Graph overview");
+  });
   it("keeps source deltas out of durable directives and preserves the complete snapshot", () => {
     const host = leader();
     const full = buildConnectedContextBlock([

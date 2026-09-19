@@ -26,17 +26,14 @@ dist/
 # Store plans, specs, notes, audits and evidence in .scratch/<task>/ instead.
 # Existing exceptions below do not authorize new internal material in docs/.
 /docs/*
+!/docs/repository-folders.md
 !/docs/getting-started.md
-!/docs/rebrand-compatibility.md
-!/docs/progressive-system-model-retrieval.md
 !/docs/testing-strategy.md
 # Legacy local audit records remain ignored; do not create new work here.
 /docs/audits/
 !/docs/features/
 /docs/features/*
 !/docs/features/canvas-zones.md
-!/docs/features/activity-surface-assessment.md
-!/docs/features/selection-controls-audit.md
 !/docs/images/
 /docs/images/*
 !/docs/images/getting-started-*.png

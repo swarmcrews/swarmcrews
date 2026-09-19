@@ -141,6 +141,32 @@ describe("graph planning tools", () => {
     });
   });
 
+  it("allows connected graph reads only through a current structured source binding", async () => {
+    const inspectConnected=vi.fn(()=>({plan:snapshot("running"),runtime:null,history:[]}));
+    const coordinator={inspectConnected,options:{resolveSourceAuthority:()=>({
+      connectedGraphSources:[{nodeId:"source-node",workItemId:"source-work",primaryRunKey:"source-run"}],
+    })}} as unknown as TaskGraphPlanningCoordinator;
+    const tools=createTaskGraphPlanningTools({coordinator,workItemId:"work",primaryRunKey:"primary",
+      mode:"auto",leaderSessionKey:"leader"});
+    await tools.find(tool=>tool.name==="get_graph_plan")!.handler({connectedSourceId:"source-node"});
+    expect(inspectConnected).toHaveBeenCalledWith({recipientWorkItemId:"work",recipientPrimaryRunKey:"primary",
+      source:{nodeId:"source-node",workItemId:"source-work",primaryRunKey:"source-run"}});
+    await expect(tools.find(tool=>tool.name==="get_graph_plan")!.handler({connectedSourceId:"forged"}))
+      .rejects.toThrow("no longer authorized");
+  });
+
+  it("keeps connected artifact reads on the same structured source binding", async () => {
+    const readConnectedArtifact=vi.fn(()=>({artifactId:"artifact",content:"safe"}));
+    const coordinator={readConnectedArtifact,options:{resolveSourceAuthority:()=>({
+      connectedGraphSources:[{nodeId:"source-node",workItemId:"source-work",primaryRunKey:"source-run"}],
+    })}} as unknown as TaskGraphPlanningCoordinator;
+    const tools=createTaskGraphPlanningTools({coordinator,workItemId:"work",primaryRunKey:"primary",
+      mode:"auto",leaderSessionKey:"leader"});
+    await tools.find(tool=>tool.name==="read_graph_artifact")!.handler({artifactId:"artifact",connectedSourceId:"source-node"});
+    expect(readConnectedArtifact).toHaveBeenCalledWith(expect.objectContaining({recipientWorkItemId:"work",
+      recipientPrimaryRunKey:"primary",source:expect.objectContaining({workItemId:"source-work"})}));
+  });
+
   it("does not request user approval for pending merge-review metadata", async () => {
     const coordinator = { submit: vi.fn(async () => snapshot("ready", {
       autoStartEligible: true,

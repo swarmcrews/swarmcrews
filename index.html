@@ -10,11 +10,15 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Swarmcrews" />
     <title>Swarmcrews</title>
+    <link rel="stylesheet" href="/src/root-load-state.css" />
   </head>
-  <body style="margin:0;background:#0a0e1a;color:#e6ecf5">
+  <body style="margin:0;background:var(--bg-primary, #0a0e1a);color:var(--text-primary, #e6ecf5)">
     <div id="root">
-      <div role="status" aria-live="polite" style="min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;font-family:system-ui,sans-serif;text-align:center">
-        <div><div role="img" aria-label="Swarmcrews" style="display:flex;align-items:center;gap:12px;width:260px"><img src="/brand/leader-mark.svg" alt="" style="width:34px;height:34px"><img src="/brand/swarmcrews-wordmark.svg" alt="" style="width:214px"></div><span style="display:block;margin-top:8px;color:#aab3c5">Loading workspace…</span></div>
+      <div class="root-loading" role="status" aria-live="polite">
+        <div class="root-loading__content">
+          <span class="brand" role="img" aria-label="Swarmcrews"><span class="brand__mark"></span><span class="brand__wordmark"><span class="brand__swarm"></span><span class="brand__crews"></span></span></span>
+          <span class="root-loading__message">Loading workspace…</span>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

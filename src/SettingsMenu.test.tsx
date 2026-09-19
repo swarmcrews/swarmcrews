@@ -120,6 +120,18 @@ describe("SettingsMenu", () => {
 
     const navigation = screen.getByRole("navigation", { name: /settings categories/i });
     expect(navigation).toBeInTheDocument();
+    expect(
+      within(navigation)
+        .getAllByRole("button")
+        .map((button) => button.querySelector("strong")?.firstChild?.textContent?.trim()),
+    ).toEqual([
+      "General",
+      "Agent defaults",
+      "Workspace",
+      "Connections",
+      "Context actions",
+      "Governance",
+    ]);
     expect(screen.getByRole("button", { name: /general/i })).toHaveAttribute(
       "aria-current",
       "page",

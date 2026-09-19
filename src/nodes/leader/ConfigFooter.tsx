@@ -392,6 +392,7 @@ export function ConfigFooter({
             </div>
 
             <SandboxPolicyControls
+              mcpAvailable={(data.connectionIds?.length ?? 0) > 0}
               policy={data.sandboxPolicy}
               effective={data.effectiveSandboxPolicy}
               support={harnessesLoaded

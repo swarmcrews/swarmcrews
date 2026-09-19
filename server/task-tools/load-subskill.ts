@@ -3,6 +3,6 @@ import { createSkillRetrievalTools } from "../skill-retrieval.ts";
 import type { TaskToolContext } from "./types.ts";
 export function createLoadSubskillToolDef(ctx: TaskToolContext) {
   return createSkillRetrievalTools({ projectPath: ctx.projectPath,
-    skillSnapshotId: ctx.skillSnapshotId, skillValues: ctx.defaultMinionSkillValues })
+    skillSnapshotId: ctx.skillSnapshotId, skillValues: ctx.defaultMinionSkillValues, skillIds: ctx.defaultMinionSkillIds })
     .find(tool => tool.name === "load_subskill")!;
 }

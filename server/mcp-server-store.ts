@@ -13,6 +13,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import {
   safeParseMcpServerEntry,
   parseMcpServerEntry,
@@ -44,24 +45,22 @@ function ensureDir(filePath: string): void {
 function readRawEntries(projectPath: string): unknown[] {
   const filePath = mcpServersFilePath(projectPath);
   if (!fs.existsSync(filePath)) return [];
-  let raw: string;
-  try {
-    raw = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return [];
-  }
+  const raw = fs.readFileSync(filePath, "utf-8");
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) throw new Error("Expected an array");
+    return parsed;
   } catch {
-    return [];
+    throw new Error("Saved connections are unreadable. Repair mcp-servers.json; the existing file has been preserved.");
   }
 }
 
 function writeRawEntries(projectPath: string, entries: McpServerEntry[]): void {
   const filePath = writableMcpServersFilePath(projectPath);
   ensureDir(filePath);
-  fs.writeFileSync(filePath, JSON.stringify(entries, null, 2), { mode: 0o600 });
+  const temp = `${filePath}.${randomUUID()}.tmp`;
+  try { fs.writeFileSync(temp, JSON.stringify(entries, null, 2), { mode: 0o600 }); fs.renameSync(temp, filePath); }
+  finally { fs.rmSync(temp, { force: true }); }
   fs.chmodSync(filePath, 0o600);
 }
 
@@ -180,7 +179,8 @@ export function saveMcpServer(
   // Validate — throws ZodError on invalid input.
   const validated = parseMcpServerEntry(entry);
 
-  const { entries } = listMcpServers(projectPath);
+  const { entries, invalid } = listMcpServers(projectPath);
+  if (invalid.length) throw new Error("Repair invalid connection entries before saving. Existing data has been preserved.");
   const idx = entries.findIndex((e) => e.id === validated.id);
   if (idx >= 0) {
     entries[idx] = validated;
@@ -197,7 +197,8 @@ export function saveMcpServer(
  * found (idempotent).
  */
 export function deleteMcpServer(projectPath: string, id: string): boolean {
-  const { entries } = listMcpServers(projectPath);
+  const { entries, invalid } = listMcpServers(projectPath);
+  if (invalid.length) throw new Error("Repair invalid connection entries before deleting. Existing data has been preserved.");
   const next = entries.filter((e) => e.id !== id);
   if (next.length === entries.length) return false;
   writeRawEntries(projectPath, next);

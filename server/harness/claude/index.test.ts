@@ -251,7 +251,7 @@ describe("ClaudeHarness.start()", () => {
     expect(lastQueryOptions()["pathToClaudeCodeExecutable"]).toBe(TEST_CLAUDE_PATH);
   });
 
-  it("wraps registered tool groups into mcpServers and merges external MCP servers", async () => {
+  it("exposes only allowed registered tools and retains legacy direct-adapter configuration", async () => {
     const handle = makeHandle([doneMessage()]);
     sdkMock.query.mockReturnValue(handle);
     const harness = await importHarness();
@@ -276,7 +276,6 @@ describe("ClaudeHarness.start()", () => {
       name: "internal",
       tools: [
         expect.objectContaining({ name: "alpha" }),
-        expect.objectContaining({ name: "beta" }),
       ],
     });
     expect(lastQueryOptions()["mcpServers"]).toEqual({
@@ -286,8 +285,7 @@ describe("ClaudeHarness.start()", () => {
           name: "internal",
           tools: [
             expect.objectContaining({ name: "alpha" }),
-            expect.objectContaining({ name: "beta" }),
-          ],
+              ],
         },
       },
       external: externalServer,
@@ -328,7 +326,6 @@ describe("ClaudeHarness.start()", () => {
       {
         name: "zeta",
         tools: [
-          expect.objectContaining({ name: "alpha" }),
           expect.objectContaining({ name: "gamma" }),
         ],
       },

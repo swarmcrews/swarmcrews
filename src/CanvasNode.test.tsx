@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CanvasNodeComponent } from "./CanvasNode.tsx";
 import { registerNodeType } from "./node-registry.ts";
 import type { CanvasNode, NodeRenderProps } from "./types.ts";
+import { clearLeaderFullscreen, leaderFullscreenStore } from "./leader-fullscreen-request.ts";
 
 const advanceFrame = mockAnimationFrames();
 
@@ -148,4 +149,101 @@ it("cancels scheduled movement and restores document styles when unmounted", () 
   expect(onMove).not.toHaveBeenCalled();
   expect(document.body.style.userSelect).toBe(userSelect);
   expect(document.body.style.cursor).toBe(cursor);
+});
+
+describe("leader context menu", () => {
+  it("requests fullscreen for the right-clicked leader", () => {
+    renderNode();
+    fireEvent.contextMenu(screen.getByTestId("leader-body"));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Open fullscreen/ }));
+    expect(leaderFullscreenStore.getSnapshot()?.nodeId).toBe("leader-1");
+    expect(screen.queryByRole("menu")).toBeNull();
+    clearLeaderFullscreen();
+  });
+
+  it("keeps the menu within viewport bounds", () => {
+    const measure = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      { x: 0, y: 0, left: 0, top: 0, right: 288, bottom: 350, width: 288, height: 350, toJSON: () => ({}) },
+    );
+    try {
+      renderNode();
+      fireEvent.contextMenu(screen.getByTestId("leader-body"), { clientX: window.innerWidth - 1, clientY: window.innerHeight - 1 });
+      expect(screen.getByRole("menu")).toHaveStyle({
+        left: `${window.innerWidth - 288 - 8}px`, top: `${window.innerHeight - 350 - 8}px`,
+      });
+    } finally {
+      measure.mockRestore();
+    }
+  });
+
+  it("opens a viewport menu and moves only after choosing the workspace action", () => {
+    const onMoveToZone = vi.fn();
+    const onMove = vi.fn();
+    renderNode({ onMoveToZone, onMove });
+    fireEvent.contextMenu(screen.getByTestId("leader-body"), { clientX: 120, clientY: 140 });
+    const menu = screen.getByRole("menu", { name: "Leader actions" });
+    expect(menu.closest(".canvas-node-card")).toBeNull();
+    expect(menu).toHaveStyle({ left: "120px", top: "140px" });
+    expect(onMoveToZone).not.toHaveBeenCalled();
+    fireEvent.mouseDown(screen.getByRole("menuitem", { name: "Move to workspace…" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move to workspace…" }));
+    expect(onMoveToZone).toHaveBeenCalledExactlyOnceWith("leader-1");
+    expect(onMove).not.toHaveBeenCalled();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it.each([
+    ["Center on canvas", "onFocusNode"],
+    ["Duplicate setup", "onDuplicateLeaderSetup"],
+    ["Open system model", "onOpenSystemModel"],
+  ] as const)("routes %s to the right-clicked leader", (label, callback) => {
+    const action = vi.fn();
+    renderNode({
+      [callback]: action,
+      node: { id: "target-leader", type: "leader", position: { x: 0, y: 0 },
+        size: { width: 240, height: 160 }, data: { taskName: "Ship the release", sessionKey: "session-1" } },
+    });
+    fireEvent.contextMenu(screen.getByTestId("leader-body"));
+    expect(screen.getByText("Ship the release")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(label) }));
+    expect(action).toHaveBeenCalledExactlyOnceWith("target-leader");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("preserves the native context menu in editable fields", () => {
+    const onMoveToZone = vi.fn();
+    renderNode({ onMoveToZone });
+    expect(fireEvent.contextMenu(screen.getByLabelText("Leader title"))).toBe(true);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(onMoveToZone).not.toHaveBeenCalled();
+  });
+
+  it("navigates with arrow keys, closes on Escape, and restores focus", () => {
+    renderNode({ onMoveToZone: vi.fn() });
+    const input = screen.getByLabelText("Leader title");
+    input.focus();
+    fireEvent.contextMenu(screen.getByTestId("leader-body"));
+    const first = screen.getByRole("menuitem", { name: /Open fullscreen/ });
+    const last = screen.getByRole("menuitem", { name: "Move to workspace…" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "ArrowUp" });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "ArrowDown" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "End" });
+    expect(last).toHaveFocus();
+    fireEvent.keyDown(last, { key: "Home" });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: "Escape" });
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(input).toHaveFocus();
+  });
+
+  it("hides session-only actions before a session exists and dismisses outside", () => {
+    renderNode({ onOpenSystemModel: vi.fn() });
+    fireEvent.contextMenu(screen.getByTestId("leader-body"));
+    expect(screen.queryByRole("menuitem", { name: "Open system model" })).toBeNull();
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
 });

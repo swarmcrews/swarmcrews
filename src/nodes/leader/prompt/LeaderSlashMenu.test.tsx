@@ -20,6 +20,17 @@ const commands: SlashCommand[] = [
 ];
 
 describe("LeaderSlashMenu", () => {
+  it("captures canvas scrolling on the command list without preventing native scroll", () => {
+    render(<LeaderSlashMenu commands={commands} selectedIndex={0} onSelect={() => {}} onHover={() => {}} />);
+    const option = screen.getByRole("option", { name: /Analyze/ });
+    const scrollArea = option.closest("[data-scroll-capture]");
+    expect(scrollArea).not.toBeNull();
+    expect(scrollArea).toHaveStyle({ overflowY: "auto", overscrollBehavior: "contain" });
+    for (const deltaY of [100, -100]) {
+      expect(fireEvent.wheel(option, { deltaY })).toBe(true);
+    }
+  });
+
   it("renders an accessible highlighted option", () => {
     render(
       <LeaderSlashMenu

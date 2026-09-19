@@ -6,7 +6,9 @@ import {
   attentionKind,
   attentionAction,
   needsAttention,
-  sessionStatusLabel,
+  activityStatusLabel,
+  activityStatusTone,
+  isActivityWorking,
   isSessionTitleEcho,
   sessionDisplayTitle,
   sessionRoleLabel,
@@ -22,6 +24,11 @@ function pendingReviewState(session: MobileSessionInfo): string {
 }
 
 function relevanceBucket(session: MobileSessionInfo): number {
+  if (session.workItemPresentation) {
+    if (needsAttention(session)) return Math.min(session.workItemPresentation.attentionRank, 3);
+    if (isActivityWorking(session)) return 4;
+    return 5;
+  }
   const reviewState = pendingReviewState(session);
   if (reviewState === "decision_needed") return 0;
   if (
@@ -62,6 +69,7 @@ export function selectRelevantSessions(
 }
 
 export function sessionRelevanceLabel(session: MobileSessionInfo): string {
+  if (session.workItemPresentation) return activityStatusLabel(session);
   const reviewState = pendingReviewState(session);
   if (reviewState === "decision_needed") return "Decision needed";
   if (reviewState === "error_to_review" || session.status === "error") return "Needs recovery";
@@ -100,6 +108,9 @@ function sessionMeta(session: MobileSessionInfo): string {
 }
 
 function relevanceTone(session: MobileSessionInfo): string {
+  if (session.workItemPresentation) {
+    return needsAttention(session) ? attentionKind(session) : isActivityWorking(session) ? "active" : "recent";
+  }
   const reviewState = pendingReviewState(session);
   if (
     reviewState !== "none" ||
@@ -152,10 +163,10 @@ export function ActivitySessionHome({
         >
           <div className="act-session-feature__heading">
             <span>Best next step</span>
-            <span className={`act-pill act-pill--${primary.status}`}>{sessionStatusLabel(primary.status)}</span>
+            <span className={`act-pill act-pill--${activityStatusTone(primary)}`}>{activityStatusLabel(primary)}</span>
           </div>
           <div className="act-session-feature__body">
-            {sessionRelevanceLabel(primary) !== sessionStatusLabel(primary.status) && (
+            {sessionRelevanceLabel(primary) !== activityStatusLabel(primary) && (
               <span className="act-session-home__reason">{sessionRelevanceLabel(primary)}</span>
             )}
             <h3 id="act-session-feature-title">{sessionDisplayTitle(primary)}</h3>

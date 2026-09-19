@@ -4,8 +4,14 @@
 
 <p align="center">
 A spatial workspace for coordinating coding agents through Claude Code,
-OpenAI Codex, OpenCode, and Pi harnesses. Give a Leader a complex task, and it
+OpenAI Codex, GitHub Copilot, OpenCode, and Pi harnesses. Give a Leader a complex task, and it
 spawns parallel Minion agents that collaborate in real time.
+</p>
+
+<p align="center">
+  <a href="https://swarmcrews.com">
+    <img src="./assets/swarmcrews-readme-banner.svg" alt="One task. A whole crew. Swarmcrews coordinates parallel coding agents on a shared canvas, from a Leader's plan to changes ready for your review. Explore Swarmcrews at swarmcrews.com." width="960">
+  </a>
 </p>
 
 > **Status:** Early-stage open-source software. Interfaces and data formats may
@@ -22,7 +28,7 @@ Swarmcrews gives you a spatial interface for orchestrating coding agents:
 - **Git worktree isolation** — Minions share the Leader's isolated worktree, declared overlapping write scopes are rejected during assignment, and changes route through an explicit approval flow before merging
 - **Skills browser** — browse, create, and launch pre-configured skill templates
 - **Project management** — persistent projects with SQLite storage, session history, cost tracking
-- **Multiple agent harnesses** — use Claude Code, OpenAI Codex, OpenCode, or Pi, with each installed harness exposing its own configured model catalog
+- **Multiple agent harnesses** — use Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, or Pi, with each installed harness exposing its own configured model catalog
 
 ## Prerequisites
 
@@ -30,7 +36,7 @@ You need all of the following installed before starting:
 
 | Requirement | Why |
 |---|---|
-| **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. OpenCode and Pi are discovered on `PATH` (or via `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
+| **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. Copilot, OpenCode, and Pi are discovered on `PATH` (or via `COPILOT_CLI_PATH` / `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
 | **Node.js ≥ 22** | Required by the agent SDKs and modern runtime features |
 | **pnpm** | Package manager (`npm install -g pnpm` if you don't have it) |
 | **git** | Used for repository access and optional worktree isolation |
@@ -114,6 +120,7 @@ All optional — sane defaults are provided:
 | `VITE_PORT` | `6173` | Vite and Tailscale-facing application port |
 | `CLAUDE_CODE_PATH` | SDK discovery | Optional Claude executable override |
 | `CODEX_PATH` | SDK discovery | Optional Codex executable override |
+| `COPILOT_CLI_PATH` | `PATH` discovery | Optional Copilot CLI executable override |
 | `CODEX_API_KEY` / `OPENAI_API_KEY` | Codex CLI login | Optional Codex API credentials |
 | `SWARMCREWS_HOME` | `~/.swarmcrews` | Central registry, project state, and Swarmcrews-owned worktrees |
 
@@ -152,7 +159,7 @@ $SWARMCREWS_HOME/
 does not exist but `~/.minions` does, Swarmcrews continues using the legacy home.
 Explicit `SWARMCREWS_HOME` takes precedence over the supported `MINIONS_HOME`
 alias; if both default directories exist, `~/.swarmcrews` wins. Nothing is moved
-or merged automatically. See [rebrand compatibility](./docs/rebrand-compatibility.md).
+or merged automatically.
 Do not hand-edit `registry.json` or
 derive a source path from a UUID. Registration canonicalizes paths and the file
 APIs continue to reject traversal and symlink escapes outside the registered
@@ -208,7 +215,7 @@ scope in project defaults or before launching a new Leader; it persists across
 resumes and restarts. Running processes retain their launch policy.
 
 Codex enforces both sandbox axes. Harnesses that cannot enforce an axis
-report it as `unmanaged`; Swarmcrews does not claim that Claude, OpenCode, or Pi
+report it as `unmanaged`; Swarmcrews does not claim that Claude, Copilot, OpenCode, or Pi
 enforce these provider-neutral sandbox guarantees. Treat requested policy and
 effective policy as different values, and use OS-level isolation when an
 unmanaged axis is unacceptable.
@@ -373,7 +380,7 @@ src/                  Frontend React application
   components/         Shared UI components
 server/               Backend Express + WebSocket server
   agents/             Per-agent (leader, minion, default) wiring
-  harness/            Claude, Codex, OpenCode, Pi, and test adapters
+  harness/            Claude, Codex, Copilot, OpenCode, Pi, and test adapters
   mcp-bridge/         Loopback bridge for harness MCP tool access
   commands/           Per-command WebSocket handlers
   routes/             REST API route handlers
@@ -397,10 +404,32 @@ Make sure `claude` works on its own first — run `claude` in your terminal to v
 Run `codex login`, or start Swarmcrews with `CODEX_API_KEY` or `OPENAI_API_KEY`
 available in the server environment.
 
+**Copilot does not appear with models**
+
+Install `copilot`, run `copilot login`, and ensure the server can find it on
+`PATH` or through `COPILOT_CLI_PATH`. Refresh readiness after signing in. Model
+choices and capabilities come from the SDK catalog for your account. See
+[harness model discovery](docs/features/harness-model-discovery.md) for metadata
+and supported controls.
+
 **OpenCode or Pi does not appear with models**
 Run `opencode models` or `pi --list-models` in the project directory. Swarmcrews
 shows the effective catalog returned by that command. Set `OPENCODE_PATH` or
 `PI_PATH` when the executable is not on the server's `PATH`.
+
+Pi readiness supports npm/npx wrappers through the configured `pi` command.
+It allows up to 20 seconds for `--list-models`, followed by up to eight seconds
+for optional RPC capability discovery, within a 30-second overall deadline.
+A failed capability query does not invalidate a successfully discovered catalog.
+Session launch reuses readiness results for up to 30 seconds; an explicit
+readiness refresh still forces a new check. Other harnesses retain a five-second
+probe deadline.
+Run the check under the server's account: Pi also needs permission to create
+lock files in its configuration directory.
+
+When a requested harness is unavailable, session launch falls back only to the
+project's default harness for that role (Leader or Minion). If that default is
+also unavailable, launch fails instead of choosing another registered harness.
 
 **Port already in use**
 Another instance may be running. Kill it or use a different port: `PORT=3142 pnpm start`

@@ -4,6 +4,7 @@ import { taskGraphPlanSnapshotViewSchema } from "../../shared/task-graph-plannin
 import { GraphInspector } from "./GraphInspector.tsx";
 import { GraphPlanProposalCard, GraphPlanProposalDialog } from "./GraphPlanProposal.tsx";
 import { GraphSummaryCard } from "./GraphSummaryCard.tsx";
+import { Topology } from "./Topology.tsx";
 import { WorkQueue } from "./WorkQueue.tsx";
 import { createGraphFixture } from "./fixtures.ts";
 
@@ -22,6 +23,40 @@ const proposal = () => taskGraphPlanSnapshotViewSchema.parse({
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Task Graph usability regressions", () => {
+  it("shows session models on graph cards, in the queue, and in attempt details", () => {
+    const snapshot = createGraphFixture(2);
+    const node = snapshot.nodes[0]!;
+    node.requestedModel = "gpt-5.6-sol";
+    node.currentAttempt!.model = "gpt-5.6-terra";
+    node.currentAttempt!.harness = "codex";
+    node.attemptHistory[0]!.model = "gpt-5.6-sol";
+    const onSelect = vi.fn();
+    const { unmount } = render(<Topology snapshot={snapshot} filter="all" selectedNodeId={null} onSelect={onSelect} />);
+    const card = screen.getByRole("button", { name: /Task 0; Model: gpt-5.6-terra/ });
+    expect(within(card).getByText("Model: gpt-5.6-terra")).toBeVisible();
+    fireEvent.click(card);
+    expect(onSelect).toHaveBeenCalledWith(node.id);
+    unmount();
+    const queue = render(<WorkQueue nodes={snapshot.nodes} onSelect={onSelect} />);
+    expect(screen.getByText("Model: gpt-5.6-terra")).toBeVisible();
+    queue.unmount();
+    render(<GraphInspector snapshot={snapshot} onClose={vi.fn()} onAction={vi.fn()} initialSelectedNodeId={node.id} />);
+    const detail = screen.getByRole("complementary", { name: "Task 0" });
+    expect(within(detail).getByText("Model: gpt-5.6-terra")).toBeVisible();
+    expect(within(detail).getByText(/Model: gpt-5.6-sol/)).toBeVisible();
+  });
+
+  it("distinguishes requested and default models from unrecorded session models", () => {
+    const snapshot = createGraphFixture(3);
+    snapshot.nodes[0]!.currentAttempt = null;
+    snapshot.nodes[0]!.requestedModel = "sonnet";
+    snapshot.nodes[1]!.currentAttempt = null;
+    render(<Topology snapshot={snapshot} filter="all" selectedNodeId={null} onSelect={vi.fn()} />);
+    expect(screen.getByText("Requested model: sonnet")).toBeVisible();
+    expect(screen.getByText("Model: default at launch")).toBeVisible();
+    expect(screen.getByText("Model: not recorded")).toBeVisible();
+  });
+
   it("contains initial reverse Tab and restores focus after closing rails", () => {
     render(<GraphInspector snapshot={createGraphFixture(10)} onClose={vi.fn()} onAction={vi.fn()} initialSelectedNodeId="node-1" />);
     const dialog = screen.getByRole("dialog");

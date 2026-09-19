@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { graphPlanningAnalysisSchema } from "../../shared/task-graph-experiments.ts";
 import {
   semanticGraphDependencySchema,
   semanticGraphPlanStepSchema,
@@ -17,6 +18,7 @@ const stepKeySchema = z.string().trim().min(1).max(120)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 
 export const graphDocumentHeaderSchema = z.object({
+  planningAnalysis: graphPlanningAnalysisSchema.optional(),
   objective: z.string().trim().min(1),
   acceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
   nonGoals: z.array(z.string().trim().min(1)).default([]),

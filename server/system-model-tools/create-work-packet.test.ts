@@ -37,7 +37,8 @@ describe("create_work_packet", () => {
     };
 
     expect(payload.packetRequired).toBe(true);
-    expect(payload.packet.matchConfidence).toBe("high");
+    // Advisory retrieval confidence does not disable deterministic packet requirements.
+    expect(payload.packet.matchConfidence).toBe("low");
     expect(payload.packet.freshness.status).toBe("fresh");
     expect(payload.packet.criterionCoverage).toEqual([
       expect.objectContaining({ criterionId: "criterion-1", status: "open" }),

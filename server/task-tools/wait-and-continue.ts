@@ -28,7 +28,9 @@ const waitAndContinueInputSchema = z.object({
 export function createWaitAndContinueToolDef(ctx: TaskToolContext): NormalizedToolDef {
   return {
     name: "wait_and_continue",
-    description:
+    description: ctx.decisionContinuations
+      ? "Arm a durable wait for the next graph decision, then END THE TURN. Name the next decision in reason; use all_terminal unless earlier integration is useful. Graph terminal/attention events resume early. Do not poll or end an unarmed waiting turn. Maximum timeout: 30 minutes."
+      :
       'Pause execution for a specified duration, then the system will automatically resume your session with a "Continue" message. Use this when you need to wait for external processes (builds, deploys, tests) or to periodically check on long-running minion tasks. Maximum wait: 30 minutes.',
     inputSchema: waitAndContinueInputSchema,
     handler: async (input: unknown) => {
@@ -76,7 +78,8 @@ export function createWaitAndContinueToolDef(ctx: TaskToolContext): NormalizedTo
           ? " Resumes on any terminal child task."
           : "";
       return textResult(
-        `Waiting ${display.trim()}; session auto-resumes with "Continue".${policyNote}`,
+        ctx.decisionContinuations ? `Durable wait armed for ${display.trim()}. End this turn now; graph terminal/attention events resume early. No polling.${policyNote}`
+          : `Waiting ${display.trim()}; session auto-resumes with "Continue".${policyNote}`,
       );
     },
   };

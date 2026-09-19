@@ -105,14 +105,14 @@ describe("mcp-server-store", () => {
       const p = mcpServersFilePath(projectDir);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, JSON.stringify({ not: "an array" }));
-      expect(listMcpServers(projectDir)).toEqual({ entries: [], invalid: [], securityWarnings: [] });
+      expect(() => listMcpServers(projectDir)).toThrow("preserved");
     });
 
-    it("tolerates invalid JSON without throwing", () => {
+    it("surfaces invalid JSON without replacing the file", () => {
       const p = mcpServersFilePath(projectDir);
       fs.mkdirSync(path.dirname(p), { recursive: true });
       fs.writeFileSync(p, "{ not valid json");
-      expect(listMcpServers(projectDir)).toEqual({ entries: [], invalid: [], securityWarnings: [] });
+      expect(() => listMcpServers(projectDir)).toThrow("preserved");
     });
 
     it("preserves all three transport types", () => {

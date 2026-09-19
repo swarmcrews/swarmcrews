@@ -40,8 +40,12 @@ export function saveSkillSnapshot(projectPath: string, snapshot: SkillSnapshot):
 }
 
 export function captureSkillSnapshot(projectPath: string,
-  values: SkillSnapshot["values"] = {}): string {
-  return saveSkillSnapshot(projectPath, { version: 1, skills: loadAllSkills(projectPath), values });
+  values: SkillSnapshot["values"] = {}, selectedSkillIds: readonly string[] = []): string {
+  // Unadvertised skills enter a new run only through the user's selection.
+  // Children inherit this same frozen catalog.
+  const skills = loadAllSkills(projectPath).filter(skill =>
+    skill.selfServe !== false || selectedSkillIds.includes(skill.id));
+  return saveSkillSnapshot(projectPath, { version: 1, skills, values });
 }
 
 /** A missing or changed snapshot fails explicitly; never silently read the live library. */

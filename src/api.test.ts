@@ -7,7 +7,9 @@ import {
   encodePath,
   getAuthToken,
   getHarnessReadiness,
+  getRepositoryPathSuggestions,
   getProjectTree,
+  getProjectActivitySummary,
   listProjects,
   rebindProject,
   updateProjectContext,
@@ -24,6 +26,26 @@ describe("API client boundary", () => {
   beforeEach(() => {
     clearAuthToken();
     vi.restoreAllMocks();
+  });
+
+  it("batches badge scopes and sends only IDs with authentication and cancellation", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ token: "secret" }))
+      .mockResolvedValueOnce(jsonResponse([{ projectId: "p0", activeSessions: 1 }]))
+      .mockResolvedValueOnce(jsonResponse([{ projectId: "p100", activeSessions: 0 }]));
+    const ids = Array.from({ length: 101 }, (_, i) => `p${i}`);
+    expect(await getProjectActivitySummary([...ids, "p0"], controller.signal)).toEqual([
+      { projectId: "p0", activeSessions: 1 }, { projectId: "p100", activeSessions: 0 },
+    ]);
+    const requests = fetchMock.mock.calls.slice(1);
+    expect(requests).toHaveLength(2);
+    expect(requests.map(([, options]) => JSON.parse(options!.body as string).projectIds.length)).toEqual([100, 1]);
+    for (const [url, options] of requests) {
+      expect(url).toBe("/api/projects/activity-summary");
+      expect(options).toMatchObject({ method: "POST", signal: controller.signal,
+        headers: { Authorization: "Bearer secret" } });
+    }
   });
 
   it("coalesces concurrent token bootstrap requests and caches the result", async () => {
@@ -117,6 +139,19 @@ describe("API client boundary", () => {
         body: JSON.stringify({ name: "Demo", path: "/repo", gitAction: "initialize" }),
       })],
     ]);
+  });
+
+  it("posts server-native repository path requests without transforming Windows paths", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ token: "secret" }))
+      .mockResolvedValueOnce(jsonResponse({ platform: "win32", separator: "\\\\", roots: [], directory: "C:\\\\work", parent: "C:\\\\", breadcrumbs: [], entries: [], truncated: false }));
+
+    await getRepositoryPathSuggestions({ path: "C:\\work\\demo", mode: "browse" });
+
+    expect(fetchMock).toHaveBeenLastCalledWith("/api/projects/path-suggestions", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ path: "C:\\work\\demo", mode: "browse" }),
+    }));
   });
 
   it("sends explicit workspace attachment and rebind operations", async () => {

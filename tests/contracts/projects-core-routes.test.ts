@@ -196,7 +196,8 @@ describe("POST /  — create project", () => {
     expect(workspace.sourceRoot).toBe(fs.realpathSync(newPath));
     expect(fs.existsSync(path.join(newPath, ".minions"))).toBe(false);
     expect(fs.existsSync(path.join(newPath, ".git"))).toBe(true);
-    expect(fs.existsSync(path.join(workspace.stateRoot, "context.md"))).toBe(true);
+    expect(fs.existsSync(path.join(workspace.stateRoot, "context.md"))).toBe(false);
+    expect(fs.existsSync(path.join(newPath, "AGENTS.md"))).toBe(false);
 
     const uuidRes = await fetch(`${baseUrl}/${body["id"] as string}`);
     expect(uuidRes.status).toBe(200);
@@ -271,6 +272,17 @@ describe("POST /open — open existing project", () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect(body["path"]).toBe(project);
     expect(body["nodes"]).toEqual([]);
+  });
+
+  it("accepts a quoted pasted absolute repository path", async () => {
+    teardownProject();
+    const res = await fetch(`${baseUrl}/open`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: `  \"${project}\"  `, gitAction: "continue_without_git" }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { path: string }).path).toBe(project);
   });
 
   it("returns 404 when the directory does not exist", async () => {

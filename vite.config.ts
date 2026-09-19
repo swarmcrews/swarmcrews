@@ -1,5 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { themeBootstrap } from './build/theme-bootstrap.ts'
+import { BROWSER_SECURITY_HEADERS } from './shared/browser-security-headers.ts'
 
 // Front the whole app on the Vite port and forward backend traffic to the
 // server. Keeping /api and /ws same-origin means a single HTTPS front (e.g.
@@ -16,9 +18,10 @@ const allowedHosts = [
 ]
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), themeBootstrap()],
   server: {
     host: "127.0.0.1",
+    headers: BROWSER_SECURITY_HEADERS,
     allowedHosts,
     proxy: apiProxy,
     watch: {
@@ -33,6 +36,7 @@ export default defineConfig({
   },
   preview: {
     host: "127.0.0.1",
+    headers: BROWSER_SECURITY_HEADERS,
     allowedHosts,
     proxy: apiProxy,
   },

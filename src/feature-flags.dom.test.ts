@@ -30,12 +30,12 @@ afterEach(() => {
 });
 
 describe("feature-flags registry", () => {
-  it("registers the mcp-servers flag, disabled by default", () => {
+  it("registers the mcp-servers flag, enabled by default", () => {
     const def = FEATURE_FLAGS.find((f) => f.id === FLAG_MCP_SERVERS);
     expect(def).toBeDefined();
-    expect(def?.defaultValue).toBe(false);
+    expect(def?.defaultValue).toBe(true);
     // With no override persisted, the flag reads as its default.
-    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(false);
+    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(true);
   });
 
   it("returns false for unknown ids (fail-closed)", () => {
@@ -91,7 +91,7 @@ describe("storage robustness", () => {
     // Non-boolean overrides are dropped, so every registered flag falls
     // back to its default value.
     expect(getAllFeatureFlags()).toEqual({
-      [FLAG_MCP_SERVERS]: false,
+      [FLAG_MCP_SERVERS]: true,
       [FLAG_DIALECTIC]: false,
     });
   });

@@ -104,6 +104,8 @@ export function coerceSkill(raw: unknown): SkillTemplate | null {
     accentColor: isString(raw["accentColor"]) ? raw["accentColor"] : "var(--info-color)",
     template: raw["template"],
     variables: sanitizeVariables(raw["variables"]),
+    ...(typeof raw["isDefault"] === "boolean" ? { isDefault: raw["isDefault"] } : {}),
+    ...(typeof raw["selfServe"] === "boolean" ? { selfServe: raw["selfServe"] } : {}),
   };
   const attachments = sanitizeSkillAttachments(raw["attachments"]);
   if (attachments.length > 0) skill.attachments = attachments;

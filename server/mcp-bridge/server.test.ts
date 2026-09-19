@@ -107,6 +107,15 @@ describe("MCP bridge HTTP server", () => {
   let bridge: InProcessBridgeServer;
   let registration: McpBridgeRegistration;
 
+  it("supports MCP ping and rejects invalid Origin and protocol headers", async () => {
+    const endpoint = registration.urlFor("task-manager");
+    const request = (headers: Record<string, string>) => fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${registration.bearerToken}`, ...headers }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) });
+    expect(await (await request({})).json()).toMatchObject({ result: {} });
+    expect((await request({ Origin: "https://untrusted.example" })).status).toBe(403);
+    expect((await request({ "MCP-Protocol-Version": "1900-01-01" })).status).toBe(400);
+    expect((await request({ "MCP-Protocol-Version": "2025-06-18" })).status).toBe(200);
+  });
+
   beforeEach(async () => {
     bridge = startInProcessBridgeServer();
     fetch = bridge.fetch;

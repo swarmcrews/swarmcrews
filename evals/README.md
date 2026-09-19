@@ -63,13 +63,21 @@ common process executor. Focused tests also reject targeted defects. Worker test
 kill and restart real processes; archive tests exercise SQLite, HTTP and Chromium.
 No candidate function is imported into the evaluator process.
 
+## Task Graph evolution benchmark
+
+The [workflow recovery experiment](experiments/workflow-recovery/README.md) adds a
+complex dependency/lease/crash-recovery task, a private subprocess grader with
+mutation checks, fresh three-mode pilots, and a deterministic promotion gate.
+Its [experiment record](experiments/workflow-recovery/RESULTS.md) distinguishes
+calibration failures, runtime fixes, and measured performance.
+
 ## Plans and real adapters
 
 The [Aider polyglot imports](benchmarks/aider-polyglot/README.md) provide two
 web-sourced tasks: `aider-vlq` (26 upstream tests) and `aider-forth` (49 tests).
 Pinned source hashes, MIT notices, reference solutions, and the mechanical test
 adaptation are retained. Add these task IDs to a suite profile to compare the
-three adapters. This hidden-test adaptation is distinct from Aider's official
+execution adapters. This hidden-test adaptation is distinct from Aider's official
 feedback workflow; a small local pilot is not an official leaderboard score.
 
 Real participants require Git as well as their adapter runtime. Preparation
@@ -122,11 +130,46 @@ have its runtime dependencies installed. Server startup is included in execution
 time. API-key authentication may be supplied through the process environment;
 existing user app databases and Codex state are not reused.
 
-The three-mode evaluation uses `codex-raw`, `minion-single`, and `minion-graph`.
-The single Minion is the accepted proxy for single-agent execution within the
-application. Native Codex delegation is disabled in every arm. See the
-[three-mode evaluation protocol](docs/three-mode-evaluation.md) for the workload,
-measurements, and calibration status.
+The execution adapters are `codex-raw`, `pi-raw`, `minion-single`, and `minion-graph`.
+`minion-single` runs one Minion within the application. Native Codex delegation
+is disabled in every mode.
+
+For a direct Codex/Pi comparison, use `modes: ["codex-raw", "pi-raw"]` and
+set the executable and model for each adapter through `modeSettings`:
+
+```json
+{
+  "settings": { "profile": "local-development", "reasoningEffort": "medium" },
+  "modeSettings": {
+    "codex-raw": { "executable": "/opt/codex/bin/codex", "model": "YOUR_RESOLVED_MODEL" },
+    "pi-raw": { "executable": "/opt/pi/bin/pi", "model": "openai/YOUR_RESOLVED_MODEL" }
+  }
+}
+```
+
+Pi requires an explicit `provider/model` ID, with no wildcards or thinking suffix.
+The adapter forwards `reasoningEffort` using `--thinking` and rejects a completed
+stream whose assistant messages name a different provider/model. Verify equivalent
+model and effort behavior in a calibration run before comparing results.
+Use a pinned installed executable; package-installing wrappers can fetch updates
+and are not pinned by the wrapper's fingerprint.
+
+Pi runs in print/JSON mode with fresh `PI_CODING_AGENT_DIR`, no saved sessions,
+no discovered extensions, skills, templates, themes or context files, and ignored
+project-local configuration. Its tool allowlist is `read,bash,edit,write,grep,find,ls`.
+Preflight checks the required flags without sending a model prompt. Provide provider
+authentication through environment variables such as `OPENAI_API_KEY` or
+`ANTHROPIC_API_KEY`; user login files and configuration are not copied. The launcher
+also forwards `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`,
+`OPENROUTER_API_KEY`, and `XAI_API_KEY`.
+
+Pi uses the same durable supervisor, process-group cancellation, artifact collection,
+and evaluator reconnect mechanism as raw Codex. Reconnect observes an existing run;
+it does not restart a killed model session. Raw Pi events are retained, and usage
+counts uncached input plus cache reads/writes plus output once per assistant message.
+Pi's catalog-based cost estimates remain in raw events; normalized USD cost stays
+unknown. Local Pi has no filesystem sandbox; Docker isolation remains subject to
+the network restrictions below. Graph treatments are unsupported by `pi-raw`.
 
 For Docker, set `settings.isolation` to `docker` and a profile `imageDigest` to
 `repository@sha256:<64 hex>` or a local `sha256:<64 hex>` image ID. Prepare images
@@ -145,7 +188,7 @@ local provider development and credential-free container probes remain usable.
 - [Core contracts and registry](src/core/contracts.ts): versioned adapters,
   isolation backends, graders and result records.
 - [Adapter factories](src/adapters/factory.ts): register an executable factory;
-  unknown IDs fail before launch. See [adapter protocols](src/adapters/README.md).
+  unknown IDs fail before launch. See the [protocol client](src/adapters/swarmcrews-client.ts).
 - [Fixture contract](src/graders/fixture-api.ts): add a task manifest/prompt,
   editable `starter/`, and async `build(seed)` returning allowlisted files.
   Put reference source and `gradeFiles({execute, seed})` only in `ground-truth/`.
@@ -176,5 +219,5 @@ AGENT_EVALS_DOCKER_TEST=1 AGENT_EVALS_DOCKER_IMAGE=node:22-alpine pnpm exec vite
 ```
 
 Use an already installed image (or its digest). No benchmark performance results
-are supplied or implied. See [SPEC.md](SPEC.md) and the
-[acceptance checklist](docs/implementation-acceptance.md) for the full requirements.
+are supplied or implied. See the [core contracts](src/core/contracts.ts)
+and [adapter factories](src/adapters/factory.ts) for integration details.

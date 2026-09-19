@@ -1,3 +1,4 @@
+import { graphExperimentGuidance, hasTaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 import { readSkillSnapshot, selectSnapshotSkills } from "../skill-snapshot.ts";
 import { createLeaderProcedureTools } from "../leader-procedure-tools.ts";
 import { LEADER_PROCEDURE_TOOL_NAMES } from "../../shared/leader-procedures.ts";
@@ -145,6 +146,7 @@ const leaderAgent: AgentType = {
         approvalPolicy: ctx.effectiveCapabilities.approvalPolicy,
       } : {}),
       promptFeatureIds: planning.promptFeatureIds,
+      taskGraphExperiments: ctx.taskGraphExperiments,
       roleSystemAddendum: roleSystemEnabled ? LEADER_ROLE_SYSTEM_PROMPT : "",
       skillsAddendum: buildSkillsAddendum(ctx, customization.skillsAddendum, planning),
       // For Leaders only, the WS `systemPrompt` slot is a structured
@@ -186,7 +188,7 @@ const leaderAgent: AgentType = {
       minionSystemPrompt: appendRoleSystemPrompt(
         MINION_SYSTEM_PROMPT,
         roleSystemEnabled,
-      ),
+      ) + (hasTaskGraphExperiments(ctx.taskGraphExperiments) ? "\n\n" + graphExperimentGuidance(ctx.taskGraphExperiments, "worker") : ""),
       skillSnapshotId: ctx.skillSnapshotId,
       defaultMinionSkillIds: ctx.skillIds ?? [],
       defaultMinionSkillValues: ctx.skillValues ?? {},
@@ -204,10 +206,12 @@ const leaderAgent: AgentType = {
       onTaskNameChange: ctx.updateTaskName,
       getRenderComponents: ctx.getRenderComponents,
       planningBackend: planning.backend,
+      decisionContinuations: ctx.taskGraphExperiments?.decisionContinuations,
     });
 
     const planningDefs = createTaskGraphPlanningTools({
         coordinator: ctx.taskGraphPlanning,
+        experiments: ctx.taskGraphExperiments,
         workItemId: ctx.workItemId,
         primaryRunKey: ctx.runKey,
         mode: planning.orchestrationMode === "plan" ? "plan" : "auto",
@@ -252,7 +256,7 @@ const leaderAgent: AgentType = {
       : [];
 
     const toolGroups: Record<string, import("../harness/types.ts").NormalizedToolDef[]> = {
-      "leader-procedures": createLeaderProcedureTools(),
+      "leader-procedures": createLeaderProcedureTools(ctx.taskGraphExperiments),
       "task-manager": taskDefs,
       ...(planningDefs.length > 0 ? { "graph-planner": planningDefs } : {}),
       "render-dashboard": renderDefs,

@@ -4,7 +4,9 @@
  * preview, the optional debug inspector, and the wait countdown.
  */
 
-import type { RefObject } from "react";
+import { useId, type RefObject } from "react";
+import type { TranscriptBoundary } from "../../../components/SessionTranscript.tsx";
+import { IterationBoundary } from "./IterationBoundary.tsx";
 import { MessageSquare, Sparkles } from "lucide-react";
 import "../leader-body.css";
 import { StreamingBubble } from "../../../components/StreamingBubble.tsx";
@@ -23,7 +25,9 @@ import type { LeaderMessageGroup } from "../../leader-message-helpers.ts";
 export interface LeaderMessageFeedProps {
   outputRef: RefObject<HTMLDivElement | null>;
   data: LeaderData;
-  groupedMessages: LeaderMessageGroup[];
+  groupedMessages: (LeaderMessageGroup | TranscriptBoundary)[];
+  historyLoading?: boolean;
+  onScroll?: () => void;
   messageContextSelection: MessageContextSelection | null;
   onActivateMessageSelection: (messageId: string) => void;
   onMessageSelectionChange: (selection: MessageContextSelection) => void;
@@ -37,6 +41,8 @@ export function LeaderMessageFeed({
   outputRef,
   data,
   groupedMessages,
+  historyLoading = false,
+  onScroll,
   messageContextSelection,
   onActivateMessageSelection,
   onMessageSelectionChange,
@@ -45,13 +51,20 @@ export function LeaderMessageFeed({
   debugEnabled,
   isWorking,
 }: LeaderMessageFeedProps) {
+  const scope = useId();
+  const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
   return (
     <div
       ref={outputRef}
       onMouseDown={(e) => e.stopPropagation()}
       className="leader-message-feed"
+      data-selection-viewport="canvas"
+      onScroll={onScroll}
+      tabIndex={-1}
+      aria-label="Conversation messages"
     >
-      {data.messages.length === 0 && !data.streamingText && !isWorking && (
+      {historyLoading && <div role="status">Loading iteration history…</div>}
+      {groupedMessages.length === 0 && !historyLoading && !data.streamingText && !isWorking && (
         <div className="leader-conversation-empty">
           <div className="leader-conversation-empty__icon" aria-hidden="true">
             {data.sessionKey ? <MessageSquare size={20} strokeWidth={1.5} /> : <Sparkles size={20} strokeWidth={1.5} />}
@@ -63,6 +76,10 @@ export function LeaderMessageFeed({
         </div>
       )}
       {groupedMessages.map((group, gi) => {
+        if (group.kind === "run-boundary") {
+          return <IterationBoundary key={group.id} boundary={group} boundaries={boundaries}
+            scope={scope} onNavigate={onScroll} />;
+        }
         if (group.kind === "tool-group") {
           return <LeaderToolGroup key={`tg-${gi}`} msgs={group.msgs} />;
         }

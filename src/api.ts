@@ -1,8 +1,11 @@
+import type { TaskGraphExperiments } from "../shared/task-graph-experiments.ts";
 import type { CanvasNode, CanvasTransform, ThinkingConfig } from "./types.ts";
 import type { GraphDocument } from "./graph.ts";
 import type { LeaderPreset } from "./leader-preset.ts";
 import type { SandboxPolicy } from "../shared/workspace-contracts.ts";
 import type { ContextActionConfig } from "../shared/context-actions.ts";
+import type { RepositoryPathRequest, RepositoryPathSuggestions } from "../shared/repository-paths.ts";
+import { PROJECT_ACTIVITY_BATCH_SIZE, type ProjectActivitySummary } from "../shared/project-activity.ts";
 
 const BASE = "/api";
 
@@ -105,6 +108,7 @@ export interface ProjectSettings {
   systemModel?: "off" | "advisory" | "enforced";
   /** Beta: add decision-oriented role contracts to Leader and Minion prompts. */
   roleSystemBeta?: boolean;
+  taskGraphExperiments?: Partial<TaskGraphExperiments>;
   /**
    * User-configurable Context Actions shown in the Leader slash menu. An
    * ordered, freely extensible list — add, remove, rename, re-prompt, or
@@ -186,6 +190,18 @@ export function listProjects(): Promise<ProjectSummary[]> {
   return apiFetch("/projects");
 }
 
+export async function getProjectActivitySummary(projectIds: string[], signal?: AbortSignal): Promise<ProjectActivitySummary[]> {
+  const ids = [...new Set(projectIds)];
+  const summary: ProjectActivitySummary[] = [];
+  for (let offset = 0; offset < ids.length; offset += PROJECT_ACTIVITY_BATCH_SIZE) {
+    summary.push(...await apiFetch<ProjectActivitySummary[]>("/projects/activity-summary", {
+      method: "POST", ...(signal ? { signal } : {}),
+      body: JSON.stringify({ projectIds: ids.slice(offset, offset + PROJECT_ACTIVITY_BATCH_SIZE) }),
+    }));
+  }
+  return summary;
+}
+
 export function getHarnessReadiness(refresh = false): Promise<HarnessReadinessSnapshot> {
   return apiFetch(`/readiness${refresh ? "?refresh=1" : ""}`);
 }
@@ -221,6 +237,18 @@ export function openProject(
   return apiFetch("/projects/open", {
     method: "POST",
     body: JSON.stringify({ path: projectPath, ...(gitAction ? { gitAction } : {}) }),
+  });
+}
+
+/** Discover folders on the server. Paths are opaque server-native strings. */
+export function getRepositoryPathSuggestions(
+  request: RepositoryPathRequest,
+  signal?: AbortSignal,
+): Promise<RepositoryPathSuggestions> {
+  return apiFetch("/projects/path-suggestions", {
+    method: "POST",
+    body: JSON.stringify(request),
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -333,10 +361,22 @@ import type { McpServerEntry } from "../shared/mcp-servers/types.ts";
 export interface ListMcpServersResult {
   entries: McpServerEntry[];
   invalid: { index: number; errors: { path: string; message: string }[] }[];
+  securityWarnings?: { id: string; messages: string[] }[];
+  statuses?: Record<string, import("../shared/mcp-servers/connections.ts").ConnectionStatus>;
 }
 
 export function listProjectMcpServers(id: string): Promise<ListMcpServersResult> {
   return apiFetch(`/projects/${id}/mcp-servers`);
+}
+
+export function testProjectConnection(projectId: string, id: string): Promise<{ status: import("../shared/mcp-servers/connections.ts").ConnectionStatus; inventory?: import("../shared/mcp-servers/connections.ts").ConnectionInventory }> {
+  return apiFetch(`/projects/${projectId}/mcp-servers/${id}/test`, { method: "POST" });
+}
+export function authorizeProjectConnection(projectId: string, id: string): Promise<{ authorizationUrl?: string }> {
+  return apiFetch(`/projects/${projectId}/mcp-servers/${id}/authorize`, { method: "POST" });
+}
+export function disconnectProjectConnection(projectId: string, id: string): Promise<{ ok: true }> {
+  return apiFetch(`/projects/${projectId}/mcp-servers/${id}/disconnect`, { method: "POST" });
 }
 
 export function saveProjectMcpServer(

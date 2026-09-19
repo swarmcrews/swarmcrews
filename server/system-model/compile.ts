@@ -181,19 +181,25 @@ function renderContextPack(
   const chunks = [
     CONTEXT_PACK_PREAMBLE,
     packet.matchConfidence === "low" ? `Fallback: ${LOW_CONFIDENCE_FALLBACK}` : "",
+    `Task: ${packet.normalizedGoal}`,
+    ...[...expanded.constraints].sort((a, b) => riskRank(b.severity) - riskRank(a.severity) || a.id.localeCompare(b.id)).map((o) =>
+      `Constraint ${o.id}: ${o.statement}${o.agentInstruction ? ` Instruction: ${o.agentInstruction}` : ""}`),
+    ...packet.agentInstructions
+      .filter((instruction) => !expanded.constraints.some((constraint) => constraint.agentInstruction === instruction))
+      .map((instruction) => `Freshness instruction: ${instruction}`),
+    ...packet.freshness.warnings.map((warning) => `Freshness warning: ${warning}`),
+    ...packet.freshness.requiredVerifications.map((verification) =>
+      `Required verification [${verification.status}] ${verification.kind}/${verification.target}: ${verification.reason}`),
   ].filter(Boolean);
+  const requiredTokens = estimatedTokens(chunks.join("\n"));
+  if (requiredTokens > budget.minionContextPack) {
+    throw new ContextPackBudgetError(requiredTokens, budget.minionContextPack);
+  }
+  const fixedLines = chunks.length;
   const recentEvidence = [...(packet.evidenceLedger ?? [])]
     .sort((a, b) => b.createdAt - a.createdAt)
     .slice(0, 8);
   const objects: Array<{ id: string; text: string }> = [
-    { id: "task-goal", text: `Task: ${packet.normalizedGoal}` },
-    ...packet.agentInstructions
-      .filter((instruction) => !expanded.constraints.some((constraint) =>
-        constraint.agentInstruction === instruction))
-      .map((instruction, index) => ({
-      id: `packet-instruction-${index + 1}`,
-      text: `Freshness instruction: ${instruction}`,
-      })),
     ...(packet.signals ?? [])
       .filter((signal) => signal.status === "open")
       .sort((a, b) => riskRank(b.priority) - riskRank(a.priority) || a.id.localeCompare(b.id))
@@ -204,21 +210,11 @@ function renderContextPack(
     })),
     ...expanded.capabilities.map((o) => ({ id: o.id, text: `Capability ${o.id}: ${o.summary}` })),
     ...expanded.flows.map((o) => ({ id: o.id, text: `Flow ${o.id}: ${o.summary}` })),
-    ...[...expanded.constraints].sort((a, b) => riskRank(b.severity) - riskRank(a.severity) || a.id.localeCompare(b.id)).map((o) =>
-      ({ id: o.id, text: `Constraint ${o.id}: ${o.statement}${o.agentInstruction ? ` Instruction: ${o.agentInstruction}` : ""}` })),
     ...(packet.scope.entryPoints ?? []).map((entryPoint) =>
       ({ id: `${entryPoint.capabilityId}.${entryPoint.surfaceId}`, text: `Entry point ${entryPoint.surfaceId} for ${entryPoint.capabilityId}: files ${entryPoint.files.join(", ") || "none"}; tests ${entryPoint.tests.join(", ") || "none"}` })),
     ...recentEvidence.map((evidence) => ({
       id: evidence.id,
       text: `Evidence ${evidence.id} [${evidence.provenance}/${evidence.kind}]: ${evidence.summary}`,
-    })),
-    ...packet.freshness.warnings.map((warning, index) => ({
-      id: `freshness-warning-${index + 1}`,
-      text: `Freshness warning: ${warning}`,
-    })),
-    ...packet.freshness.requiredVerifications.map((verification) => ({
-      id: `verification-${verification.kind}-${verification.target}`,
-      text: `Required verification [${verification.status}] ${verification.kind}/${verification.target}: ${verification.reason}`,
     })),
     ...expanded.decisions.map((o) => ({ id: o.id, text: `Decision ${o.id}: ${o.summary}` })),
     ...expanded.risks.map((o) => ({ id: o.id, text: `Risk ${o.id}: ${o.summary}${o.mitigation ? ` Mitigation: ${o.mitigation}` : ""}` })),
@@ -226,18 +222,27 @@ function renderContextPack(
     { id: "suggested-tests", text: `Suggested tests: ${packet.scope.suggestedTests.join(", ") || "none"}` },
   ];
   const omitted: string[] = [];
+  const included: string[] = [];
   for (const object of objects) {
     const line = trimToTokens(object.text, budget.perObjectSummary);
-    if (estimatedTokens([...chunks, line].join("\n")) <= budget.minionContextPack) chunks.push(line);
+    if (estimatedTokens([...chunks, line].join("\n")) <= budget.minionContextPack) {
+      chunks.push(line);
+      included.push(object.id);
+    }
     else omitted.push(object.id);
   }
   if (omitted.length > 0) {
-    const fixedLines = packet.matchConfidence === "low" ? 2 : 1;
     let marker = omissionMarker(omitted);
     while (chunks.length > fixedLines && estimatedTokens([...chunks, marker].join("\n")) > budget.minionContextPack) {
-      const removed = chunks.pop();
-      if (removed) omitted.unshift("additional-context");
+      chunks.pop();
+      omitted.unshift(included.pop()!);
       marker = omissionMarker(omitted);
+    }
+    if (estimatedTokens([...chunks, marker].join("\n")) > budget.minionContextPack) {
+      marker = "[Optional context omitted. Ask the Leader for details before relying on it.]";
+    }
+    if (estimatedTokens([...chunks, marker].join("\n")) > budget.minionContextPack) {
+      throw new ContextPackBudgetError(estimatedTokens([...chunks, marker].join("\n")), budget.minionContextPack);
     }
     chunks.push(marker);
   }
@@ -247,7 +252,14 @@ function renderContextPack(
 function omissionMarker(ids: string[]): string {
   const shown = unique(ids).slice(0, 5);
   const remaining = Math.max(0, unique(ids).length - shown.length);
-  return `[${ids.length} objects omitted by context budget: ${shown.join(", ")}${remaining ? `, +${remaining} more` : ""} — use query_system_model with ids]`;
+  return `[${ids.length} objects omitted by context budget: ${shown.join(", ")}${remaining ? `, +${remaining} more` : ""}. Ask the Leader for omitted details before relying on them.]`;
+}
+
+export class ContextPackBudgetError extends Error {
+  constructor(public readonly requiredTokens: number, public readonly budgetTokens: number) {
+    super(`Required system-model context needs approximately ${requiredTokens} tokens but the context pack budget is ${budgetTokens}. Narrow the Work Packet scope or increase minion_context_pack; mandatory guidance cannot be omitted.`);
+    this.name = "ContextPackBudgetError";
+  }
 }
 
 function riskRank(level: RiskLevel): number {

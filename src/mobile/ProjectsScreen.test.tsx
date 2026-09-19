@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { checkProjectGit, createProject, getHarnessReadiness, listProjects } from "../api.ts";
+import { checkProjectGit, createProject, getHarnessReadiness, getRepositoryPathSuggestions, listProjects } from "../api.ts";
 import type { MobileSessionInfo } from "./mobile-selectors.ts";
 import { ProjectsScreen } from "./ProjectsScreen.tsx";
 
@@ -10,6 +10,7 @@ vi.mock("../api.ts", () => ({
   createProject: vi.fn(),
   listProjects: vi.fn(),
   getHarnessReadiness: vi.fn(async () => ({ schemaVersion: 1, checkedAt: "", expiresAt: "", ready: true, readyHarnesses: ["claude"], harnesses: [] })),
+  getRepositoryPathSuggestions: vi.fn(),
 }));
 
 afterEach(() => {
@@ -17,6 +18,7 @@ afterEach(() => {
   vi.mocked(checkProjectGit).mockResolvedValue({ isRepository: true });
   vi.mocked(listProjects).mockReset();
   vi.mocked(getHarnessReadiness).mockResolvedValue({ schemaVersion: 1, checkedAt: "", expiresAt: "", ready: true, readyHarnesses: ["claude"], harnesses: [] });
+  vi.mocked(getRepositoryPathSuggestions).mockReset();
   vi.restoreAllMocks();
 });
 
@@ -60,6 +62,8 @@ describe("ProjectsScreen", () => {
 
     expect(screen.getByText("2 active · $0.42 · 2 needs you")).toBeInTheDocument();
     expect(screen.getByText("1 session · $0.00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tutorial" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Alpha"));
     expect(onSelectProject).toHaveBeenCalledWith(
@@ -75,6 +79,8 @@ describe("ProjectsScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("No recent projects found.")).toBeInTheDocument();
     });
+    expect(screen.getByRole("button", { name: "Start tutorial" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Tutorial" })).not.toBeInTheDocument();
   });
 
   it("creates a project from the mobile project page and selects it", async () => {
@@ -92,9 +98,9 @@ describe("ProjectsScreen", () => {
 
     render(<ProjectsScreen sessions={[]} onSelectProject={onSelectProject} />);
 
-    expect(screen.queryByLabelText("Project path")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Folders on the server")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    fireEvent.change(screen.getByLabelText("Project path"), {
+    fireEvent.change(screen.getByLabelText("Folders on the server"), {
       target: { value: "/work/new-project" },
     });
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -114,6 +120,27 @@ describe("ProjectsScreen", () => {
     });
   });
 
+  it("fills a browsed server folder without creating a project", async () => {
+    vi.mocked(listProjects).mockResolvedValue([]);
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({
+      platform: "win32", separator: "\\", roots: [], directory: "D:\\repos", parent: "D:\\", breadcrumbs: [],
+      entries: [{ name: "demo", path: "D:\\repos\\demo" }], truncated: false,
+    });
+    render(<ProjectsScreen sessions={[]} onSelectProject={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    const option = await screen.findByRole("option", { name: /demo/i });
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({
+      platform: "win32", separator: "\\", roots: [], directory: "D:\\repos\\demo", parent: "D:\\repos", breadcrumbs: [],
+      entries: [], truncated: false,
+    });
+    fireEvent.click(option);
+    fireEvent.click(await screen.findByRole("button", { name: "Use this folder" }));
+
+    expect(screen.getByRole("combobox", { name: "Folders on the server" })).toHaveValue("D:\\repos\\demo");
+    expect(createProject).not.toHaveBeenCalled();
+  });
+
   it("warns before initializing Git for a new mobile project", async () => {
     vi.mocked(listProjects).mockResolvedValue([]);
     vi.mocked(checkProjectGit).mockResolvedValue({ isRepository: false });
@@ -129,7 +156,7 @@ describe("ProjectsScreen", () => {
 
     render(<ProjectsScreen sessions={[]} onSelectProject={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "New project" }));
-    fireEvent.change(screen.getByLabelText("Project path"), {
+    fireEvent.change(screen.getByLabelText("Folders on the server"), {
       target: { value: "/work/new-project" },
     });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Project" } });

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { buildLeaderSkillInventory } from "../shared/leader-prompt.ts";
 import { writeSkills } from "./project-store.ts";
 import { compileSkills, type SkillTemplate } from "./skills.ts";
 import { captureSkillSnapshot, readSkillSnapshot } from "./skill-snapshot.ts";
@@ -39,6 +40,26 @@ describe("progressive skill retrieval", () => {
         return result.content[0]!.text;
       } };
   }
+
+  it("excludes self-serve-disabled skills from new catalogs and all retrieval paths", async () => {
+    const hidden = { ...disclosureFixture(), selfServe: false, isDefault: true };
+    writeSkills(projectPath, [hidden]);
+    const tools = toolsFor();
+    expect(readSkillSnapshot(projectPath, tools.skillSnapshotId).skills.map(skill => skill.id)).not.toContain("design");
+    expect(buildLeaderSkillInventory([hidden])).toBe("");
+    expect(await tools.call("load_skill", { skillId: "missing" })).not.toContain("design");
+    expect(await tools.call("load_skill", { skillId: "design" })).not.toContain("PARENT");
+    expect(await tools.call("load_subskill", { skillId: "design", subskillId: "lazy" })).not.toContain("LAZY_BODY");
+    expect(await tools.call("load_skill_attachment", { skillId: "design", attachmentIndex: 0 })).not.toContain("PARENT_ATTACHMENT");
+
+    const selected = toolsFor(captureSkillSnapshot(projectPath, {}, ["design"]));
+    expect(await selected.call("load_skill", { skillId: "design" })).toContain("PARENT");
+    expect(await selected.call("load_subskill", { skillId: "design", subskillId: "lazy" })).toContain("LAZY_BODY");
+    expect(buildLeaderSkillInventory(readSkillSnapshot(projectPath, selected.skillSnapshotId).skills)).not.toContain("`design`");
+    writeSkills(projectPath, [{ ...hidden, selfServe: true }]);
+    expect(await toolsFor(tools.skillSnapshotId).call("load_skill", { skillId: "design" })).not.toContain("PARENT");
+    expect(await toolsFor().call("load_skill", { skillId: "design" })).toContain("PARENT");
+  });
 
   it("loads parent instructions and triggers without authoring permissions or lazy contents", async () => {
     const tools = toolsFor();

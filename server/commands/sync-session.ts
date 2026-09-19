@@ -1,5 +1,6 @@
 import { persistenceDb } from "../session-persist.ts";
 import { readHistoryPage } from "../session-history.ts";
+import { withoutArchivedWork } from "../session-list-visibility.ts";
 /**
  * sync_session — return a snapshot of one session plus its buffered events.
  *
@@ -66,6 +67,7 @@ export const syncSession: CommandHandler = (ctx, cmd, ws) => {
     parentRunKey: host.parentRunKey,
     taskId: host.taskId,
     found: true,
+    archived: withoutArchivedWork([[host.id, host]], db).length === 0,
     status: host.status,
     sessionId: host.sessionId,
     cwd: host.cwd,

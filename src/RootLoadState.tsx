@@ -1,5 +1,6 @@
 import { Brand } from "./components/Brand.tsx";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import "./root-load-state.css";
 
 const shellStyle = {
   minHeight: "100dvh",
@@ -15,10 +16,10 @@ const shellStyle = {
 
 export function RootLoadingScreen() {
   return (
-    <div role="status" aria-live="polite" style={shellStyle}>
-      <div>
-        <div style={{ width: 240, margin: "0 auto 18px" }}><Brand /></div>
-        <span style={{ display: "block", marginTop: 8, color: "var(--text-secondary, #aab3c5)" }}>
+    <div className="root-loading" role="status" aria-live="polite">
+      <div className="root-loading__content">
+        <Brand />
+        <span className="root-loading__message">
           Loading workspace…
         </span>
       </div>

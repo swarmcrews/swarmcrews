@@ -49,6 +49,8 @@ export interface PastedDraft {
   headers?: string;
   // shared optional
   toolNames?: string;
+  credentialValues?: Record<string, string>;
+  oauth?: { clientId?: string; clientSecret?: string; scope?: string };
 }
 
 export type PasteParseResult =
@@ -93,6 +95,12 @@ export function parsePastedMcpConfig(raw: string): PasteParseResult {
 
   if (looksLikeClaudeAddCommand(trimmed)) {
     return parseClaudeAddCommand(trimmed);
+  }
+  if (/^codex\s+mcp\s+add\s/.test(trimmed)) {
+    return parseClaudeAddCommand(trimmed.replace(/^codex\s+mcp\s+add\s/, "claude mcp add ").replace(/\s--url\s+/, " --transport http "));
+  }
+  if (/^\[|^(opencode|claude|codex)\s+mcp\b/.test(trimmed)) {
+    return { ok: false, error: "Paste a server URL, an add command, or JSON configuration. This format is not supported." };
   }
 
   return parseBareSubprocess(trimmed);
@@ -222,10 +230,14 @@ function parseClaudeAddCommand(input: string): PasteParseResult {
       i += 2;
       continue;
     }
-    if (tok === "--client-id" || tok === "--client-secret") {
-      // OAuth credentials skipped on import; user re-enters in the OAuth UI.
-      warnings.push(`Skipped OAuth flag on import: ${tok}`);
+    if (tok === "--client-id") {
+      draft.oauth = { ...draft.oauth, clientId: t[i + 1] ?? "" };
       i += 2;
+      continue;
+    }
+    if (tok === "--client-secret") {
+      warnings.push("Enter the OAuth client secret in Advanced if this server requires one.");
+      i += 1;
       continue;
     }
     if (tok.startsWith("--")) {
@@ -302,6 +314,7 @@ function parseJsonForm(input: string): PasteParseResult {
   }
 
   const obj = parsed as Record<string, unknown>;
+  if (!obj["mcpServers"] && (obj["mcp"] || obj["mcp_servers"])) obj["mcpServers"] = obj["mcp"] ?? obj["mcp_servers"];
 
   // `.mcp.json` / Claude Desktop wrapped form: { "mcpServers": { name: {...} } }
   if (
@@ -335,7 +348,10 @@ function entryObjectToDraft(
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, error: "Server entry must be a JSON object." };
   }
-  const o = raw as Record<string, unknown>;
+  const o = { ...(raw as Record<string, unknown>) };
+  if (Array.isArray(o["command"])) { o["args"] = o["command"].slice(1); o["command"] = o["command"][0]; }
+  if (o["environment"] && !o["env"]) o["env"] = o["environment"];
+  if (o["http_headers"] && !o["headers"]) o["headers"] = o["http_headers"];
   const warnings: string[] = [];
 
   // Discriminant: explicit `transport`, `type`, or shape inference.
@@ -349,6 +365,15 @@ function entryObjectToDraft(
       : "stdio";
 
   const draft: PastedDraft = { transport: inferred };
+  if (o["oauth"] && typeof o["oauth"] === "object") {
+    const oauth = o["oauth"] as Record<string, unknown>;
+    draft.oauth = { ...(typeof oauth["clientId"] === "string" ? { clientId: oauth["clientId"] } : {}),
+      ...(typeof oauth["clientSecret"] === "string" ? { clientSecret: oauth["clientSecret"] } : {}),
+      ...(typeof oauth["scope"] === "string" ? { scope: oauth["scope"] } : typeof oauth["scopes"] === "string" ? { scope: oauth["scopes"] } : {}) };
+  }
+  for (const field of ["cwd", "env_vars", "env_http_headers", "bearer_token_env_var"]) {
+    if (o[field] !== undefined) warnings.push(`Review ${field}: this field is not imported. Local commands run from the project source folder; enter credentials explicitly.`);
+  }
 
   // Identity. Prefer explicit id, then `name`, then the wrapper key.
   const idCandidate =
@@ -373,7 +398,7 @@ function entryObjectToDraft(
     const args = pickStringArray(o["args"]);
     if (args && args.length > 0) draft.args = joinArgs(args);
     const env = pickStringRecord(o["env"]);
-    if (env && Object.keys(env).length > 0) draft.env = formatKvLines(env);
+    if (env && Object.keys(env).length > 0) { draft.env = formatKvLines(env); draft.credentialValues = env; }
   } else {
     const url = pickString(o["url"]);
     if (!url) {
@@ -384,6 +409,7 @@ function entryObjectToDraft(
       pickStringRecord(o["headers"]) ?? pickHeaderArray(o["headers"]);
     if (headers && Object.keys(headers).length > 0) {
       draft.headers = formatKvLines(headers);
+      draft.credentialValues = headers;
     }
   }
 
@@ -556,10 +582,8 @@ function formatKvLines(map: Record<string, string>): string {
  * contain whitespace get re-quoted so a round-trip through draftToEntry's
  * `split(/\s+/)` reproduces them faithfully.
  */
-function joinArgs(args: readonly string[]): string {
-  return args
-    .map((a) => (/\s/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a))
-    .join(" ");
+export function joinArgs(args: readonly string[]): string {
+  return args.map(a => !a || /[\s"'\\]/.test(a) ? `"${a.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"` : a).join(" ");
 }
 
 /**

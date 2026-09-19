@@ -2,10 +2,12 @@ import type { TaskGraphNodeView } from "./types.ts";
 
 export function NodeState({ node, compact = false }: { node: TaskGraphNodeView; compact?: boolean }) {
   const attempt = node.currentAttempt?.state ?? "none";
+  const description = `Logical ${node.logicalState}; attempt ${attempt}; verification ${node.verification.state}${node.blocker && node.blocker.category !== "none" ? `; blocker ${node.blocker.category}` : ""}`;
   return (
     <span
-      className={`tg-node-state tg-logical--${node.logicalState} tg-attempt--${attempt}`}
-      aria-label={`Logical ${node.logicalState}; attempt ${attempt}; verification ${node.verification.state}${node.blocker && node.blocker.category !== "none" ? `; blocker ${node.blocker.category}` : ""}`}
+      className={`tg-node-state${compact ? " tg-node-state--compact" : ""} tg-logical--${node.logicalState} tg-attempt--${attempt}`}
+      aria-label={description}
+      title={description}
     >
       <span className="tg-node-state__fill">{compact ? "" : node.logicalState}</span>
       <span className={`tg-verification tg-verification--${node.verification.state}`} title={`Verification: ${node.verification.state}`} aria-hidden="true">

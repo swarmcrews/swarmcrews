@@ -1,3 +1,4 @@
+import { ConnectionsPanel } from "../mcp-connections/ConnectionsPanel.tsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -6,11 +7,8 @@ import {
   updateProjectSettings,
   type ProjectSettings,
 } from "../api.ts";
-import type { ServerMessage, SocketSubscribe } from "../use-socket.ts";
 import { buildModelGroups } from "../SettingsMenu.tsx";
 import { useHarnessList } from "../use-harness-list.tsx";
-import type { MobileSessionInfo } from "./mobile-selectors.ts";
-import { randomUuid } from "../random-id.ts";
 import { MobileMinionModelSettings } from "./MobileMinionModelSettings.tsx";
 
 interface SettingsScreenProps {
@@ -19,83 +17,11 @@ interface SettingsScreenProps {
     name: string;
     path: string;
   };
-  sessions?: MobileSessionInfo[];
-  send?: (data: unknown) => void;
-  subscribe?: SocketSubscribe;
 }
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 type RestartState = "idle" | "pending" | "sent";
-type UsageProvider = "claude" | "openai";
-type UsageLoadState = "idle" | "loading" | "loaded" | "error";
-
-interface UsageProviderState {
-  state: UsageLoadState;
-  sessionKey: string | null;
-  usage?: unknown;
-  error?: string | undefined;
-}
-
-const USAGE_PROVIDERS: ReadonlyArray<{
-  id: UsageProvider;
-  label: string;
-  harness: string;
-}> = [
-  { id: "claude", label: "Claude", harness: "claude" },
-  { id: "openai", label: "OpenAI", harness: "codex" },
-];
-const USAGE_QUERY_TIMEOUT_MS = 10_000;
-
-function makeRequestId(provider: UsageProvider): string {
-  return `mobile-usage-${provider}-${randomUuid()}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function usageWindowRows(usage: unknown): Array<{ label: string; value: string; reset: string }> {
-  if (!isRecord(usage) || !isRecord(usage["rate_limits"])) return [];
-  const labels: Record<string, string> = {
-    five_hour: "5 hour",
-    seven_day: "7 day",
-    seven_day_oauth_apps: "7 day OAuth apps",
-    seven_day_opus: "7 day Opus",
-    seven_day_sonnet: "7 day Sonnet",
-  };
-  return Object.entries(labels).flatMap(([key, label]) => {
-    const window = usage["rate_limits"];
-    if (!isRecord(window)) return [];
-    const entry = window[key];
-    if (!isRecord(entry)) return [];
-    const utilization = typeof entry["utilization"] === "number"
-      ? `${Math.round(entry["utilization"])}%`
-      : "Unknown";
-    const reset =
-      typeof entry["resets_at"] === "string" && entry["resets_at"]
-        ? new Date(entry["resets_at"]).toLocaleString([], {
-            month: "short",
-            day: "numeric",
-            hour: "numeric",
-            minute: "2-digit",
-          })
-        : "Unknown";
-    return [{ label, value: utilization, reset }];
-  });
-}
-
-function extraUsageRow(usage: unknown): { value: string; reset: string } | null {
-  if (!isRecord(usage) || !isRecord(usage["rate_limits"])) return null;
-  const extra = usage["rate_limits"]["extra_usage"];
-  if (!isRecord(extra) || extra["is_enabled"] !== true) return null;
-  const used = typeof extra["used_credits"] === "number" ? extra["used_credits"] : null;
-  const limit = typeof extra["monthly_limit"] === "number" ? extra["monthly_limit"] : null;
-  const currency = typeof extra["currency"] === "string" ? extra["currency"] : "credits";
-  const value = used !== null && limit !== null ? `${used}/${limit} ${currency}` : "Enabled";
-  return { value, reset: "Monthly" };
-}
-
-export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps) {
+export function SettingsScreen({ project }: SettingsScreenProps) {
   const [settings, setSettings] = useState<ProjectSettings>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -103,11 +29,6 @@ export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps
   const [restartDialogOpen, setRestartDialogOpen] = useState(false);
   const [restartState, setRestartState] = useState<RestartState>("idle");
   const [restartError, setRestartError] = useState<string | null>(null);
-  const [usageReports, setUsageReports] = useState<Record<UsageProvider, UsageProviderState>>({
-    claude: { state: "idle", sessionKey: null },
-    openai: { state: "idle", sessionKey: null },
-  });
-
   const { harnesses, loaded: harnessesLoaded } = useHarnessList();
   const modelGroups = useMemo(
     () => buildModelGroups(harnesses, harnessesLoaded),
@@ -160,88 +81,6 @@ export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps
       });
   }, []);
 
-  const refreshUsage = useCallback(() => {
-    if (!send || !subscribe) {
-      setUsageReports({
-        claude: { state: "error", sessionKey: null, error: "Usage queries need a socket connection." },
-        openai: { state: "error", sessionKey: null, error: "Usage queries need a socket connection." },
-      });
-      return;
-    }
-
-    const pending = new Map<string, UsageProvider>();
-    const nextReports = {} as Record<UsageProvider, UsageProviderState>;
-    for (const provider of USAGE_PROVIDERS) {
-      const requestId = makeRequestId(provider.id);
-      pending.set(requestId, provider.id);
-      nextReports[provider.id] = { state: "loading", sessionKey: null };
-    }
-
-    setUsageReports(nextReports);
-    let settled = false;
-    let unsubscribe: (() => void) | null = null;
-    const timeoutId = window.setTimeout(() => {
-      finishPending("Usage query timed out. Restart the server if it was running before this update.");
-    }, USAGE_QUERY_TIMEOUT_MS);
-
-    const cleanup = () => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeoutId);
-      unsubscribe?.();
-    };
-
-    const finishPending = (error: string) => {
-      if (pending.size === 0) {
-        cleanup();
-        return;
-      }
-      const providers = [...pending.values()];
-      pending.clear();
-      setUsageReports((current) => {
-        const next = { ...current };
-        for (const provider of providers) {
-          next[provider] = {
-            state: "error",
-            sessionKey: current[provider]?.sessionKey ?? null,
-            error,
-          };
-        }
-        return next;
-      });
-      cleanup();
-    };
-
-    unsubscribe = subscribe("*", (msg: ServerMessage) => {
-      if (msg.type === "error" && /get_provider_usage_report|Unknown command type/.test(msg.message)) {
-        finishPending(msg.message);
-        return;
-      }
-      if (msg.type !== "control_response" || msg.command !== "get_provider_usage_report") return;
-      const requestId = msg.requestId;
-      if (!requestId) return;
-      const provider = pending.get(requestId);
-      if (!provider) return;
-      pending.delete(requestId);
-      setUsageReports((current) => ({
-        ...current,
-        [provider]: {
-          state: msg.success ? "loaded" : "error",
-          sessionKey: typeof msg.sessionKey === "string" ? msg.sessionKey : null,
-          usage: msg.success ? msg["usage"] : undefined,
-          error: msg.success ? undefined : msg.error ?? "Usage report unavailable.",
-        },
-      }));
-      if (pending.size === 0) cleanup();
-    });
-
-    for (const provider of USAGE_PROVIDERS) {
-      const requestId = [...pending.entries()].find(([, id]) => id === provider.id)?.[0];
-      if (!requestId) continue;
-      send({ type: "get_provider_usage_report", harness: provider.harness, requestId });
-    }
-  }, [send, subscribe]);
-
   return (
     <main className="mob-screen mob-settings" aria-label="Settings">
       <header className="mob-screen-header">
@@ -292,71 +131,7 @@ export function SettingsScreen({ project, send, subscribe }: SettingsScreenProps
             </label>
           </section>
 
-          <section className="mob-settings-section" aria-labelledby="mob-usage-heading">
-            <div className="mob-settings-section-heading mob-settings-section-heading--action">
-              <div>
-                <h2 id="mob-usage-heading">Usage</h2>
-                <p>Current provider limit windows from the local account connection.</p>
-              </div>
-              <button type="button" className="mob-settings-secondary-button" onClick={refreshUsage}>
-                Refresh
-              </button>
-            </div>
-
-            <div className="mob-usage-grid">
-              {USAGE_PROVIDERS.map((provider) => {
-                const report = usageReports[provider.id];
-                const rows = usageWindowRows(report.usage);
-                const extra = extraUsageRow(report.usage);
-                const rateLimitsAvailable =
-                  isRecord(report.usage) && report.usage["rate_limits_available"] === true;
-                return (
-                  <div className="mob-usage-card" key={provider.id}>
-                    <div className="mob-usage-card-header">
-                      <strong>{provider.label}</strong>
-                      <span>{report.state === "loading" ? "Loading" : report.sessionKey ?? "Provider"}</span>
-                    </div>
-                    {report.state === "idle" ? (
-                      <p className="mob-usage-muted">Tap Refresh to query usage.</p>
-                    ) : report.state === "loading" ? (
-                      <p className="mob-usage-muted">Querying provider...</p>
-                    ) : report.state === "error" ? (
-                      <p className="mob-usage-error">{report.error}</p>
-                    ) : rows.length > 0 || extra ? (
-                      <dl className="mob-usage-windows">
-                        {rows.map((row) => (
-                          <div key={row.label}>
-                            <dt>{row.label}</dt>
-                            <dd>
-                              <span>{row.value}</span>
-                              <small>Resets {row.reset}</small>
-                            </dd>
-                          </div>
-                        ))}
-                        {extra ? (
-                          <div>
-                            <dt>Extra usage</dt>
-                            <dd>
-                              <span>{extra.value}</span>
-                              <small>{extra.reset}</small>
-                            </dd>
-                          </div>
-                        ) : null}
-                      </dl>
-                    ) : (
-                      <p className="mob-usage-muted">
-                        {isRecord(report.usage) && typeof report.usage["unavailable_reason"] === "string"
-                          ? report.usage["unavailable_reason"]
-                          : rateLimitsAvailable
-                            ? "No reset windows returned for this provider."
-                            : "Provider limits are not available for this provider."}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <ConnectionsPanel key={project.id} projectId={project.id} />
 
           <section className="mob-settings-section mob-settings-section--danger" aria-labelledby="mob-server-heading">
             <div className="mob-settings-section-heading">

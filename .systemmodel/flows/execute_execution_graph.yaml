@@ -19,6 +19,7 @@ steps:
   - Treat pattern templates, routing, and lint findings only as proposal-authoring and review aids; never let them admit attempts, mutate runtime topology, or bypass the server scheduler.
   - Accept a semantic plan only against the latest proposal revision, treating omitted tool restrictions as inherited harness policy and supplied allowedTools values as exact harness or fully qualified MCP identifiers.
   - Freeze repository, connected-context, skill, harness, and tool-policy planning sources; preflight topology, ownership, sandbox enforcement, and tool availability before the proposal can start.
+  - Freeze each child's Work Packet projection from the workspace model, declared paths, and optional systemModelObjectIds; preview the same bytes, preserve mandatory constraints, and retain shared context for tasks without scope hints.
   - Persist each proposal revision and materialize its validated acyclic bounded graph as a content-hashed immutable revision under the owning WorkItem.
   - Start one graph run for the current primary run only after WorkItem lifecycle CAS and source-snapshot ownership checks pass.
   - Freeze joins, acquire the server scheduler lease, and admit ready nodes only when capacity, ownership, and requested budget reservations are available.

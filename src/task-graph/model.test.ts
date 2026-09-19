@@ -25,7 +25,7 @@ describe("task graph projections", () => {
   it("bounds work queue ranges with overscan", () => {
     const range = getVirtualRange(1_000, 12_000, 348);
     expect(range.end - range.start).toBeLessThanOrEqual(15);
-    expect(range.totalHeight).toBe(58_000);
+    expect(range.totalHeight).toBe(70_000);
   });
 
   it("provides canonical why-not-running explanations", () => {

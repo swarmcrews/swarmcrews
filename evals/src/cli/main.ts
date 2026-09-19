@@ -11,7 +11,7 @@ import { existsSync, statSync } from "node:fs";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createExternalAdapter } from "../adapters/index.js";
+import { adapterFactories, createExternalAdapter } from "../adapters/index.js";
 import { createImmutablePlan, ResultStore, scheduleCells, validateTaskManifest, type ExecutionAdapter } from "../core/index.js";
 import { analysisJson, renderOfflineReport, resultsCsv, type ReportRecord } from "../reports/index.js";
 import { ExperimentPlanSchema, type AdapterConfig, type ExperimentPlan, type TaskDefinition } from "../../schemas/index.js";
@@ -56,7 +56,7 @@ async function loadTasks(suite: Json): Promise<TaskDefinition[]> {
 async function validate(suitePath: string): Promise<Json> {
   const suite = await json(resolve(suitePath)); const tasks = await loadTasks(suite);
   const checks = []; for (const task of tasks) checks.push(await verifyOracle(task,root));
-  return { command: "validate", valid: true, suite: (suite.id as string) ?? suitePath, tasks: checks, adapters: ["codex-raw", "minion-single", "minion-graph"], paidCalls: false };
+  return { command: "validate", valid: true, suite: (suite.id as string) ?? suitePath, tasks: checks, adapters: adapterFactories.list().map(adapter => adapter.id), paidCalls: false };
 }
 async function plan(suitePath: string, profileName: string, repetitions: number | undefined, destination: string): Promise<Json> {
   const suite = await json(resolve(suitePath)); const profile = (suite.profiles as Record<string, Json> | undefined)?.[profileName];

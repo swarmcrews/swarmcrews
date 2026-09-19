@@ -10,7 +10,7 @@ import { getHarness } from "./harness/index.ts";
 import type { HarnessCapabilities } from "./harness/types.ts";
 import type { SessionUsageTotals } from "./usage-telemetry.ts";
 import type { SessionReviewLifecycle } from "./session-review-lifecycle.ts";
-import { findWorkspaceBySource } from "./workspace-registry.ts";
+import { createWorkspaceSourceLookup, findWorkspaceBySource } from "./workspace-registry.ts";
 
 /** Compact shape broadcast to clients in `session_list` messages. */
 export interface SessionListItem {
@@ -100,12 +100,16 @@ function harnessMeta(name: string): {
 }
 
 /** Derive the broadcastable list item for one live host. */
-export function buildSessionListItem(key: string, s: SessionHost): SessionListItem {
+export function buildSessionListItem(
+  key: string,
+  s: SessionHost,
+  lookupWorkspace = findWorkspaceBySource,
+): SessionListItem {
   const { harness, harnessCapabilities } = harnessMeta(s.harnessName);
   const lastActivityAt = s.historyFacts.lastResponseAt ?? s.historyFacts.lastActivityAt;
   let projectId: string | undefined;
   try {
-    projectId = findWorkspaceBySource(s.worktree?.projectPath ?? s.cwd)?.id;
+    projectId = lookupWorkspace(s.worktree?.projectPath ?? s.cwd)?.id;
   } catch {
     // A malformed registry blocks workspace mutation, but must not make the
     // global session list unavailable while the user repairs it.
@@ -149,4 +153,16 @@ export function buildSessionListItem(key: string, s: SessionHost): SessionListIt
           }))
       : [],
   };
+}
+
+/** Reuse registry reads and path validation only within this synchronous snapshot. */
+export function buildSessionListItems(entries: Iterable<[string, SessionHost]>): SessionListItem[] {
+  let lookupWorkspace: typeof findWorkspaceBySource;
+  try {
+    lookupWorkspace = createWorkspaceSourceLookup();
+  } catch {
+    // Preserve session visibility if the workspace registry needs repair.
+    lookupWorkspace = () => null;
+  }
+  return Array.from(entries, ([key, host]) => buildSessionListItem(key, host, lookupWorkspace));
 }

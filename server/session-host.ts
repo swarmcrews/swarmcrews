@@ -15,16 +15,13 @@ import { hasWorktreeOperation, trackWorktreeExecution } from "./commands/worktre
  * semantics live under `server/worktree*.ts`. The host coordinates those
  * subsystems but does not own their policies.
  */
-
 import "./harness/register-production.ts";
 import "./harness/echo/index.ts"; // side-effect: registers EchoHarness
 import { randomUUID } from "node:crypto";
 import { getHarness } from "./harness/index.ts";
 import { assertSafeHarnessMutationMode, installChangeIntentTools } from "./session-mutation-enforcement.ts";
-import type {
-  HarnessRunControl,
-  NormalizedEvent,
-} from "./harness/types.ts";
+import { installConnectionTools } from "./mcp-connections/tools.ts";
+import type { HarnessRunControl, NormalizedEvent } from "./harness/types.ts";
 import { getAgentType } from "./agents/index.ts";
 import type { WorktreeInfo } from "./worktree.ts";
 import type { TaskManagerState } from "./task-tools.ts";
@@ -115,6 +112,7 @@ export class SessionHost {
   cwd: string;
   role: SessionRole = "default";
   /** Skill IDs tagged on this session; Leaders pass them to their Minions. */
+  connectionIds: string[] | undefined;
   skillIds: string[] = [];
   /** Configured values for tagged skill templates. */
   skillValues: Record<string, Record<string, string>> = {};
@@ -257,6 +255,7 @@ export class SessionHost {
       this.role = resolvedRole;
       // Seed tagged skills from the launch payload; persist across resume/wait
       // cycles where opts no longer carries them.
+      if (opts.connectionIds !== undefined) this.connectionIds = opts.connectionIds;
       if (opts.skillIds) this.skillIds = opts.skillIds;
       if (opts.skillSnapshotId) this.skillSnapshotId = opts.skillSnapshotId;
       if (opts.skillValues) this.skillValues = opts.skillValues;
@@ -312,6 +311,7 @@ export class SessionHost {
       const agentCtx = buildAgentContext(this, opts, deps);
       const toolResult = agentType.getToolGroups(agentCtx);
       installChangeIntentTools(agentCtx, toolResult);
+      const closeConnections = installConnectionTools(agentCtx, toolResult, abortController.signal, this.permissionMode === "plan", this.role === "leader");
       if (toolResult.taskState) this.taskState = toolResult.taskState;
       if (toolResult.renderState) this.renderState = toolResult.renderState;
       // Register tools with the harness (grouped by MCP server name).
@@ -344,6 +344,7 @@ export class SessionHost {
           host: this, opts, deps, agentType, agentCtx, events, abortController, onAccepted,
         }));
       } finally {
+        await closeConnections();
         this.eventStream = null;
         this.runControl = null;
       }

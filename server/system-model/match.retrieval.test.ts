@@ -200,7 +200,8 @@ function makeModel(objects: SystemModelObject[]): LoadedSystemModel {
     decisions,
     risks,
     surfaces,
-    policies: { freshness: [], reviewGates, contextBudgets: { leaderPromptAddendum: 120, minionContextPack: 220, perObjectSummary: 24 } },
+    // Leave room for full mandatory guidance; only optional summaries may be clipped.
+    policies: { freshness: [], reviewGates, contextBudgets: { leaderPromptAddendum: 120, minionContextPack: 320, perObjectSummary: 24 } },
     objectsById: new Map(objects.map((object) => [object.id, object])),
     reviewGatesById: new Map(reviewGates.map((gate) => [gate.id, gate])),
   };

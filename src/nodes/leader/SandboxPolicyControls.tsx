@@ -27,12 +27,13 @@ function SandboxHelp({ axis, description }: { axis: string; description: string 
   );
 }
 
-export function SandboxPolicyControls({ policy, effective, support, disabled = false, onChange }: {
+export function SandboxPolicyControls({ policy, effective, support, disabled = false, mcpAvailable = false, onChange }: {
   policy?: SandboxPolicy | undefined;
   effective?: SandboxResolution | null | undefined;
   /** undefined while inventory loads; null means the harness does not enforce any axis. */
   support?: HarnessCapabilities["sandboxEnforcement"] | null | undefined;
   disabled?: boolean;
+  mcpAvailable?: boolean;
   onChange: (policy: SandboxPolicy) => void;
 }) {
   const value = policy ?? DEFAULT_SANDBOX_POLICY;
@@ -76,6 +77,18 @@ export function SandboxPolicyControls({ policy, effective, support, disabled = f
       <small>
         Git change mode controls where edits land; this policy controls what the agent process can access.
       </small>
+      {(support === null || (support?.filesystem.length === 0 && !support.approval)) && <small>
+        This harness does not enforce these sandbox settings. Enabled editing tools can change files subject to host permissions and any configured extensions.
+      </small>}
+      {mcpAvailable && <div className="connection-approval-hint" role="status">
+        <strong>Review MCP approvals</strong>
+        <p>{support === null || support?.approval === false
+          ? "This harness manages MCP permissions through its own permission mode. Check that it allows connection tools."
+          : value.approvalPolicy === "never"
+            ? "Never ask can block MCP tools that need permission. Choose On request to allow approval prompts."
+            : "MCP tools may need approval. Your current policy permits approval prompts; confirm connection requests when asked."} External connections use their own access, separately from the file sandbox.</p>
+        {value.approvalPolicy === "never" && support?.approval === true && <button type="button" onClick={() => update({ approvalPolicy: "on-request" })}>Allow MCP approval prompts</button>}
+      </div>}
       {actual ? (
         <output className="leader-sandbox-effective">
           Effective: {actual.filesystemScope} · {actual.approvalPolicy}

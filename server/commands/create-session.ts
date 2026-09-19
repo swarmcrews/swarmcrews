@@ -22,7 +22,6 @@ import type { CommandContext, CommandHandler } from "./types.ts";
 import type { WebSocket } from "ws";
 import { SessionLaunchError } from "../session-launch.ts";
 import { SessionCapacityError } from "../session-registry.ts";
-import { listMcpServers, resolveClaudeMcpServers } from "../mcp-server-store.ts";
 import { resolveWorkspace } from "../workspace-registry.ts";
 
 const SAFE_SESSION_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -200,13 +199,6 @@ export const createSession: CommandHandler = async (
       return;
     }
   }
-  const persistedMcp = listMcpServers(
-    canonicalConfig?.projectPath ?? requestedWorkspace?.sourceRoot ?? cwd,
-  ).entries;
-  const claudeMcp =
-    persistedMcp.length > 0 && (cmd.harness === undefined || cmd.harness === "claude")
-      ? resolveClaudeMcpServers(persistedMcp)
-      : null;
   const options = {
     sessionKey: key,
     invocationKind: "new_run" as const,
@@ -218,6 +210,7 @@ export const createSession: CommandHandler = async (
     cwd,
     systemPrompt: cmd.systemPrompt,
     role: canonicalConfig ? "leader" : cmd.role,
+    ...(cmd.connectionIds !== undefined ? { connectionIds: cmd.connectionIds } : {}),
     ...(cmd.skillIds ? { skillIds: cmd.skillIds } : {}),
     ...(cmd.skillValues ? { skillValues: cmd.skillValues } : {}),
     worktreeIsolation: canonicalConfig
@@ -229,12 +222,6 @@ export const createSession: CommandHandler = async (
     ...(cmd.harness ? { harness: cmd.harness } : {}),
     ...(cmd.permissionMode ? { permissionMode: cmd.permissionMode } : {}),
     ...(cmd.sandboxPolicy ? { sandboxPolicy: cmd.sandboxPolicy } : {}),
-    ...(claudeMcp && Object.keys(claudeMcp.servers).length > 0
-      ? {
-          externalMcpServers: claudeMcp.servers,
-          externalMcpToolNames: claudeMcp.allowedTools,
-        }
-      : {}),
   };
   try {
     await ctx.launchSession(options);

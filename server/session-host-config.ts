@@ -63,7 +63,7 @@ export interface BufferedEvent {
   [key: string]: unknown;
 }
 
-export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type ThinkingDisplay = "summarized" | "omitted";
 
 export interface ThinkingConfig {
@@ -73,6 +73,7 @@ export interface ThinkingConfig {
 }
 
 const VALID_EFFORTS: ReadonlySet<EffortLevel> = new Set([
+  "minimal",
   "low",
   "medium",
   "high",

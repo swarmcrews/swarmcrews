@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { resolveSwarmcrewsHome } from "./runtime-home.ts";
 import path from "node:path";
 import { readLegacyWorkspaceId } from "./workspace-legacy-identity.ts";
+import { normalizeRepositoryPath } from "./repository-paths.ts";
 
 export interface WorkspaceBinding {
   id: string;
@@ -209,8 +210,9 @@ function withRegistrationLock<T>(operation: () => T): T {
 
 /** Resolve an absolute source path through existing ancestors and symlinks. */
 export function canonicalizeSourceRoot(sourcePath: string): string | null {
-  if (!path.isAbsolute(sourcePath)) return null;
-  const resolved = path.resolve(sourcePath);
+  const normalized = normalizeRepositoryPath(sourcePath);
+  if (!normalized) return null;
+  const resolved = path.resolve(normalized);
   let ancestor = resolved;
   const missing: string[] = [];
   while (!fs.existsSync(ancestor)) {
@@ -359,6 +361,31 @@ export function findWorkspaceBySource(sourcePath: string): WorkspaceBinding | nu
   if (!canonical) return null;
   const stored = readRegistry().find((row) => row.sourceRoot === canonical);
   return stored ? safeBinding(stored, false) : null;
+}
+
+/** Read-only lookup for one synchronous session snapshot; never retain for authorization. */
+export function createWorkspaceSourceLookup(): typeof findWorkspaceBySource {
+  const records = readRegistry();
+  const bySource = new Map<string, StoredWorkspace>();
+  for (const row of records) {
+    if (!bySource.has(row.sourceRoot)) bySource.set(row.sourceRoot, row);
+  }
+  const byPath = new Map<string, WorkspaceBinding | null>();
+  const validated = new Map<string, WorkspaceBinding | null>();
+  return (sourcePath) => {
+    if (byPath.has(sourcePath)) return byPath.get(sourcePath)!;
+    const canonical = canonicalizeSourceRoot(sourcePath);
+    let result: WorkspaceBinding | null = null;
+    if (canonical) {
+      if (!validated.has(canonical)) {
+        const stored = bySource.get(canonical);
+        validated.set(canonical, stored ? safeBinding(stored, false) : null);
+      }
+      result = validated.get(canonical)!;
+    }
+    byPath.set(sourcePath, result);
+    return result;
+  };
 }
 
 export function listWorkspaces(): WorkspaceBinding[] {

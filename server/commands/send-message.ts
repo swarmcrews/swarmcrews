@@ -88,7 +88,9 @@ export const sendMessage: CommandHandler = async (ctx, cmd, ws) => {
         ...(cmd.systemPrompt
           ? { systemPrompt: host.role === "leader" ? cmd.systemPrompt.trim() : cmd.systemPrompt }
           : {}),
+        ...(cmd.sandboxPolicy ? { sandboxPolicy: cmd.sandboxPolicy } : {}),
         ...(cmd.thinkingConfig ? { thinkingConfig: cmd.thinkingConfig } : {}),
+        ...(cmd.connectionIds !== undefined ? { connectionIds: cmd.connectionIds } : {}),
         ...(cmd.skillIds ? { skillIds: cmd.skillIds } : {}),
         ...(cmd.skillValues ? { skillValues: cmd.skillValues } : {}),
         ...(cmd.attachments ? { attachments: cmd.attachments } : {}),
@@ -166,10 +168,11 @@ export const sendMessage: CommandHandler = async (ctx, cmd, ws) => {
         systemPrompt: turnSystemPrompt,
         role: host.role,
         thinkingConfig: turnThinking,
+        ...(cmd.connectionIds !== undefined ? { connectionIds: cmd.connectionIds } : {}),
         ...(cmd.skillIds !== undefined ? { skillIds: cmd.skillIds } : {}),
         ...(cmd.skillValues !== undefined ? { skillValues: cmd.skillValues } : {}),
         harness: host.harnessName,
-        sandboxPolicy: host.sandboxPolicy?.requested,
+        sandboxPolicy: cmd.sandboxPolicy ?? host.sandboxPolicy?.requested,
         ...(attachments ? { attachments } : {}),
       });
       accept();

@@ -1,6 +1,8 @@
 import type { SessionInfo } from "../use-socket.ts";
 
 export type MobileSessionInfo = SessionInfo & {
+  /** Authoritative display state, including wait reason and integration precedence. */
+  workItemPresentation?: import("../../shared/work-item-lifecycle.ts").WorkItemPresentation;
   liveEditAwareness?: import("../../shared/live-edit-coordination.ts").LiveEditAwareness;
   lastActivity?: string | null;
   lastActivityAt?: number | null;
@@ -27,6 +29,32 @@ export function sessionStatusLabel(status: string): string {
     error: "Error", stopped: "Stopped", disconnected: "Disconnected",
   };
   return labels[status] ?? status.replace(/[-_]/g, " ");
+}
+
+export function activityStatusLabel(session: MobileSessionInfo): string {
+  return session.workItemPresentation?.label ?? sessionStatusLabel(session.status);
+}
+
+/** Map canonical badges onto the existing Activity status colors. */
+export function activityStatusTone(session: MobileSessionInfo): string {
+  const badge = session.workItemPresentation?.badge;
+  if (!badge) return session.status;
+  if (badge === "active") return session.status === "creating" ? "creating" : "running";
+  if (badge === "success") return "completed";
+  if (badge === "waiting" || badge === "error") return badge;
+  return "inactive";
+}
+
+export function isActivityWorking(session: MobileSessionInfo): boolean {
+  if (needsAttention(session)) return false;
+  const presentation = session.workItemPresentation;
+  return presentation ? presentation.badge === "active" || presentation.badge === "waiting"
+    : session.status === "running" || session.status === "creating";
+}
+
+export function isActivityReady(session: MobileSessionInfo): boolean {
+  return !needsAttention(session) && !isActivityWorking(session)
+    && ["draft", "idle", "inactive", "completed", "stopped", "error", "disconnected"].includes(session.status);
 }
 
 function pendingReviewState(session: MobileSessionInfo): string {
@@ -104,6 +132,9 @@ export function hasLiveMinions(summary: MinionActivitySummary): boolean {
 }
 
 export function needsAttention(session: MobileSessionInfo): boolean {
+  if (session.workItemPresentation) {
+    return session.workItemPresentation.needsAttention || session.reviewableChanges === true;
+  }
   const lifecycle = session.reviewLifecycle;
   if (lifecycle) {
     if (lifecycle.dismissedAt !== null || lifecycle.acknowledgedAt !== null) {
@@ -128,6 +159,10 @@ export type AttentionKind = "inactive" | "error" | "waiting" | "changes";
 
 /** Classify why a session needs the user, driving its triage icon/accent. */
 export function attentionKind(session: MobileSessionInfo): AttentionKind {
+  if (session.workItemPresentation) {
+    const badge = session.workItemPresentation.badge;
+    return badge === "error" ? "error" : badge === "waiting" ? "waiting" : "changes";
+  }
   const reviewState = pendingReviewState(session);
   if (reviewState === "interrupted_to_review" && session.status === "inactive") return "inactive";
   if (reviewState === "error_to_review" || reviewState === "interrupted_to_review") return "error";
@@ -139,6 +174,7 @@ export function attentionKind(session: MobileSessionInfo): AttentionKind {
 
 /** Short human reason shown beside a triage row's title. */
 export function attentionReason(session: MobileSessionInfo): string {
+  if (session.workItemPresentation?.needsAttention) return session.workItemPresentation.label;
   const lifecycle = session.reviewLifecycle;
   if (lifecycle?.acknowledgedAt != null && session.reviewableChanges) return "changes ready";
   if (lifecycle?.acknowledgedAt != null) return "reviewed";
@@ -162,6 +198,8 @@ export function attentionReason(session: MobileSessionInfo): string {
 
 /** The verb for a triage row's primary action button. */
 export function attentionAction(session: MobileSessionInfo): string {
+  if (session.workItemPresentation?.badge === "waiting"
+    && !session.workItemPresentation.availableActions.includes("provide_input")) return "View";
   const reviewState = pendingReviewState(session);
   if (reviewState === "completion_to_review") return "Read";
   if (reviewState === "interrupted_to_review") {
@@ -312,7 +350,7 @@ export function groupSessionsByActivity<T extends MobileSessionInfo>(
   };
 
   for (const session of sessions) {
-    buckets[activitySection(session.status)].push(session);
+    buckets[isActivityWorking(session) ? "active" : activitySection(session.status)].push(session);
   }
 
   return ACTIVITY_SECTION_ORDER.flatMap((id) => {

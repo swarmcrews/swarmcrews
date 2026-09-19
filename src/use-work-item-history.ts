@@ -26,8 +26,13 @@ export function useWorkItemHistory(input: {
   onLoadRuns?: (cursor?: string) => void;
   socketSend?: (data: unknown) => void;
   socketSubscribe?: SocketSubscribe;
+  /** Preserve the transcript already displayed while its durable replay loads. */
+  currentStream?: Pick<SessionStreamState, "sessionKey" | "messages" | "historyHighWater">;
 }): WorkItemHistoryState {
   const { workItemId, runs, runNextCursor, onLoadRuns, socketSend, socketSubscribe } = input;
+  const currentRunKey = input.currentStream?.sessionKey;
+  const currentMessages = input.currentStream?.messages;
+  const currentHighWater = input.currentStream?.historyHighWater;
   const [streams, setStreams] = useState<Record<string, SessionStreamState>>({});
   const requestedPages = useRef(new Set<string>());
   const requestedRuns = useRef(new Set<string>());
@@ -44,6 +49,21 @@ export function useWorkItemHistory(input: {
     requestedRuns.current.clear();
     setStreams({});
   }, [workItemId]);
+
+  useEffect(() => {
+    if (!workItemId || !currentRunKey || !currentMessages?.length) return;
+    // The canvas replaces its live state when the run changes. Keep the last
+    // displayed messages under their original run key, including messages
+    // restored before this hook subscribed or before the ledger arrived.
+    setStreams((current) => {
+      const previous = current[currentRunKey] ?? emptySessionStreamState(currentRunKey);
+      if (previous.messages === currentMessages) return current;
+      return { ...current, [currentRunKey]: { ...previous,
+        sessionKey: currentRunKey, messages: currentMessages,
+        historyHighWater: currentHighWater ?? previous.historyHighWater,
+      } };
+    });
+  }, [workItemId, currentRunKey, currentMessages, currentHighWater]);
 
   useEffect(() => {
     // Also reset requests when the caller replaces the socket subscription.

@@ -1,3 +1,4 @@
+import { graphPlanningAnalysisSchema } from "../../shared/task-graph-experiments.ts";
 import { z } from "zod/v4";
 import {
   semanticTaskGraphPlanSchema,
@@ -17,6 +18,7 @@ const participantSchema=z.object({
 }).strict();
 
 export const submitDialecticGraphSchema=z.object({
+  planningAnalysis: graphPlanningAnalysisSchema.optional().describe("Frozen treatment analysis for generated keys turn-a-N, turn-b-N and synthesis-N at checkpoint rounds."),
   requestId:z.string().min(1).describe("Stable idempotency key for this dialectic proposal."),
   baseProposalRevision:z.number().int().positive().nullable().default(null),
   objective:z.string().trim().min(1).max(20_000),
@@ -123,6 +125,7 @@ export function buildDialecticGraphPlan(raw:SubmitDialecticGraphInput):SemanticT
   }
 
   return semanticTaskGraphPlanSchema.parse({
+    ...(input.planningAnalysis ? { planningAnalysis: input.planningAnalysis } : {}),
     objective:input.objective,
     acceptanceCriteria:criteria,
     nonGoals:["The dialectic does not mutate the workspace or replace accountable Leader judgment."],

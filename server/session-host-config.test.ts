@@ -1,6 +1,6 @@
 
 import { describe, expect, it } from "vitest";
-import { enrichSystemPromptForWorktree, modelSupportsAdaptive } from "./session-host-config.ts";
+import { enrichSystemPromptForWorktree, isValidThinkingConfig, modelSupportsAdaptive } from "./session-host-config.ts";
 
 const FAKE_WORKTREE = {
   path: "/tmp/worktrees/feature-abc",
@@ -148,6 +148,11 @@ describe("enrichSystemPromptForWorktree — appends, does not replace", () => {
 });
 
 describe("Claude adaptive thinking validation", () => {
+  it("accepts Pi's minimal reasoning level while retaining the explicit enabled toggle for off", () => {
+    expect(isValidThinkingConfig({ enabled: true, effort: "minimal", display: "summarized" })).toBe(true);
+    expect(isValidThinkingConfig({ enabled: false, effort: "minimal", display: "omitted" })).toBe(true);
+  });
+
   it.each(["fable", "claude-fable-5-1", "claude-fable-5", "opus-5", "claude-opus-5"])("accepts adaptive thinking for %s", (model) => {
     expect(modelSupportsAdaptive(model)).toBe(true);
   });

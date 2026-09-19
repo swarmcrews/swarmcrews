@@ -10,6 +10,7 @@
  */
 
 import type { ZodTypeAny } from "zod/v4";
+import type { HarnessModelInfo } from "../../shared/harness-model.ts";
 import type { RunMutationCoordination } from "../mutation-coordination.ts";
 import type { HarnessReadinessContext, HarnessReadinessProbe } from "./readiness-types.ts";
 
@@ -53,6 +54,7 @@ export interface HarnessCapabilities {
 
 /** Provider-neutral reasoning levels accepted at the harness boundary. */
 export type HarnessReasoningEffort =
+  | "minimal"
   | "low"
   | "medium"
   | "high"
@@ -219,7 +221,6 @@ export interface HarnessRunControl {
   setModel?(model: string): Promise<void>;
   setPermissionMode?(mode: string): Promise<void>;
   getContextUsage?(): Promise<unknown>;
-  getUsageReport?(): Promise<unknown>;
   mcpServerStatus?(): Promise<unknown>;
   rewindFiles?(args: {
     userMessageId: string;
@@ -239,7 +240,7 @@ export interface HarnessRunControl {
  */
 export interface HarnessStaticInfo {
   /** Model ids the harness can resolve, in display order. */
-  models: ReadonlyArray<{ id: string; label: string }>;
+  models: ReadonlyArray<HarnessModelInfo>;
   /** Slash-style commands surfaced by the harness, if any. */
   commands: ReadonlyArray<{ name: string; description: string }>;
   /** Sub-agent definitions the harness exposes, if any. */
@@ -301,14 +302,6 @@ export interface AgentHarness {
    * they work even when no run is live.
    */
   staticInfo(): HarnessStaticInfo;
-
-  /**
-   * Optional run-independent usage report for provider/account state.
-   * Harnesses should implement this only when they can answer without a live
-   * session control object. Live per-run usage still belongs on
-   * HarnessRunControl.getUsageReport().
-   */
-  getUsageReport?(): Promise<unknown>;
 
   /**
    * Register tool definitions, grouped by MCP server name.

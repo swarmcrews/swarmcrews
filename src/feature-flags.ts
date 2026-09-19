@@ -60,10 +60,10 @@ export const FLAG_DIALECTIC = "dialectic";
 export const FEATURE_FLAGS: ReadonlyArray<FeatureFlagDefinition> = [
   {
     id: FLAG_MCP_SERVERS,
-    label: "MCP servers",
+    label: "MCP connections",
     description:
-      "Project-owned MCP server management (the MCP dock panel). Still evolving — off by default.",
-    defaultValue: false,
+      "Project connections managed by Swarmcrews and available across harnesses.",
+    defaultValue: true,
   },
   {
     id: FLAG_DIALECTIC,

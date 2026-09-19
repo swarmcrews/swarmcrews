@@ -147,6 +147,8 @@ export async function dispatchMethod(
 ): Promise<JsonRpcResponse> {
   const id = msg.id ?? null;
   switch (msg.method) {
+    case "ping":
+      return { jsonrpc: "2.0", id, result: {} };
     case "initialize":
       return {
         jsonrpc: "2.0",

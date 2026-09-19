@@ -9,13 +9,14 @@
  */
 
 import type { HarnessCapabilities } from "./use-socket.ts";
+import type { HarnessModelInfo } from "../shared/harness-model.ts";
 
 /** Static metadata for a single registered harness. */
 export interface HarnessInfo {
   name: string;
   capabilities: HarnessCapabilities;
   builtInTools: string[];
-  models: ReadonlyArray<{ id: string; label: string }>;
+  models: ReadonlyArray<HarnessModelInfo>;
   commands: ReadonlyArray<{ name: string; description: string }>;
   agents: ReadonlyArray<{ id: string; description: string }>;
   account: { provider: string } & Record<string, unknown>;

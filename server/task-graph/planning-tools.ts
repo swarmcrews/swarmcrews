@@ -1,4 +1,6 @@
 import { z } from "zod/v4";
+import { resolveTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
+import { graphDecisionView } from "./decision-view.ts";
 import { createMinionContextTools } from "./context-tools.ts";
 import { leaderProcedurePointer } from "../../shared/leader-procedures.ts";
 import {
@@ -36,12 +38,17 @@ const startSchema = z.object({
   expectedProposalRevision: z.number().int().positive(),
 });
 const getSchema=z.object({
+  detail: z.enum(["decision", "full"]).optional(),
+  nodeOffset: z.number().int().nonnegative().default(0),
   proposalId:z.string().min(1).optional(),
   graphRunId:z.string().min(1).optional(),
   historyLimit:z.number().int().min(1).max(50).default(20),
+  connectedSourceId:z.string().min(1).optional()
 }).superRefine((value,ctx)=>{
   if (value.proposalId && value.graphRunId) ctx.addIssue({code:"custom",
     message:"proposalId and graphRunId are mutually exclusive"});
+  if (value.connectedSourceId && (value.proposalId || value.graphRunId)) ctx.addIssue({code:"custom",
+    message:"connectedSourceId cannot be combined with proposalId or graphRunId"});
 });
 const readArtifactSchema = z.object({
   artifactId: z.string().min(1),
@@ -49,6 +56,7 @@ const readArtifactSchema = z.object({
     .describe("Select a historical graph iteration; defaults to the latest plan's run."),
   offset: z.number().int().nonnegative().default(0),
   maxBytes: z.number().int().min(1).max(262_144).default(65_536),
+  connectedSourceId:z.string().min(1).optional(),
 });
 const cancelSchema=z.object({
   requestId:z.string().min(1).describe("Stable idempotency key for this cancellation."),
@@ -80,13 +88,21 @@ const moderateDialecticSchema=z.object({
 
 export function createTaskGraphPlanningTools(input: {
   coordinator: TaskGraphPlanningCoordinator;
+  experiments?: TaskGraphExperiments | undefined;
   workItemId: string;
   primaryRunKey: string;
   mode: Exclude<LeaderOrchestrationMode, "direct">;
   leaderSessionKey: string;
   markDecisionNeeded?: (reason: string) => void;
 }): NormalizedToolDef[] {
+  const experiments = resolveTaskGraphExperiments(input.experiments);
   const document = new SemanticGraphDocumentDraft();
+  async function connectedSource(sourceId:string) {
+    const authority=await input.coordinator.options.resolveSourceAuthority(input.workItemId,input.primaryRunKey);
+    const source=authority?.connectedGraphSources?.find(item=>item.nodeId===sourceId);
+    if (!source) throw new TaskGraphConflictError("connected graph source is unavailable or no longer authorized");
+    return source;
+  }
   const handleProjection = (snapshot: TaskGraphPlanSnapshotView) => {
     if (snapshot.state === "needs_input") {
       input.markDecisionNeeded?.(snapshot.questions[0] ?? "The execution plan needs input.");
@@ -94,9 +110,11 @@ export function createTaskGraphPlanningTools(input: {
       && (input.mode === "plan" || !snapshot.autoStartEligible)) {
       input.markDecisionNeeded?.("The execution plan is ready for review and approval.");
     }
-    return { ...snapshot, procedure: leaderProcedurePointer(
+    const view = experiments.decisionContinuations
+      ? graphDecisionView({ plan: snapshot, runtime: null, history: [] }, experiments) : snapshot;
+    return { ...view, procedure: leaderProcedurePointer(
       snapshot.state === "ready" || snapshot.state === "needs_input" ? "review_start"
-        : snapshot.state === "running" ? "graph_authoring" : "adjudication") };
+        : snapshot.state === "running" ? (experiments.decisionContinuations ? "review_start" : "graph_authoring") : "adjudication") };
   };
   return [
     ...createMinionContextTools({ resolveAuthority: () => input.coordinator.options
@@ -205,15 +223,19 @@ export function createTaskGraphPlanningTools(input: {
     },
     {
       name: "get_graph_plan",
-      description: "Read current or historical plans, runtime and bounded history across Leader continuations in this WorkItem. Select by proposalId or graphRunId. Earlier Leader runs are read-only; mutations retain current-run authority.",
+      description: "Read current or historical plans, runtime and bounded history across Leader continuations in this WorkItem. Select by proposalId or graphRunId. For a connected Full-context Leader, select only its structured context-group source-id with connectedSourceId; that path is read-only. Earlier Leader runs are read-only; mutations retain current-run authority.",
       inputSchema: getSchema,
       handler: async (raw) => {
         const args=getSchema.parse(raw);
-        const inspection=input.coordinator.inspection(input.workItemId,input.primaryRunKey,args);
-        return jsonResult({ ...inspection,
+        const { detail: _detail, nodeOffset: _offset, connectedSourceId, ...selector } = args;
+        const inspection=connectedSourceId ? input.coordinator.inspectConnected({recipientWorkItemId:input.workItemId,
+          recipientPrimaryRunKey:input.primaryRunKey,source:await connectedSource(connectedSourceId)})
+          : input.coordinator.inspection(input.workItemId,input.primaryRunKey,selector);
+        const decision = experiments.decisionContinuations && args.detail !== "full";
+        return jsonResult({ ...(decision ? graphDecisionView(inspection, experiments, args.nodeOffset) : inspection),
           historicalReadOnly: Boolean(inspection.plan && inspection.plan.primaryRunKey !== input.primaryRunKey),
           procedure: leaderProcedurePointer(inspection.plan?.state === "ready" || inspection.plan?.state === "needs_input"
-            ? "review_start" : "adjudication"),
+            ? "review_start" : experiments.decisionContinuations && inspection.plan?.state === "running" ? "review_start" : "adjudication"),
         });
       },
     },
@@ -231,10 +253,14 @@ export function createTaskGraphPlanningTools(input: {
     },
     {
       name: "read_graph_artifact",
-      description: "Read a bounded committed artifact from a current or historical graph in this WorkItem, including earlier Leader continuations. The caller must be the current Leader. Reads remain run- and attempt-scoped, reject stale or secret artifacts, and never expose server storage paths.",
+      description: "Read a bounded committed artifact from a current or historical graph in this WorkItem, including earlier Leader continuations. Use connectedSourceId only with a structured Full-context source-id for a read-only connected graph. The caller must be the current Leader. Reads remain run- and attempt-scoped, reject stale or secret artifacts, and never expose server storage paths.",
       inputSchema: readArtifactSchema,
       handler: async (raw) => {
         const args = readArtifactSchema.parse(raw);
+        if (args.connectedSourceId) return jsonResult(input.coordinator.readConnectedArtifact({
+          recipientWorkItemId:input.workItemId,recipientPrimaryRunKey:input.primaryRunKey,
+          source:await connectedSource(args.connectedSourceId),...args,
+        }));
         return jsonResult(input.coordinator.readArtifact({
           workItemId: input.workItemId,
           primaryRunKey: input.primaryRunKey,

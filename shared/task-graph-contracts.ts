@@ -1,3 +1,4 @@
+import { taskGraphExperimentsSchema, graphPlanningAnalysisSchema } from "./task-graph-experiments.ts";
 import { z } from "zod/v4";
 import { minionContextSchema } from "./minion-context.ts";
 
@@ -40,6 +41,7 @@ export const verificationTaskVerdictSchema = z.object({
   summary: z.string().trim().min(1).max(1_000).optional(),
 }).strict();
 export const taskNodeSchema = z.object({
+  planningStepKey: z.string().min(1).optional(),
   id: z.string().min(1), title: z.string().min(1), objective: z.string().min(1),
   context: minionContextSchema.optional(),
   inputBindings: jsonRecordSchema.default({}), outputSchemas: jsonRecordSchema.default({}),
@@ -65,6 +67,8 @@ export const taskEdgeSchema = z.object({
   failurePolicy: z.enum(["block", "skip", "fail"]), optional: z.boolean().default(false),
 });
 export const graphRevisionInputSchema = z.object({
+  taskGraphExperiments: taskGraphExperimentsSchema.optional(),
+  planningAnalysis: graphPlanningAnalysisSchema.optional(),
   definitionId: z.string().min(1), revisionId: z.string().min(1), workItemId: z.string().min(1),
   workspaceId: z.string().min(1), objective: z.string().min(1),
   acceptanceCriteria: z.array(z.string()), nonGoals: z.array(z.string()).default([]),

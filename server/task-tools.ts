@@ -96,6 +96,7 @@ export function createTaskToolsForLeader(opts: {
   onTaskNameChange?: (name: string) => string | void;
   getRenderComponents?: () => RenderComponent[];
   planningBackend?: LeaderPlanningBackend;
+  decisionContinuations?: boolean | undefined;
 }): { toolDefs: NormalizedToolDef[]; taskState: TaskManagerState } {
   const taskState: TaskManagerState = opts.existingTaskState ?? {
     tasks: new Map(),
@@ -104,6 +105,7 @@ export function createTaskToolsForLeader(opts: {
   };
 
   const ctx: TaskToolContext = {
+    decisionContinuations: opts.decisionContinuations,
     leaderSessionKey: opts.leaderSessionKey,
     bus: opts.bus,
     startMinionSession: opts.startMinionSession,
@@ -138,7 +140,7 @@ export function createTaskToolsForLeader(opts: {
     createSetTaskNameToolDef(ctx),
     createWaitAndContinueToolDef(ctx),
     createCheckpointSessionToolDef(ctx),
-    ...createSkillRetrievalTools({ projectPath: ctx.projectPath, skillSnapshotId: ctx.skillSnapshotId, skillValues: ctx.defaultMinionSkillValues }),
+    ...createSkillRetrievalTools({ projectPath: ctx.projectPath, skillSnapshotId: ctx.skillSnapshotId, skillValues: ctx.defaultMinionSkillValues, skillIds: ctx.defaultMinionSkillIds }),
     createUpdateProjectContextToolDef(ctx),
   ];
   // Canonical Leaders delegate through Graph. Keep direct controls for

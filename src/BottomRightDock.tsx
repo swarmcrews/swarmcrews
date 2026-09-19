@@ -257,7 +257,7 @@ export function DockPanel({
         data-dock-panel={id}
         style={{
           position: "absolute",
-          ...(id === "skills" ? { top: 52 } : { bottom: 64 }),
+          ...(id === "skills" || id === "mcp" ? { top: 52 } : { bottom: 64 }),
           right: 16,
           width,
           maxHeight: "calc(100% - 96px)",
@@ -532,19 +532,28 @@ export function SkillsNavButton() {
   );
 }
 
-export function DockBar() {
+export function ConnectionsNavButton() {
   const { activePanel, togglePanel, badges } = useDock();
-  const density = useDockDensity();
-  const compact = density === "compact";
-
-  // MCP servers is gated behind a debug feature flag, off by default. When
-  // disabled we omit its dock button entirely so the tool is hidden.
+  // Honor the existing Connections visibility setting.
   const mcpFlagStore = useMemo(() => featureFlagStore(FLAG_MCP_SERVERS), []);
   const mcpEnabled = useSyncExternalStore(
     mcpFlagStore.subscribe,
     mcpFlagStore.getSnapshot,
     mcpFlagStore.getSnapshot,
   );
+
+  if (!mcpEnabled) return null;
+  return <div onMouseDown={event => event.stopPropagation()}>
+    <DockPill config={{ id: "mcp", label: "Connections", icon: <McpIcon /> }}
+      active={activePanel === "mcp"} badge={badges.mcp} density="full"
+      onClick={() => togglePanel("mcp")} />
+  </div>;
+}
+
+export function DockBar() {
+  const { activePanel, togglePanel, badges } = useDock();
+  const density = useDockDensity();
+  const compact = density === "compact";
 
   const buttons: DockButtonConfig[] = useMemo(() => {
     return [
@@ -558,17 +567,8 @@ export function DockBar() {
         label: "Map",
         icon: <MapIcon />,
       },
-      ...(mcpEnabled
-        ? [
-            {
-              id: "mcp" as const,
-              label: "MCP",
-              icon: <McpIcon />,
-            },
-          ]
-        : []),
     ];
-  }, [mcpEnabled]);
+  }, []);
 
   return (
     <ViewportOverlay>

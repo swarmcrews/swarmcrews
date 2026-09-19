@@ -585,6 +585,19 @@ describe("preserveOptimisticUserMessages", () => {
       .toEqual([placeholder, persisted]);
   });
 
+  it("reconciles saved unmarked delivery bubbles using their receipt IDs", () => {
+    const legacy = { ...placeholder };
+    delete legacy.optimistic;
+    const receiptIds = new Set([legacy.id]);
+    for (const next of [[legacy, persisted], [persisted]]) {
+      expect(preserveOptimisticUserMessages([legacy], next, receiptIds)).toEqual([persisted]);
+    }
+    // Identical persisted requests remain distinct, even with old receipts.
+    const repeated = { ...persisted, id: "lm-user-second" };
+    expect(preserveOptimisticUserMessages([legacy], [legacy, persisted, repeated], receiptIds))
+      .toEqual([persisted, repeated]);
+  });
+
   it("preserves distinct persisted requests with identical text", () => {
     const next = [placeholder, persisted, { ...persisted, id: "lm-user-server-2" }];
     expect(preserveOptimisticUserMessages([placeholder], next)).toEqual(next.slice(1));

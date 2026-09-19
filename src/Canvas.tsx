@@ -65,7 +65,7 @@ import { agentSpawnDedupKey, claimSpawnEvent } from "./canvas/spawn-event.ts";
 import { useSuppressMiddleClickPaste } from "./use-suppress-middle-click-paste.ts";
 import { createImageNodeFromFile } from "./nodes/image-node-factory.ts";
 import { createMarkdownNodeFromText } from "./nodes/markdown-node-factory.ts";
-import { ABOVE_TOP_GAP, findNonOverlappingPosition, placeAboveTopNode, viewportCenter, snapToGrid, centerTransformOnRect, focusTransformOnRects, didReposition } from "./canvas-utils.ts";
+import { ABOVE_TOP_GAP, findNonOverlappingPosition, placeAboveTopNode, viewportCenter, snapToGrid, unobstructedCanvasViewport, focusTransformOnRects, didReposition } from "./canvas-utils.ts";
 import { computeAutoLayout } from "./auto-layout.ts";
 import { cloneLeaderContextEdges, cloneLeaderSetupData } from "./leader-setup-clone.ts";
 import {
@@ -481,7 +481,17 @@ export function Canvas({
   canvasScaleRef.current = transform.scale;
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [emptyCanvasDescription, setEmptyCanvasDescription] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const getNavigationViewport = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return null;
+    return unobstructedCanvasViewport({
+      left: container.getBoundingClientRect().left,
+      width: container.clientWidth,
+      height: container.clientHeight,
+    }, projectPanelRight);
+  }, [projectPanelRight]);
   const removeCanvasNode = useCallback((node: CanvasNode) => {
     if (node.type !== "leader" || !socketSend) return;
     const command = canvasDetachCommand(node.data as LeaderData, node.id);
@@ -495,7 +505,7 @@ export function Canvas({
     dispatch({ type: "REMOVE_NODES", ids: removed.map(node => node.id) });
   }, [dispatch, graphDispatch, removeCanvasNode]);
   const zones = useCanvasZones({ nodes, dispatch, selectedIds, setSelectedIds, transform, containerRef,
-    topOffset: viewportTopOffset, removeNodes: removeCanvasNodes, reveal: (target, ids) => { cancelCameraAnim(); setTransform(target); setSelectedIds(new Set(ids)); } });
+    topOffset: viewportTopOffset, projectPanelRight, removeNodes: removeCanvasNodes, reveal: (target, ids) => { cancelCameraAnim(); setTransform(target); setSelectedIds(new Set(ids)); } });
   const visibleNodes = zones.visibleNodes;
   const visibleNodesRef = useRef(visibleNodes); visibleNodesRef.current = visibleNodes;
   const visibleGraph = useMemo(() => ({ ...graph, edges: graph.edges.filter(edge =>
@@ -729,7 +739,7 @@ export function Canvas({
   );
 
   /**
-   * Pan the camera to center a node placement, preserving the current zoom.
+   * Center a node placement, zooming out only when needed to keep it visible.
    * A missing start position means this is a newly-created placement and
    * should always be followed.
    */
@@ -738,14 +748,14 @@ export function Canvas({
       const container = containerRef.current;
       if (!container || !endPos || !size) return;
       if (startPos && !didReposition(startPos, endPos)) return;
-      const target = centerTransformOnRect(
-        { x: endPos.x, y: endPos.y, width: size.width, height: size.height },
-        { width: container.clientWidth, height: container.clientHeight },
-        transformRef.current.scale,
+      const target = focusTransformOnRects(
+        [{ ...endPos, ...size }],
+        getNavigationViewport()!,
+        { padding: 80, maxScale: transformRef.current.scale },
       );
-      animateTransformTo(target);
+      if (target) animateTransformTo(target);
     },
-    [animateTransformTo],
+    [animateTransformTo, getNavigationViewport],
   );
 
   // Cancel any running camera tween on unmount to avoid setState-after-unmount.
@@ -1119,12 +1129,12 @@ export function Canvas({
 
       const target = focusTransformOnRects(
         targets.map((node) => ({ ...node.position, ...node.size })),
-        { width: container.clientWidth, height: container.clientHeight },
+        getNavigationViewport()!,
         { padding: 80, maxScale: 1 },
       );
       if (target) navigateTo(target, new Set(targets.map(node => node.id)));
     },
-    [visibleNodes, navigateTo, zones.hiddenMembership, zones.inspect],
+    [visibleNodes, navigateTo, zones.hiddenMembership, zones.inspect, getNavigationViewport],
   );
 
   const focusNodesRef = useRef(focusNodes);
@@ -1214,14 +1224,15 @@ export function Canvas({
       if (existing) {
         const container = containerRef.current;
         if (container) {
-          const cx = container.clientWidth / 2;
-          const cy = container.clientHeight / 2;
-          const scale = transformRef.current.scale;
-          setTransform({
-            x: cx - (existing.position.x + existing.size.width / 2) * scale,
-            y: cy - (existing.position.y + existing.size.height / 2) * scale,
-            scale,
-          });
+          const target = focusTransformOnRects(
+            [{ ...existing.position, ...existing.size }],
+            getNavigationViewport()!,
+            { padding: 80, maxScale: transformRef.current.scale },
+          );
+          if (target) {
+            cancelCameraAnim();
+            setTransform(target);
+          }
         }
         return;
       }
@@ -1351,18 +1362,19 @@ export function Canvas({
 
       const container = containerRef.current;
       if (container) {
-        const cx = container.clientWidth / 2;
-        const cy = container.clientHeight / 2;
-        const scale = transformRef.current.scale;
-        setTransform({
-          x: cx - (minionX + minionWidth / 2) * scale,
-          y: cy - (minionY + minionHeight / 2) * scale,
-          scale,
-        });
+        const target = focusTransformOnRects(
+          [{ x: minionX, y: minionY, width: minionWidth, height: minionHeight }],
+          getNavigationViewport()!,
+          { padding: 80, maxScale: transformRef.current.scale },
+        );
+        if (target) {
+          cancelCameraAnim();
+          setTransform(target);
+        }
       }
 
     },
-    [dispatch, graphDispatch, setTransform],
+    [dispatch, graphDispatch, setTransform, getNavigationViewport, cancelCameraAnim],
   );
 
   const openCommandPalette = useCallback(() => {
@@ -2687,11 +2699,16 @@ export function Canvas({
           ? applyPresetToLeaderData(leaderPreset, baseData as LeaderData)
           : baseData;
       const trimmedPrompt = prompt?.trim() ?? "";
+      // Any leader creation entry point can replace the empty-canvas form.
+      // Carry its text into the editor unless an explicit launch prompt wins.
+      const draftPrompt = visibleNodesRef.current.length === 0 ? emptyCanvasDescription : "";
       // Seed the new node's data with any typed value (Ctrl+K palette): a
       // leader auto-starts with it, a markdown/note/etc. gets it as content.
       const data = trimmedPrompt
         ? applyPromptSeed(type, presetData, trimmedPrompt)
-        : presetData;
+        : type === "leader" && draftPrompt
+          ? { ...presetData as LeaderData, draftPrompt }
+          : presetData;
       const position = resolveNodePosition(typeDef, anchor);
 
       const node: CanvasNode = {
@@ -2702,6 +2719,7 @@ export function Canvas({
         data,
       };
       dispatch({ type: "ADD_NODE", node });
+      if (type === "leader") setEmptyCanvasDescription("");
       setSelectedIds(new Set([node.id]));
 
       // Fresh, empty leader nodes should hand focus to the prompt input so the
@@ -2719,7 +2737,7 @@ export function Canvas({
         cancelCameraAnim();
         const target = focusTransformOnRects(
           [{ ...position, ...typeDef.defaultSize }],
-          { width: container.clientWidth, height: container.clientHeight },
+          getNavigationViewport()!,
           { padding: 80, maxScale: 1 },
         );
         if (target) setTransform(target);
@@ -2727,7 +2745,7 @@ export function Canvas({
 
       return node;
     },
-    [cancelCameraAnim, dispatch, resolveNodePosition, setTransform],
+    [cancelCameraAnim, dispatch, emptyCanvasDescription, resolveNodePosition, setTransform, getNavigationViewport],
   );
 
   const addNode = useCallback(
@@ -2997,37 +3015,13 @@ export function Canvas({
     const container = containerRef.current;
     if (!container) return;
 
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const n of visibleNodes) {
-      minX = Math.min(minX, n.position.x);
-      minY = Math.min(minY, n.position.y);
-      maxX = Math.max(maxX, n.position.x + n.size.width);
-      maxY = Math.max(maxY, n.position.y + n.size.height);
-    }
-
-    const padding = 60;
-    const contentW = maxX - minX + padding * 2;
-    const contentH = maxY - minY + padding * 2;
-    const scaleX = container.clientWidth / contentW;
-    const scaleY = container.clientHeight / contentH;
-    const scale = Math.min(
-      MAX_ZOOM,
-      Math.max(MIN_ZOOM, Math.min(scaleX, scaleY)),
+    const target = focusTransformOnRects(
+      visibleNodes.map(node => ({ ...node.position, ...node.size })),
+      getNavigationViewport()!,
+      { padding: 60, maxScale: MAX_ZOOM },
     );
-
-    navigateTo({
-      x:
-        container.clientWidth / 2 -
-        ((minX + maxX) / 2) * scale,
-      y:
-        container.clientHeight / 2 -
-        ((minY + maxY) / 2) * scale,
-      scale,
-    }, new Set());
-  }, [visibleNodes, navigateTo]);
+    if (target) navigateTo(target, new Set());
+  }, [visibleNodes, navigateTo, getNavigationViewport]);
 
   const handleTidyLayout = useCallback(() => {
     const container = containerRef.current;
@@ -3662,6 +3656,8 @@ export function Canvas({
 
       {visibleNodes.length === 0 && (
         <EmptyCanvasState
+          description={emptyCanvasDescription}
+          onDescriptionChange={setEmptyCanvasDescription}
           onStart={startFromEmptyCanvas}
           onAddLeader={() => addNode("leader")}
         />

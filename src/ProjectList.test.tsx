@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectList } from "./ProjectList.tsx";
 import {
@@ -6,36 +6,32 @@ import {
   createProject,
   deleteProject,
   getHarnessReadiness,
+  getProjectActivitySummary,
+  getRepositoryPathSuggestions,
   listProjects,
   openProject,
 } from "./api.ts";
-import type { SessionInfo } from "./use-socket.ts";
+import { useSocket } from "./use-socket.ts";
 
 const socketSend = vi.fn();
-let sessionSnapshot: SessionInfo[] = [];
 
 vi.mock("./use-socket.ts", () => ({
-  useSocket: () => ({
+  useSocket: vi.fn(() => ({
     connected: true,
     send: socketSend,
     subscribe: vi.fn(),
-  }),
-}));
-
-vi.mock("./use-session-activity.ts", () => ({
-  useSessionActivity: () => ({
-    sessions: sessionSnapshot,
-    mobileSessions: sessionSnapshot,
-  }),
+  })),
 }));
 
 vi.mock("./api.ts", () => ({
   listProjects: vi.fn(),
+  getProjectActivitySummary: vi.fn(),
   checkProjectGit: vi.fn(),
   createProject: vi.fn(),
   openProject: vi.fn(),
   deleteProject: vi.fn(),
   getHarnessReadiness: vi.fn(),
+  getRepositoryPathSuggestions: vi.fn(),
 }));
 
 const ready = {
@@ -67,9 +63,10 @@ const project = {
 describe("ProjectList journeys", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    sessionSnapshot = [];
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeSessions: 0 }]);
     vi.mocked(listProjects).mockResolvedValue([project]);
     vi.mocked(getHarnessReadiness).mockResolvedValue(ready);
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({ platform: "posix", separator: "/", roots: [], directory: null, parent: null, breadcrumbs: [], entries: [], truncated: false });
     vi.mocked(checkProjectGit).mockResolvedValue({ isRepository: true });
     vi.mocked(openProject).mockResolvedValue({ ...project, transform: { x: 0, y: 0, scale: 1 }, createdAt: "", updatedAt: "", nodes: [] });
     vi.mocked(createProject).mockResolvedValue({ ...project, transform: { x: 0, y: 0, scale: 1 }, createdAt: "", updatedAt: "", nodes: [] });
@@ -85,6 +82,41 @@ describe("ProjectList journeys", () => {
     expect(logo.querySelector(".brand__mark")).toBeInTheDocument();
   });
 
+  it("renders and opens projects while readiness is still pending", async () => {
+    let resolveReadiness!: (value: typeof ready) => void;
+    vi.mocked(getHarnessReadiness).mockReturnValue(new Promise((resolve) => { resolveReadiness = resolve; }));
+    const onOpenProject = vi.fn();
+    render(<ProjectList onOpenProject={onOpenProject} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Alpha" }));
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+    expect(onOpenProject).toHaveBeenCalledWith("p1", "/repo/alpha");
+    await act(async () => resolveReadiness({ ...ready, ready: false }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Sign in");
+    expect(screen.getByRole("button", { name: "Open Alpha" })).toBeEnabled();
+  });
+
+  it("keeps projects available when the readiness request fails", async () => {
+    vi.mocked(getHarnessReadiness).mockRejectedValue(new Error("readiness unavailable"));
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Open Alpha" })).toBeEnabled();
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+  });
+
+  it("loads only badge summaries after projects render without opening a socket", async () => {
+    let resolveProjects!: (value: typeof project[]) => void;
+    vi.mocked(listProjects).mockReturnValue(new Promise((resolve) => { resolveProjects = resolve; }));
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(screen.getByText("Loading...")).toBeInTheDocument();
+    expect(useSocket).not.toHaveBeenCalled();
+
+    await act(async () => resolveProjects([project]));
+    expect(screen.getByRole("button", { name: "Open Alpha" })).toBeEnabled();
+    expect(useSocket).not.toHaveBeenCalled();
+    expect(getProjectActivitySummary).toHaveBeenCalledWith(["p1"], expect.any(AbortSignal));
+    expect(socketSend).not.toHaveBeenCalled();
+  });
+
   it("shows a sleeping project when it has no active sessions", async () => {
     render(<ProjectList onOpenProject={vi.fn()} />);
 
@@ -92,16 +124,21 @@ describe("ProjectList journeys", () => {
       "project-list-recent__activity--sleeping",
     );
     expect(screen.getByText("0 active sessions")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tutorial" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
   });
 
-  it("counts running, creating, and waiting leaders while excluding minions", async () => {
-    sessionSnapshot = [
-      { sessionKey: "leader-1", sessionId: "s1", status: "running", cwd: "/repo/alpha", role: "leader" },
-      { sessionKey: "leader-2", sessionId: "s2", status: "creating", cwd: "/repo/alpha/.minions/worktrees/leader-2", role: "leader" },
-      { sessionKey: "leader-3", sessionId: "s3", status: "waiting", cwd: "/repo/alpha/.minions/worktrees/leader-3", role: "leader" },
-      { sessionKey: "minion-1", sessionId: "s3", status: "running", cwd: "/repo/alpha/.minions/worktrees/minion-1", role: "minion" },
-      { sessionKey: "other", sessionId: "s4", status: "running", cwd: "/repo/beta", role: "leader" },
-    ];
+  it("promotes the tutorial only after an empty project list loads, even without a ready harness", async () => {
+    vi.mocked(listProjects).mockResolvedValue([]);
+    vi.mocked(getHarnessReadiness).mockResolvedValue({ ...ready, ready: false });
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start tutorial" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Tutorial" })).not.toBeInTheDocument();
+  });
+
+  it("renders the scoped active count returned by the server", async () => {
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeSessions: 3 }]);
     render(<ProjectList onOpenProject={vi.fn()} />);
 
     const activity = await screen.findByRole("img", { name: "Alpha has 3 active sessions" });
@@ -134,6 +171,21 @@ describe("ProjectList journeys", () => {
 
     await waitFor(() => expect(openProject).toHaveBeenCalledWith("/repo/alpha"));
     expect(onOpenProject).toHaveBeenCalledWith("p1", "/repo/alpha");
+  });
+
+  it("selects a Windows server folder by keyboard without opening a project", async () => {
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({
+      platform: "win32", separator: "\\", roots: [], directory: "C:\\repos", parent: "C:\\", breadcrumbs: [],
+      entries: [{ name: "demo", path: "C:\\repos\\demo" }], truncated: false,
+    });
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    const input = await screen.findByRole("combobox", { name: "Folders on the server" });
+    fireEvent.focus(input);
+    await screen.findByRole("option", { name: /demo/i });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(input).toHaveValue("C:\\repos\\demo");
+    expect(openProject).not.toHaveBeenCalled();
   });
 
   it("creates with an explicit name and path", async () => {
@@ -215,13 +267,42 @@ describe("ProjectList journeys", () => {
     expect(getHarnessReadiness).toHaveBeenLastCalledWith(true);
   });
 
-  it("removes a recent item without opening it", async () => {
+  it("only removes the selected recent project after confirmation without opening it", async () => {
+    vi.mocked(listProjects).mockResolvedValue([project, { ...project, id: "p2", name: "Beta", path: "/repo/beta" }]);
+    const onOpenProject = vi.fn();
+    render(<ProjectList onOpenProject={onOpenProject} />);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Remove" }))[0]!);
+
+    expect(screen.getByRole("dialog", { name: 'Remove "Alpha" from recent projects?' })).toHaveTextContent("Your project folder and files will remain on disk");
+    expect(deleteProject).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Open Alpha" })).toBeInTheDocument();
+    expect(onOpenProject).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
+
+    await waitFor(() => expect(screen.queryByText("Alpha")).not.toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Beta" })).toBeInTheDocument();
+    expect(deleteProject).toHaveBeenCalledTimes(1);
+    expect(deleteProject).toHaveBeenCalledWith("p1");
+    expect(onOpenProject).not.toHaveBeenCalled();
+  });
+
+  it.each(["cancel", "escape", "backdrop"])("keeps the project when confirmation is dismissed using %s", async (dismissal) => {
     const onOpenProject = vi.fn();
     render(<ProjectList onOpenProject={onOpenProject} />);
     fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
 
-    await waitFor(() => expect(screen.queryByText("Alpha")).not.toBeInTheDocument());
-    expect(deleteProject).toHaveBeenCalledWith("p1");
+    if (dismissal === "cancel") {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    } else if (dismissal === "escape") {
+      fireEvent.keyDown(window, { key: "Escape" });
+    } else {
+      fireEvent.mouseDown(screen.getByRole("dialog").parentElement!);
+    }
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Alpha" })).toBeInTheDocument();
+    expect(deleteProject).not.toHaveBeenCalled();
     expect(onOpenProject).not.toHaveBeenCalled();
   });
 });

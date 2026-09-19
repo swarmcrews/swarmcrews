@@ -92,23 +92,6 @@ class CodexHarness implements AgentHarness {
     };
   }
 
-  async getUsageReport(): Promise<unknown> {
-    const creds = resolveCodexCredentials();
-    const authenticated = Boolean(creds.apiKey);
-    return {
-      provider: "openai",
-      subscription_type: null,
-      rate_limits_available: false,
-      rate_limits: null,
-      unavailable_reason:
-        "OpenAI/Codex rate-limit reset windows are not exposed by the installed Codex SDK or CLI.",
-      auth: {
-        authenticated,
-        source: creds.apiKey ? "api_key" : "unknown",
-      },
-    };
-  }
-
   /**
    * Start a Codex session. Returns the event stream the host pulls until the
    * `done` event is emitted, plus a per-run control surface command handlers

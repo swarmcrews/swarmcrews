@@ -162,7 +162,7 @@ risks:
         - server/harness/sandbox-policy.ts
         - server/harness/types.ts
         - src/nodes/leader/SandboxPolicyControls.tsx
-    mitigation: Persist requested and effective policies separately, mark unsupported filesystem or approval axes unmanaged, and only claim complete enforcement for Codex.
+    mitigation: Persist requested and effective policies separately and mark unsupported axes unmanaged. Copilot applies native per-session policy and checks in-process file paths; verify real shell/file boundaries with its opt-in integration test and never treat mocked policy application as proof of live enforcement.
     domain: domain.platform
   - id: risk.evaluation_measurement_overclaim
     type: risk

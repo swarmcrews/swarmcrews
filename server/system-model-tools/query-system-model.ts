@@ -1,5 +1,5 @@
 import type { NormalizedToolDef } from "../harness/types.ts";
-import { matchSystemModel } from "../system-model/match.ts";
+import { matchSystemModel, SEARCH_RANKING_VERSION } from "../system-model/match.ts";
 import { discoveryEdges } from "../system-model/discovery-relations.ts";
 import type { LoadedSystemModel } from "../system-model/types.ts";
 import { clip, objectReference, preview, readFacets } from "./query-system-model-projection.ts";
@@ -35,9 +35,9 @@ export function createQuerySystemModelToolDef(ctx: SystemModelToolContext): Norm
         freshness: { status: "unknown", reason: "not_checked" } };
       const accepts = (type: string) => !query.objectTypes.length || query.objectTypes.some((item) => item === type);
       if (query.operation === "search") {
-        const filtered = { ...model, objectsById: new Map([...model.objectsById].filter(([, object]) => accepts(object.type))) };
-        // Rank before paging. Other matcher callers retain their existing topK behavior.
-        const result = matchSystemModel({ model: filtered, request: query.query, files: query.files, topK: filtered.objectsById.size });
+        // Preserve corpus weights and graph evidence; filter after scoring, before paging.
+        const result = matchSystemModel({ model, request: query.query, files: query.files,
+          objectTypes: query.objectTypes, topK: model.objectsById.size });
         for (const candidate of result.candidates) entries.push({ target: "matches", value: {
           ...preview(model.objectsById.get(candidate.id)!, model.policies.contextBudgets.perObjectSummary, modelVersion),
           score: candidate.score, reasons: candidate.reasons.slice(0, 3).map((reason) => clip(reason, 120)),
@@ -45,7 +45,7 @@ export function createQuerySystemModelToolDef(ctx: SystemModelToolContext): Norm
         } });
         metadata.status = entries.length ? "ok" : "no_matches";
         metadata.matchConfidence = result.matchConfidence;
-        metadata.ranking = "lexical";
+        metadata.ranking = "hybrid";
         metadata.fallbackInstruction = result.fallbackInstruction;
       } else if (query.operation === "read") {
         selectedIds.forEach((id, requestIndex) => {
@@ -60,7 +60,9 @@ export function createQuerySystemModelToolDef(ctx: SystemModelToolContext): Norm
         entries.push(...expand(model, { ...query, ids: selectedIds }, modelVersion));
         metadata.status = entries.length ? "ok" : "no_matches";
       }
-      return retrievalPage(entries, metadata, query, modelVersion);
+      // Search cursors must not resume into a different ranking implementation.
+      const snapshot = query.operation === "search" ? digest({ modelVersion, ranking: SEARCH_RANKING_VERSION }) : modelVersion;
+      return retrievalPage(entries, metadata, query, snapshot);
     },
   };
 }

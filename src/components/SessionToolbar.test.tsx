@@ -140,6 +140,18 @@ function renderWithHarnesses(
 // ── Tests ──────────────────────────────────────────────────────
 
 describe("SessionToolbar — model selection picker", () => {
+  it("reserves model menu scrolling for the list rather than the canvas", () => {
+    renderWithHarnesses([CLAUDE_ENTRY]);
+    fireEvent.click(screen.getByTitle("Model selection"));
+    const menu = screen.getByRole("dialog", { name: "Model selection menu" });
+    expect(menu).toHaveAttribute("data-scroll-capture");
+    expect(menu).toHaveStyle({ overflowY: "auto", overscrollBehavior: "contain" });
+    for (const deltaY of [100, -100]) {
+      expect(fireEvent.wheel(screen.getByRole("button", { name: /Opus 4.8/ }), { deltaY })).toBe(true);
+      expect(menu).toBeInTheDocument();
+    }
+  });
+
   it("combines harness, model, and reasoning into one trigger without tier chips", () => {
     renderWithHarnesses([CLAUDE_ENTRY]);
     expect(screen.getByTitle("Model selection")).toHaveTextContent("Anthropic");
@@ -327,6 +339,39 @@ describe("SessionToolbar — capability gating", () => {
 });
 
 describe("SessionToolbar — harness-aware models", () => {
+  it.each(["minimal", "low", "medium", "high", "xhigh", "max"] as const)(
+    "offers and selects Pi Astra reasoning effort %s",
+    (effort) => {
+      const pi: HarnessListEntry = {
+        ...CODEX_ENTRY, name: "pi", account: { provider: "pi" },
+        models: [{ id: "openai-codex/gpt-6-astra", label: "Codex Astra", source: "dynamic",
+          supportsReasoning: true,
+          supportedEffortLevels: ["minimal", "low", "medium", "high", "xhigh", "max"] }],
+      };
+      const props = renderWithHarnesses([pi], { harness: "pi", model: "openai-codex/gpt-6-astra" });
+      fireEvent.click(screen.getByTitle("Model selection"));
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${effort}$`, "i") }));
+      expect(props.onThinkingConfigChange).toHaveBeenCalledWith({ ...DEFAULT_THINKING, effort });
+    },
+  );
+
+  it("renders only the Pi model's discovered reasoning choices", () => {
+    const pi = {
+      ...CODEX_ENTRY,
+      name: "pi",
+      account: { provider: "pi" },
+      models: [{ id: "native/reasoner", label: "Native reasoner", source: "dynamic" as const,
+        supportsReasoning: true, supportedEffortLevels: ["minimal", "max"] }],
+    };
+    const props = renderWithHarnesses([pi], { harness: "pi", model: "native/reasoner" });
+    fireEvent.click(screen.getByTitle("Model selection"));
+    expect(screen.getByRole("button", { name: "Minimal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Max" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "High" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Minimal" }));
+    expect(props.onThinkingConfigChange).toHaveBeenCalledWith({ ...DEFAULT_THINKING, effort: "minimal" });
+  });
+
   it("lists only Codex models when the active harness is Codex", () => {
     renderWithHarnesses(
       [CLAUDE_ENTRY, CODEX_ENTRY],

@@ -62,17 +62,25 @@ export function resolveLeaderContextItem(
   const messages = data?.messages ?? [];
   const blocks = buildLeaderTranscriptBlocks(messages, mode);
   const content = blocks.join(TRANSCRIPT_BLOCK_SEPARATOR);
-  if (!content.trim()) return null;
+  const graphSource = mode === "full"
+    && typeof (data as { workItemId?: unknown } | undefined)?.workItemId === "string"
+    && typeof (data as { currentRunKey?: unknown } | undefined)?.currentRunKey === "string"
+    ? { workItemId: (data as { workItemId: string }).workItemId,
+      primaryRunKey: (data as { currentRunKey: string }).currentRunKey } : undefined;
+  if (!content.trim() && !graphSource) return null;
   const label =
     data?.taskName && data.taskName.trim() ? data.taskName : "Leader Session";
   return {
     nodeId: sourceNode.id,
     nodeType: sourceNode.type,
     label,
-    content,
+    // Only the server can establish whether this source has a readable graph.
+    content: content || "[Connected Leader source; no transcript messages yet.]",
     // Append-only block list: lets follow-up turns deliver only the suffix of
     // new transcript blocks instead of re-sending the whole transcript.
     blocks,
+    // Only Full context shares graph navigation. Lean remains transcript-only.
+    ...(graphSource ? { leaderGraphSource: graphSource } : {}),
   };
 }
 

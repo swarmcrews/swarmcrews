@@ -11,9 +11,10 @@ export const SKILL_ATTACHMENT_PAGE_CHARS = 12_000;
 export function createSkillRetrievalTools(opts: {
   projectPath: string;
   skillSnapshotId?: string | undefined;
+  skillIds?: readonly string[] | undefined;
   skillValues?: Record<string, Record<string, string>> | undefined;
 }): NormalizedToolDef[] {
-  const id = opts.skillSnapshotId ?? captureSkillSnapshot(opts.projectPath, opts.skillValues);
+  const id = opts.skillSnapshotId ?? captureSkillSnapshot(opts.projectPath, opts.skillValues, opts.skillIds);
   const snapshot = readSkillSnapshot(opts.projectPath, id);
   const parentSchema = z.object({ skillId: z.string(), values: z.record(z.string(), z.string()).optional() });
   const subSchema = z.object({ skillId: z.string(), subskillId: z.string() });

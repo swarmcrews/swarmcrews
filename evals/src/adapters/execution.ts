@@ -21,12 +21,12 @@ export function executionCommand(execution: ExecutionDescriptor, executable: str
     ? { executable: 'docker', args: ['exec', '-w', execution.workdir, ...Object.entries(environment).flatMap(([key,value]) => ['-e', `${key}=${value}`]), execution.containerName!, executable, ...args] }
     : { executable, args };
 }
-export async function command(executable: string, args: string[]): Promise<string> {
+export async function command(executable: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): Promise<string> {
   const root=await mkdtemp(join(tmpdir(),'eval-probe-'));
   const out=await open(join(root,'stdout'),'w');const err=await open(join(root,'stderr'),'w');
   try {
     await new Promise<void>((resolve,reject)=>{
-      const child=spawn(executable,args,{stdio:['ignore',out.fd,err.fd]});
+      const child=spawn(executable,args,{...options,stdio:['ignore',out.fd,err.fd]});
       const timer=setTimeout(()=>{child.kill('SIGKILL');reject(new Error(`${executable} probe timed out`));},15_000);
       child.once('error',error=>{clearTimeout(timer);reject(error);});
       child.once('close',code=>{clearTimeout(timer);code===0?resolve():reject(new Error(`${executable} exited ${code}`));});

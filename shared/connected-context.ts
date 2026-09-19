@@ -5,6 +5,12 @@ export interface ConnectedSource {
   label: string;
   content: string;
   attachments?: readonly { kind: string; filename?: string; mediaType: string; data: string }[] | undefined;
+  /**
+   * Server-validated identity for a full Leader-to-Leader graph handoff. It is
+   * deliberately separate from prose so graph reads cannot be granted by an
+   * identifier mentioned in a transcript.
+   */
+  leaderGraphSource?: { workItemId: string; primaryRunKey: string } | undefined;
 }
 
 export function hashString(s: string): number {
@@ -19,7 +25,8 @@ export function attachmentContentHash(item: ConnectedSource): number {
 }
 
 export function itemContentHash(item: ConnectedSource): number {
-  return hashString(JSON.stringify([item.label, item.nodeType, item.content, attachmentContentHash(item)]));
+  return hashString(JSON.stringify([item.label, item.nodeType, item.content,
+    item.leaderGraphSource, attachmentContentHash(item)]));
 }
 
 /** Preserve graph order, with the first occurrence of each source authoritative. */

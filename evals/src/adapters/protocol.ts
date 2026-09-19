@@ -17,6 +17,11 @@ export interface ProcessRun {
   stop(reason: StopReason): Promise<boolean>; collect(): Promise<CollectedExecution["artifacts"]>;
 }
 export interface CodexProcessLauncher { reconnect?(id: string): ProcessRun; probe(): Promise<{ executable: string; version: string; binaryDigest?: string; supportsJson: boolean; supportsEphemeral: boolean; supportsDisableDelegation: boolean; supportsReconnect?: boolean }>; launch(input: { run: ParticipantRunSpec; args: string[]; environment: Record<string, string> }): Promise<ProcessRun>; }
+export interface PiProcessLauncher {
+  reconnect(id: string): ProcessRun;
+  probe(): Promise<{ executable: string; version: string; binaryDigest: string; missingFlags: string[] }>;
+  launch(input: { run: ParticipantRunSpec; args: string[]; environment: Record<string, string> }): Promise<ProcessRun>;
+}
 
 export function report(adapterId: string, version: string, supported: boolean, capabilities: Record<string, boolean>, limitations: string[], evidence: string[]): CapabilityReport {
   return { schemaVersion: 1, adapterId, adapterVersion: version, supported, capabilities, limitations, evidence };

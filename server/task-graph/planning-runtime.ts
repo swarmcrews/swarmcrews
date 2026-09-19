@@ -1,8 +1,15 @@
+import { CONNECTION_MCP_TOOLS } from "../../shared/mcp-servers/connections.ts";
 import type Database from "better-sqlite3";
+import { taskGraphExperimentsForRun } from "./planning-mode.ts";
+import { graphDecisionView } from "./decision-view.ts";
+import { graphExperimentGuidance } from "../../shared/task-graph-experiments.ts";
 import type { Bus } from "../bus.ts";
 import type { TaskGraphPlanSnapshotView } from "../../shared/task-graph-planning-contracts.ts";
 import { getSessionCanvasContext } from "../canvas-context-store.ts";
+import { connectedGraphSourcesForRecipient } from "./connected-graph-source.ts";
+import { refreshConnectedGraphContext } from "./connected-graph-context.ts";
 import { getHarness } from "../harness/index.ts";
+import { readSettings } from "../project-store.ts";
 import type { SessionRegistry } from "../session-registry.ts";
 import type { SessionHostDeps } from "../session-host-types.ts";
 import { requestWaitResume } from "../wait-resume.ts";
@@ -32,7 +39,11 @@ export function installTaskGraphPlanningRuntime(input: {
       const projectPath = host.worktree?.projectPath ?? host.cwd;
       const workspace = findWorkspaceBySource(projectPath);
       if (!workspace) return null;
+      // Graph steps are Minions: freeze their configured provider into the plan,
+      // independently of the Leader's provider, just as direct assignment does.
+      const minionHarness = readSettings(projectPath).defaultMinionHarness || "claude";
       return {
+        taskGraphExperiments: taskGraphExperimentsForRun(input.db, primaryRunKey),
         workspaceId: workspace.id,
         cwd: host.cwd,
         projectPath,
@@ -40,19 +51,24 @@ export function installTaskGraphPlanningRuntime(input: {
           ? `${host.worktree.branch}:${host.worktree.path}` : `workspace:${workspace.id}`,
         connectedContext: getSessionCanvasContext(primaryRunKey)
           ?? planningContextForRun(input.db, primaryRunKey),
+        // The saved Full canvas edge and active surface bindings are checked
+        // for every tool invocation; in-memory browser delivery is not a grant.
+        connectedGraphSources: connectedGraphSourcesForRecipient(input.db, { workItemId, primaryRunKey }),
         skillIds: host.skillIds,
         skillSnapshotId: host.skillSnapshotId,
         skillValues: host.skillValues,
-        harnessName: host.harnessName,
+        harnessName: minionHarness,
         allowedTools: host.toolAllowlist ?? [
-          ...getHarness(host.harnessName).builtInTools,
-          ...minionSkillMcpToolNames(host.skillIds),
+          ...getHarness(minionHarness).builtInTools,
+          ...minionSkillMcpToolNames(host.skillIds), ...CONNECTION_MCP_TOOLS,
         ],
       };
     },
     onTerminal: (plan) => {
       const host = input.registry.get(plan.primaryRunKey);
       if (!host) return;
+      const flags = taskGraphExperimentsForRun(input.db, plan.primaryRunKey);
+      if (flags.decisionContinuations && !isCurrentPlan(coordinator, plan)) return;
       const wakeId = plan.graphRunId ?? plan.proposalId;
       if (terminalWakePending.has(wakeId)) return;
       terminalWakePending.add(wakeId);
@@ -69,7 +85,7 @@ export function installTaskGraphPlanningRuntime(input: {
         opts: {
           sessionKey: host.id,
           invocationKind: "resume_open_run",
-          prompt: `The execution graph is now ${plan.state}. Call get_graph_plan, inspect the canonical runtime, acceptance coverage, committed artifacts and independent verification. Identify unfinished obligations and failed or inconclusive checks; remediate within authorized scope or report the concrete blocker before finalizing. Synthesize the final response only when the objective is satisfied or honestly explain why it remains incomplete. ${leaderProcedurePointer("adjudication")} If a Work Packet is associated, load the reconciliation procedure before closure.`,
+          prompt: flags.decisionContinuations ? decisionContinuation(coordinator, plan, flags) : `The execution graph is now ${plan.state}. Call get_graph_plan, inspect the canonical runtime, acceptance coverage, committed artifacts and independent verification. Identify unfinished obligations and failed or inconclusive checks; remediate within authorized scope or report the concrete blocker before finalizing. Synthesize the final response only when the objective is satisfied or honestly explain why it remains incomplete. ${leaderProcedurePointer("adjudication")} If a Work Packet is associated, load the reconciliation procedure before closure.`,
           cwd: host.cwd,
           resumeId: host.sessionId ?? undefined,
           harness: host.harnessName,
@@ -80,7 +96,10 @@ export function installTaskGraphPlanningRuntime(input: {
     onAttention: (plan, _reason, runRevision) => {
       const host = input.registry.get(plan.primaryRunKey);
       if (!host) return;
-      const prompt=attentionPrompt(coordinator,input.taskGraphs,plan,runRevision);
+      const flags = taskGraphExperimentsForRun(input.db, plan.primaryRunKey);
+      if (flags.decisionContinuations && !isCurrentPlan(coordinator, plan)) return;
+      const prompt = [flags.decisionContinuations ? decisionContinuation(coordinator, plan, flags) : "",
+        attentionPrompt(coordinator,input.taskGraphs,plan,runRevision)].filter(Boolean).join("\n\n");
       requestWaitResume(host, input.sessionDeps, {
         immediate: true,
         idempotencyKey: `graph-attention:${plan.graphRunId ?? plan.proposalId}:${runRevision}`,
@@ -97,6 +116,17 @@ export function installTaskGraphPlanningRuntime(input: {
       });
     },
   });
+  coordinator.addCleanup(input.bus.subscribe((envelope) => {
+    if ((envelope.type !== "task_graph_snapshot" && envelope.type !== "task_graph_changed")
+      || typeof envelope["runId"] !== "string") return;
+    let graph: {workItemId:string;primaryRunKey:string};
+    try { graph=input.taskGraphs.snapshot(envelope["runId"]).run; } catch { return; }
+    for (const host of input.registry.values()) {
+      if (!host.workItemId || host.runKind !== "primary") continue;
+      refreshConnectedGraphContext(host, coordinator);
+    }
+  }));
+  input.sessionDeps.getTaskGraphExperiments = (runKey) => taskGraphExperimentsForRun(input.db, runKey);
   input.sessionDeps.getLeaderOrchestrationMode = (runKey) =>
     leaderOrchestrationModeForRun(input.db, runKey);
   input.sessionDeps.getTaskGraphPlanning = () => coordinator;
@@ -137,3 +167,17 @@ function attentionPrompt(
 }
 
 const genericAttentionPrompt=`The execution graph is blocked. Call get_graph_plan, inspect the canonical blocker and evidence, then resolve it or ask the user one focused question. ${leaderProcedurePointer("adjudication")}`;
+
+function isCurrentPlan(coordinator: TaskGraphPlanningCoordinator, plan: TaskGraphPlanSnapshotView): boolean {
+  const current = coordinator.repo.latest(plan.workItemId, plan.primaryRunKey);
+  return current?.proposalId === plan.proposalId && current.graphRunId === plan.graphRunId
+    && current.revision === plan.revision;
+}
+function decisionContinuation(coordinator: TaskGraphPlanningCoordinator, plan: TaskGraphPlanSnapshotView,
+  flags: ReturnType<typeof taskGraphExperimentsForRun>): string {
+  const inspection = coordinator.inspection(plan.workItemId, plan.primaryRunKey,
+    { ...(plan.graphRunId ? { graphRunId: plan.graphRunId } : { proposalId: plan.proposalId }), historyLimit: 1 });
+  return ["An execution-graph decision is ready. This is bounded routing evidence; read required artifacts and verification before acceptance.",
+    JSON.stringify(graphDecisionView(inspection, flags)), graphExperimentGuidance(flags, "adjudication"),
+    leaderProcedurePointer("adjudication")].join("\n\n");
+}

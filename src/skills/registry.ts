@@ -59,3 +59,8 @@ export function setAllSkills(skills: SkillTemplate[]): void {
 export function clearSkills(): void {
   registry.clear();
 }
+
+/** Seed new leaders without changing existing selections or user pickers. */
+export function getDefaultSkillIds(): string[] {
+  return getPickableSkills().filter((skill) => skill.isDefault === true).map((skill) => skill.id);
+}

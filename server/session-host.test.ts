@@ -155,6 +155,19 @@ afterEach(() => {
 });
 
 describe("SessionHost.start — happy-path lifecycle", () => {
+  it.each([
+    { role: "leader", permissionMode: "bypassPermissions", canConfigure: true },
+    { role: "leader", permissionMode: "plan", canConfigure: false },
+    { role: "minion", permissionMode: "bypassPermissions", canConfigure: false },
+    { role: "default", permissionMode: "bypassPermissions", canConfigure: false },
+  ] as const)("gates MCP configuration for $role in $permissionMode", async ({ role, permissionMode, canConfigure }) => {
+    const { host, deps } = makeHarness("connection-role");
+    await host.start({ sessionKey: host.id, prompt: "configure a connection", cwd: host.cwd,
+      role, permissionMode, worktreeIsolation: false, ...(role === "leader" ? { workItemId: "work-1" } : {}) }, deps);
+    const start = harnessRef.starts[0] as { allowedTools: string[] };
+    expect(start.allowedTools.includes("mcp__connections__save_connection")).toBe(canConfigure);
+    expect(start.allowedTools.includes("mcp__connections__get_connection_configuration")).toBe(role === "leader");
+  });
   it.each(["throw", "done-error", "text", "done-success"])("requires provider response evidence after init: %s", async mode => {
     const { host, deps } = makeHarness("acceptance");
     const opened = vi.fn(), accepted = vi.fn();

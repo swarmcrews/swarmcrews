@@ -14,6 +14,7 @@ import {
   closePersistDb,
   disablePersistence,
   openPersistDb,
+  persistenceDb,
   persistEvent,
   persistTaskState,
   persistSession,
@@ -66,6 +67,41 @@ function makePersisted(
     ...overrides,
   };
 }
+
+describe("SessionRegistry archive visibility", () => {
+  it("omits archived leaders and children before projection, preserving direct and explicit archive access", () => {
+    const dbPath = tmpDb();
+    try {
+      openPersistDb(dbPath);
+      const db = persistenceDb()!;
+      db.prepare(`INSERT INTO work_items (
+        id, project_id, project_path, title, runtime_state, outcome, resolution,
+        change_mode, integration_state, last_transition_at, created_at, updated_at
+      ) VALUES ('archived-work', 'p', '/repo', 'Old', 'inactive', 'completed', 'archived',
+        'live', 'live_clean', 1, 1, 1)`).run();
+      const registry = new SessionRegistry();
+      const entries = (registry as unknown as { map: Map<string, SessionHost> }).map;
+      const archived = new SessionHost("archived", "/repo");
+      archived.workItemId = "archived-work";
+      const child = new SessionHost("child", "/repo");
+      child.workItemId = "archived-work";
+      child.role = "minion";
+      entries.set(archived.id, archived);
+      entries.set(child.id, child);
+      entries.set("visible", new SessionHost("visible", "/repo"));
+      const detail = vi.fn(() => "claude");
+      Object.defineProperty(archived, "harnessName", { configurable: true, get: detail });
+      expect(registry.snapshot().map((s) => s.sessionKey)).toEqual(["visible"]);
+      expect(detail).not.toHaveBeenCalled();
+      expect(registry.get("archived")).toBe(archived);
+      expect(Array.from(registry.entries())).toHaveLength(3);
+      expect(registry.snapshot({ includeArchived: true }).map((s) => s.sessionKey))
+        .toEqual(["archived", "child", "visible"]);
+      db.prepare("UPDATE work_items SET resolution = 'open' WHERE id = 'archived-work'").run();
+      expect(registry.snapshot()).toHaveLength(3);
+    } finally { closePersistDb(); disablePersistence(); rmDb(dbPath); }
+  });
+});
 
 describe("SessionRegistry.activeCount", () => {
   it("counts only hosts with active execution", () => {

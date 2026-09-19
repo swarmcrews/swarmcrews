@@ -1,3 +1,4 @@
+import { connectionOAuthCallback } from "./mcp-connections/routes.ts";
 import { evaluateRuntimePromotionGate } from "./worktree-integration-gates.ts";
 import { startWorktreeCleanup } from "./worktree-cleanup.ts";
 /**
@@ -20,7 +21,9 @@ import crypto from "crypto";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { createProjectRoutes } from "./routes/projects.ts";
-import { createFileRoutes } from "./routes/files.ts"; import { createHistoryRoutes } from "./routes/history.ts"; import { setHistoryCookie, historyCookieToken } from "./history-auth.ts";
+import { projectActivitySummary } from "./project-activity.ts";
+import { createFileRoutes } from "./routes/files.ts"; import { createHistoryRoutes } from "./routes/history.ts";
+import { createApiAuthMiddleware, createAuthTokenHandler, createWebSocketVerifier } from "./http-security.ts";
 import { createBus } from "./bus.ts";
 import { attachConnectionListeners } from "./ws-connection.ts";
 import { cleanupStaleWorktrees } from "./worktree.ts";
@@ -33,7 +36,7 @@ import { SessionRegistry } from "./session-registry.ts";
 import { dispatchCommand } from "./commands/index.ts";
 import type { CommandContext } from "./commands/index.ts";
 import { WS_MAX_PAYLOAD_BYTES } from "./ws-config.ts";
-import { isAllowedAuthBootstrapRequest, isAllowedOrigin } from "./network-access.ts";
+import { isAllowedOrigin } from "./network-access.ts";
 import { openPersistDb } from "./session-persist.ts";
 import { loadOrCreateVapidKeys } from "./push-vapid.ts";
 import { createPushStore } from "./push-store.ts";
@@ -61,6 +64,7 @@ import { TaskGraphService } from "./task-graph/service.ts";
 import { createTaskGraphAgentTools } from "./task-graph/agent-tools.ts";
 import { validateTaskGraphNodePolicy } from "./task-graph/execution-policy.ts";
 import { installTaskGraphPlanningRuntime } from "./task-graph/planning-runtime.ts";
+import { BROWSER_SECURITY_HEADERS } from "../shared/browser-security-headers.ts";
 
 const log = serverLogger.child("main");
 
@@ -71,13 +75,10 @@ log.info("starting", { persistence: "per-project-sqlite" });
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 
-// Baseline browser hardening. A restrictive CSP is intentionally omitted here:
-// the Vite development client needs dynamic scripts and WebSocket connections.
+// The frontend uses the same baseline. Artifact and history responses add
+// their own restrictive resource policies below.
 app.use((_req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.set(BROWSER_SECURITY_HEADERS);
   next();
 });
 
@@ -102,31 +103,14 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/api/auth/token", (req: Request, res: Response) => {
-  const origin = req.headers.origin;
-  if (!isAllowedAuthBootstrapRequest({
-    hostname: req.hostname,
-    remoteAddress: req.socket.remoteAddress,
-    origin: Array.isArray(origin) ? origin[0] : origin,
-  })) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
-  }
-  setHistoryCookie(req, res, AUTH_TOKEN); res.json({ token: AUTH_TOKEN });
-});
-
-function authMiddleware(req: Request, res: Response, next: Function) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : historyCookieToken(req);
-  if (token !== AUTH_TOKEN) {
-    res.status(401).json({ error: "Unauthorized" });
-    return;
-  }
-  next();
-}
+app.get("/api/mcp/oauth/callback", connectionOAuthCallback);
+app.get("/api/auth/token", createAuthTokenHandler(AUTH_TOKEN));
+const authMiddleware = createApiAuthMiddleware(AUTH_TOKEN);
 
 // Mount REST API routes (with auth)
-app.use("/api/projects", authMiddleware, createProjectRoutes());
+app.use("/api/projects", authMiddleware, createProjectRoutes({
+  activitySummary: (projectIds) => projectActivitySummary(registry.entries(), projectIds),
+}));
 app.use("/api/files", authMiddleware, createFileRoutes()); app.use("/api/history", authMiddleware, createHistoryRoutes());
 app.use("/api/readiness", authMiddleware, createReadinessRoutes());
 app.post("/api/server/restart", authMiddleware, (_req: Request, res: Response) => {
@@ -151,20 +135,7 @@ const server = createServer(app);
 const wss = new WebSocketServer({
   server,
   maxPayload: WS_MAX_PAYLOAD_BYTES,
-  verifyClient: (info: { origin: string; req: import("node:http").IncomingMessage }) => {
-    const origin = info.origin ?? info.req.headers["origin"];
-    if (!isAllowedOrigin(origin)) {
-      log.warn("ws_connection_rejected", { cause: "origin", origin });
-      return false;
-    }
-    const url = new URL(info.req.url ?? "", `http://${info.req.headers.host}`);
-    const token = url.searchParams.get("token");
-    if (token !== AUTH_TOKEN) {
-      log.warn("ws_connection_rejected", { cause: "auth" });
-      return false;
-    }
-    return true;
-  },
+  verifyClient: createWebSocketVerifier(AUTH_TOKEN),
 });
 
 const MAX_SESSIONS = 50;
@@ -350,7 +321,7 @@ server.listen(PORT, HOST, () => {
   // Sweep temporary HTML artifacts whose session no longer exists (a session
   // that died without its remove/clear cleanup running). Session-scoped dirs
   // for still-known sessions are preserved.
-  const knownSessionKeys = registry.snapshot().map((s) => s.sessionKey);
+  const knownSessionKeys = Array.from(registry.entries(), ([key]) => key);
   void sweepOrphanHtmlArtifacts(knownSessionKeys)
     .then((removed) => {
       if (removed > 0) {

@@ -12,8 +12,39 @@ import { installTaskGraphPlanningRuntime } from "./planning-runtime.ts";
 import type { TaskGraphService } from "./service.ts";
 
 describe("planning runtime installation", () => {
+  it("delivers bounded decision evidence for the frozen treatment and ignores obsolete graph wakes", async () => {
+    const db = initDb(":memory:"); ensureWorkItemSchema(db);
+    db.prepare("INSERT INTO sessions(session_key,run_config_json) VALUES (?,?)").run("primary",
+      JSON.stringify({ taskGraphExperiments: { decisionContinuations: true } }));
+    const bus = { emit: () => {}, emitToSession: () => {}, emitToProject: () => {}, emitGlobal: () => {}, subscribe: () => () => {} } as Bus;
+    const leader = new SessionHost("primary", "/tmp/work");
+    leader.status = "idle"; leader.role = "leader"; leader.workItemId = "work"; leader.runKind = "primary";
+    const resumeWorkItemRun = vi.fn().mockResolvedValue(undefined);
+    const deps = { bus, startChildSession: vi.fn(), resumeWorkItemRun, forEachLeaderTaskState: () => {} } as unknown as SessionHostDeps;
+    const coordinator = installTaskGraphPlanningRuntime({ db, bus,
+      registry: { get: () => leader } as unknown as SessionRegistry, sessionDeps: deps,
+      taskGraphs: { options: { db } } as unknown as TaskGraphService });
+    const plan = { proposalId: "new", workItemId: "work", primaryRunKey: "primary", graphRunId: "new-graph", revision: 3,
+      proposalRevision: 1, state: "completed", questions: [], acceptanceCriteria: ["Checked"], reviewRequirements: [], steps: [] } as unknown as TaskGraphPlanSnapshotView;
+    vi.spyOn(coordinator.repo, "latest").mockReturnValue(plan);
+    vi.spyOn(coordinator, "inspection").mockReturnValue({ plan, runtime: null, history: [] });
+    vi.spyOn(coordinator, "acknowledgeTerminalWake").mockImplementation(() => {});
+    coordinator.options.onTerminal?.({ ...plan, graphRunId: "old-graph" });
+    coordinator.options.onAttention?.({ ...plan, revision: 2 }, "blocked", 2);
+    expect(resumeWorkItemRun).not.toHaveBeenCalled();
+    coordinator.options.onTerminal?.(plan);
+    coordinator.options.onTerminal?.(plan);
+    await vi.waitFor(() => expect(resumeWorkItemRun).toHaveBeenCalledOnce());
+    const delivery = JSON.stringify(resumeWorkItemRun.mock.calls[0]);
+    expect(delivery).toContain("new-graph");
+    expect(delivery).toContain("bounded routing evidence");
+    expect(delivery).toContain("detail");
+    expect(deps.getTaskGraphExperiments?.("primary").decisionContinuations).toBe(true);
+    coordinator.dispose(); db.close();
+  });
   it("defers planning recovery until the caller has hydrated the session registry", () => {
     const db = initDb(":memory:");
+    ensureWorkItemSchema(db);
     const bus: Bus = {
       emit: () => {}, emitToSession: () => {}, emitToProject: () => {},
       emitGlobal: () => {}, subscribe: () => () => {},
@@ -44,6 +75,7 @@ describe("planning runtime installation", () => {
 
   it("resumes the bound Leader once when duplicate terminal reconciliation arrives", async () => {
     const db = initDb(":memory:");
+    ensureWorkItemSchema(db);
     const bus: Bus = {
       emit: () => {}, emitToSession: () => {}, emitToProject: () => {},
       emitGlobal: () => {}, subscribe: () => () => {},
@@ -77,7 +109,7 @@ describe("planning runtime installation", () => {
   it("acknowledges a terminal wake only after transient dispatch failure recovers", async () => {
     vi.useFakeTimers();vi.setSystemTime(0);
     try {
-      const db=initDb(":memory:");
+      const db=initDb(":memory:"); ensureWorkItemSchema(db);
       const bus:Bus={emit:()=>{},emitToSession:()=>{},emitToProject:()=>{},emitGlobal:()=>{},
         subscribe:()=>()=>{}};
       const leader=new SessionHost("primary","/tmp/work");
@@ -106,7 +138,7 @@ describe("planning runtime installation", () => {
   });
 
   it("delivers a dialectic synthesis report directly to the resumed Leader",async()=>{
-    const db=initDb(":memory:");
+    const db=initDb(":memory:"); ensureWorkItemSchema(db);
     const bus:Bus={emit:()=>{},emitToSession:()=>{},emitToProject:()=>{},emitGlobal:()=>{},
       subscribe:()=>()=>{}};
     const leader=new SessionHost("primary","/tmp/work");

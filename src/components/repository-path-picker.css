@@ -1,0 +1,25 @@
+.repository-path-picker { min-width: 0; }
+.repository-path-picker__label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.repository-path-picker__label-row label { color: var(--text-dim); font: 600 11px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
+.repository-path-picker__help { margin: 4px 0 6px; color: var(--text-muted); font: 400 11px/1.3 var(--font-sans); }
+.repository-path-picker input { width: 100%; min-width: 0; height: 40px; box-sizing: border-box; padding: 8px 11px; color: var(--text-primary); font: 500 13px/1.35 var(--font-mono); background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-control); outline: none; }
+.repository-path-picker input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
+.repository-path-picker__browse, .repository-path-picker__roots button, .repository-path-picker__crumbs button, .repository-path-picker__parent, .repository-path-picker__use { border: 1px solid var(--border-default); border-radius: var(--radius-control); color: var(--text-secondary); background: var(--bg-elevated); cursor: pointer; }
+.repository-path-picker__browse { min-height: 26px; padding: 3px 8px; font: 600 11px/1 var(--font-sans); }
+.repository-path-picker__panel { margin-top: 6px; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--bg-secondary); }
+.repository-path-picker__roots, .repository-path-picker__crumbs { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-default); }
+.repository-path-picker__roots button, .repository-path-picker__crumbs button, .repository-path-picker__parent, .repository-path-picker__use { min-height: 25px; padding: 3px 7px; font: 500 11px/1.1 var(--font-mono); }
+.repository-path-picker__parent, .repository-path-picker__use { margin: 6px 0 0 8px; }
+.repository-path-picker__use { color: var(--accent); }
+.repository-path-picker__entries { max-height: 180px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
+.repository-path-picker__entries li { display: grid; min-width: 0; gap: 2px; padding: 9px 10px; color: var(--text-primary); text-align: left; cursor: pointer; }
+.repository-path-picker__entries li[aria-selected="true"], .repository-path-picker__entries li:hover { background: var(--state-hover); }
+.repository-path-picker__entries span { overflow-wrap: anywhere; }
+.repository-path-picker__toolbar { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; }
+.repository-path-picker__toolbar button { padding: 5px; color: var(--text-secondary); background: transparent; border: 0; cursor: pointer; }
+.repository-path-picker button:focus-visible, .repository-path-picker__entries li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.repository-path-picker__roots button, .repository-path-picker__crumbs button { max-width: 100%; overflow-wrap: anywhere; }
+.repository-path-picker__entries small { overflow: hidden; color: var(--text-muted); font: 11px/1.2 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+.repository-path-picker__state { padding: 8px 10px; color: var(--text-muted); font: 12px/1.35 var(--font-sans); }
+.repository-path-picker__state--error { color: var(--status-error); }
+.repository-path-picker__state--info { color: var(--info-color); background: var(--info-bg); }

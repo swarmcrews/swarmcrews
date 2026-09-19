@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="420" viewBox="0 0 960 420" fill="none" role="img" aria-labelledby="title description">
+  <title id="title">One task. A whole crew.</title>
+  <desc id="description">Swarmcrews coordinates parallel coding agents on a shared canvas. A Leader plans the work, delegates to three agents, and brings their changes together for your review. Explore swarmcrews.com.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="960" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#151a29"/>
+      <stop offset="1" stop-color="#080b14"/>
+    </linearGradient>
+    <pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse">
+      <circle cx="1" cy="1" r="1" fill="#303749"/>
+    </pattern>
+  </defs>
+
+  <rect x="1" y="1" width="958" height="418" rx="20" fill="url(#background)" stroke="#303749"/>
+  <rect x="480" y="24" width="456" height="320" rx="16" fill="url(#dots)"/>
+
+  <g font-family="Arial, Helvetica, sans-serif">
+    <text x="40" y="55" fill="#ffad1f" font-size="13" font-weight="700" letter-spacing="2">YOUR AGENTS. WORKING TOGETHER.</text>
+    <text x="40" y="119" fill="#f5f6fa" font-size="46" font-weight="700" letter-spacing="-1.5">One task.</text>
+    <text x="40" y="174" fill="#ffad1f" font-size="46" font-weight="700" letter-spacing="-1.5">A whole crew.</text>
+    <text x="40" y="215" fill="#c0c7d6" font-size="18">Turn complex work into parallel progress.</text>
+    <text x="40" y="243" fill="#c0c7d6" font-size="18">Coordinate coding agents on one canvas.</text>
+
+    <rect x="40" y="272" width="284" height="48" rx="10" fill="#ffad1f"/>
+    <text x="60" y="302" fill="#080b14" font-size="17" font-weight="700">Explore swarmcrews.com</text>
+    <path d="M299 291l5 5-5 5m-8-5h13" stroke="#080b14" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- A conceptual canvas: one plan fans out to parallel work, then review. -->
+    <g stroke="#ffad1f" stroke-opacity="0.6" stroke-width="2">
+      <path d="M710 131v23M562 177v-13q0-10 10-10h276q10 0 10 10v13M710 154v23"/>
+      <path d="M562 245v17q0 10 10 10h276q10 0 10-10v-17M710 245v51"/>
+    </g>
+    <rect x="614" y="55" width="192" height="76" rx="12" fill="#241e16" stroke="#ffad1f"/>
+    <circle cx="641" cy="81" r="5" fill="#ffad1f"/>
+    <text x="656" y="87" fill="#ffad1f" font-size="17" font-weight="700">Leader</text>
+    <text x="635" y="113" fill="#e1d6c3" font-size="14">Plan + coordinate</text>
+
+    <g fill="#171e2e" stroke="#465470">
+      <rect x="494" y="177" width="136" height="68" rx="10"/>
+      <rect x="642" y="177" width="136" height="68" rx="10"/>
+      <rect x="790" y="177" width="136" height="68" rx="10"/>
+    </g>
+    <g fill="#f5f6fa" font-size="16" font-weight="700" text-anchor="middle">
+      <text x="562" y="204">Agent 01</text>
+      <text x="710" y="204">Agent 02</text>
+      <text x="858" y="204">Agent 03</text>
+    </g>
+    <g fill="#aebcd4" font-size="13" text-anchor="middle">
+      <text x="562" y="226">Frontend</text>
+      <text x="710" y="226">Backend</text>
+      <text x="858" y="226">Tests</text>
+    </g>
+    <rect x="594" y="296" width="232" height="42" rx="10" fill="#142920" stroke="#46745b"/>
+    <path d="M622 317l4 4 8-9" stroke="#8edbb0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="645" y="323" fill="#b8e8cd" font-size="16" font-weight="700">Ready for your review</text>
+
+    <path d="M40 355h880" stroke="#303749"/>
+    <text x="40" y="389" fill="#aebcd4" font-size="14">Claude Code / Codex / OpenCode / Pi</text>
+    <text x="920" y="389" fill="#c0c7d6" font-size="14" text-anchor="end">Parallel agents. Shared context. You in control.</text>
+  </g>
+</svg>

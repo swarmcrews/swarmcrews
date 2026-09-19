@@ -15,7 +15,7 @@ export interface WorkItemInvocation {
   promptAttachments?: import("./session-host-types.ts").ImageAttachment[];
   harness?: string; permissionMode?: string;
   sandboxPolicy?: import("../shared/workspace-contracts.ts").SandboxPolicy;
-  executorClass?: "mechanical" | "standard" | "reasoning"; skillIds?: string[]; skillSnapshotId?: string | undefined; skillValues?: Record<string, Record<string, string>>;
+  executorClass?: "mechanical" | "standard" | "reasoning"; connectionIds?: string[] | undefined; skillIds?: string[]; skillSnapshotId?: string | undefined; skillValues?: Record<string, Record<string, string>>;
   toolAllowlist?: string[];
   plannedContribution?: import("./worktree-create.ts").PlannedWorktree & { resolutionTargetRef?: string; resolutionKind?: "contribution" | "lineage" };
 }

@@ -1,0 +1,87 @@
+.leader-context-menu {
+  position: absolute;
+  pointer-events: auto;
+  width: 288px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 6px;
+  border: var(--border-width, 1px) solid var(--border-hover);
+  border-radius: var(--radius-panel);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  cursor: default;
+}
+
+.leader-context-menu__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.leader-context-menu__avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
+.leader-context-menu__identity { min-width: 0; }
+.leader-context-menu__eyebrow { color: var(--accent); font-size: 11px; font-weight: 600; }
+.leader-context-menu__eyebrow span { color: var(--text-muted); font-weight: 400; }
+.leader-context-menu__identity strong {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.leader-context-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+.leader-context-menu__item > svg { flex-shrink: 0; color: var(--text-secondary); }
+.leader-context-menu__item small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.leader-context-menu__item:hover { background: var(--bg-elevated); }
+.leader-context-menu__item:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-secondary));
+}
+.leader-context-menu__item:focus-visible > svg { color: var(--accent); }
+.leader-context-menu__separator { height: 1px; margin: 5px 8px; background: var(--border-default); }
+.leader-context-menu__footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  padding: 9px 10px 3px;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 10px;
+}

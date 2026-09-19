@@ -232,6 +232,26 @@ describe("useWorkItems lifecycle recovery", () => {
     });
   });
 
+  it.each(["start", "reply"] as const)("preserves skills and the visible prompt through %s retries", method => {
+    const { result, send, publish } = setup();
+    const options = { displayPrompt: "Review this", skillIds: ["review"], skillValues: { review: { depth: "high" } } };
+    const contextItems = [{ nodeId: "notes", nodeType: "file", label: "notes.md", content: "Review criteria" }];
+    act(() => result.current[method](result.current.items["work-1"]!, "Skill instructions. Review this", contextItems, options));
+    const first = send.mock.calls.at(-1)![0];
+    expect(first).toMatchObject(options);
+    expect(first.prompt).toContain("Review criteria");
+    expect(first.prompt).toContain("Skill instructions.");
+    act(() => publish({ type: "work_item_response", command: "continue_work_item",
+      requestId: first.requestId, success: false, error: "stale work-item lifecycle", code: "conflict",
+      latest: { workItem: terminalItem(4), bindings: [], currentRun: null, runs: [], nextCursor: null } }));
+    const retry = send.mock.calls.at(-1)![0];
+    expect(retry).toMatchObject({ ...options, prompt: first.prompt, expectedLifecycleRevision: 4 });
+    act(() => publish({ type: "work_item_response", command: "continue_work_item",
+      requestId: retry.requestId, success: false, error: "Unavailable", code: "unavailable" }));
+    expect(result.current.promptFailures["work-1"]).toEqual({ prompt: "Review this", contextItems,
+      error: "Unavailable", options: { skillIds: options.skillIds, skillValues: options.skillValues } });
+  });
+
   it("exposes and clears a non-conflict prompt failure", () => {
     const { result, send, publish } = setup();
     act(() => result.current.start(result.current.items["work-1"]!, "Keep my prompt"));

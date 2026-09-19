@@ -14,7 +14,6 @@ describe("ProjectPanel optional context", () => {
   it.each([
     { exists: false, content: "" },
     { exists: true, content: "   \n" },
-    { exists: true, content: "# Project\n\nProject context has not been configured yet.\n" },
   ])("opens the dashboard with empty context: %j", async (context) => {
     vi.mocked(getProjectContext).mockResolvedValue(context);
     const onOpenFile = vi.fn();
@@ -83,10 +82,31 @@ describe("ProjectPanel optional context", () => {
 });
 
 describe("ProjectPanel context updates", () => {
+  it("refreshes file contents on tab entry and window focus without replacing an edit draft", async () => {
+    vi.mocked(getProjectContext).mockResolvedValue({ exists: true, content: "Original instructions" });
+    render(<ProjectPanel projectId="workspace-1" projectPath="/source/project"
+      projectName="Project" nodes={[]} onSpawnContextExplorer={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: /Project/ }));
+    await screen.findByText("README.md");
+    vi.mocked(getProjectContext).mockResolvedValue({ exists: true, content: "Edited outside the app" });
+    fireEvent.click(screen.getByRole("button", { name: "context" }));
+    await screen.findByText("Edited outside the app");
+    vi.mocked(getProjectContext).mockResolvedValue({ exists: true, content: "Updated on focus" });
+    fireEvent(window, new Event("focus"));
+    await screen.findByText("Updated on focus");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Workspace context" }), { target: { value: "Unsaved draft" } });
+    vi.mocked(getProjectContext).mockResolvedValue({ exists: true, content: "Another external edit" });
+    await act(async () => { fireEvent(window, new Event("focus")); });
+    expect(screen.getByRole("textbox", { name: "Workspace context" })).toHaveValue("Unsaved draft");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Another external edit")).toBeInTheDocument();
+  });
+
   it("replaces the empty state when a Leader publishes project context", async () => {
     vi.mocked(getProjectContext).mockResolvedValue({
       exists: true,
-      content: "# Project\n\nProject context has not been configured yet.\n",
+      content: "",
     });
     let listener: ((message: unknown) => void) | undefined;
     const subscribe = Object.assign(

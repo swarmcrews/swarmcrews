@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "workflow-recovery-v1",
+  "profiles": {
+    "oracle": {
+      "repetitions": 1,
+      "taskIds": [
+        "workflow-recovery-complex"
+      ],
+      "modes": [
+        "codex-raw"
+      ]
+    }
+  }
+}

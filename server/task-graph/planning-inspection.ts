@@ -5,6 +5,8 @@ import type {
 import type {TaskGraphSnapshotView} from "../../shared/task-graph-view-contracts.ts";
 import {TaskGraphConflictError,TaskGraphValidationError} from "./errors.ts";
 import {readPlanningArtifact} from "./planning-artifact.ts";
+import { assertCurrentConnectedGraphSource, type ConnectedGraphSourceBinding } from "./connected-graph-source.ts";
+export type { ConnectedGraphSourceBinding } from "./connected-graph-source.ts";
 import type {TaskGraphPlanningRepository} from "./planning-repository.ts";
 import type {TaskGraphService} from "./service.ts";
 
@@ -47,6 +49,42 @@ export function readPlanningHistoryArtifact(
     : repo.latest(input.workItemId,input.primaryRunKey) ?? repo.latest(input.workItemId);
   assertReadablePlan(plan,input.workItemId);
   return readPlanningArtifact(repo.db,plan,input);
+}
+
+/**
+ * Read-only inspection across a currently connected Leader source. The
+ * recipient remains current, the source must still be its current run, and
+ * both WorkItems must belong to the same project.
+ */
+export function inspectConnectedPlanningHistory(
+  repo:TaskGraphPlanningRepository,
+  taskGraphs:TaskGraphService,
+  recipient:{workItemId:string;primaryRunKey:string},
+  source:ConnectedGraphSourceBinding,
+):PlanningInspection {
+  assertConnectedSource(repo,recipient,source);
+  const plan=repo.latest(source.workItemId,source.primaryRunKey) ?? repo.latest(source.workItemId);
+  return { plan: plan ? { ...plan, canStart:false, autoStartEligible:false } : null,
+    runtime:plan?.graphRunId?taskGraphs.viewSnapshot(plan.graphRunId):null,
+    history:repo.history(source.workItemId,source.primaryRunKey,20) };
+}
+
+export function readConnectedPlanningArtifact(
+  repo:TaskGraphPlanningRepository,
+  recipient:{workItemId:string;primaryRunKey:string},
+  source:ConnectedGraphSourceBinding,
+  input:{artifactId:string;offset:number;maxBytes:number},
+):Record<string,unknown> {
+  assertConnectedSource(repo,recipient,source);
+  const plan=repo.latest(source.workItemId,source.primaryRunKey) ?? repo.latest(source.workItemId);
+  assertReadablePlan(plan,source.workItemId);
+  return readPlanningArtifact(repo.db,plan,input);
+}
+
+function assertConnectedSource(repo:TaskGraphPlanningRepository,
+  recipient:{workItemId:string;primaryRunKey:string},source:ConnectedGraphSourceBinding):void {
+  repo.assertAuthority(recipient.workItemId,recipient.primaryRunKey);
+  assertCurrentConnectedGraphSource(repo.db, recipient, source);
 }
 
 export async function cancelPlanningGraphRun(

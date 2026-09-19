@@ -43,25 +43,25 @@ describe("FeatureFlagsPanel", () => {
   it("renders one checkbox per registered flag, reflecting defaults", () => {
     render(<FeatureFlagsPanel onClose={() => {}} onDisableDebug={() => {}} />);
     expect(screen.queryAllByRole("checkbox")).toHaveLength(FEATURE_FLAGS.length);
-    // mcp-servers ships off, so its row starts unchecked.
-    const mcp = screen.getByLabelText(/mcp servers/i);
-    expect(mcp).not.toBeChecked();
+    // Connections ship enabled, so the row starts checked.
+    const mcp = screen.getByLabelText(/mcp connections/i);
+    expect(mcp).toBeChecked();
   });
 
   it("toggling a flag writes through to the store", () => {
     render(<FeatureFlagsPanel onClose={() => {}} onDisableDebug={() => {}} />);
-    fireEvent.click(screen.getByLabelText(/mcp servers/i));
-    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(true);
-    expect(screen.getByLabelText(/mcp servers/i)).toBeChecked();
+    fireEvent.click(screen.getByLabelText(/mcp connections/i));
+    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(false);
+    expect(screen.getByLabelText(/mcp connections/i)).not.toBeChecked();
   });
 
   it("Reset to defaults restores flags to their defaults", () => {
     render(<FeatureFlagsPanel onClose={() => {}} onDisableDebug={() => {}} />);
-    fireEvent.click(screen.getByLabelText(/mcp servers/i));
-    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: /reset to defaults/i }));
+    fireEvent.click(screen.getByLabelText(/mcp connections/i));
     expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(false);
-    expect(screen.getByLabelText(/mcp servers/i)).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: /reset to defaults/i }));
+    expect(getFeatureFlag(FLAG_MCP_SERVERS)).toBe(true);
+    expect(screen.getByLabelText(/mcp connections/i)).toBeChecked();
   });
 
   it("Disable debug button calls the prop", () => {

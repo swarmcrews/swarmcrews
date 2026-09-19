@@ -1,4 +1,5 @@
 import {
+  createElement,
   memo,
   useMemo,
   type HTMLAttributes,
@@ -62,31 +63,54 @@ function sourceRangeAttrs(block: { id: string; from: number; to: number }) {
   };
 }
 
-function renderBlock(block: MarkdownPreviewBlock): ReactElement {
+function headingSlug(text: string): string {
+  const slug = text
+    .toLowerCase()
+    .replace(/[`*_]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "section";
+}
+
+/** A source-position suffix makes repeated heading labels safe to target. */
+export function markdownPreviewHeadingId(
+  block: Extract<MarkdownPreviewBlock, { type: "heading" }>,
+  idPrefix: string,
+): string {
+  return `${idPrefix}-${headingSlug(block.text)}-${block.from}`;
+}
+
+interface RenderOptions {
+  headingOffset: number;
+  standaloneHeadings: boolean;
+  idPrefix: string | undefined;
+}
+
+function renderBlock(
+  block: MarkdownPreviewBlock,
+  { headingOffset, standaloneHeadings, idPrefix }: RenderOptions,
+): ReactElement {
   switch (block.type) {
     case "heading": {
-      const displayLevel = Math.min(block.level, 3);
+      const displayLevel = standaloneHeadings
+        ? block.level
+        : Math.min(block.level, 3);
       const className =
         displayLevel === 1 ? "md-h1" : displayLevel === 2 ? "md-h2" : "md-h3";
       const children = renderInline(block.text, block.id);
-      if (displayLevel === 1) {
-        return (
-          <h3 key={block.id} className={className} {...sourceRangeAttrs(block)}>
-            {children}
-          </h3>
-        );
-      }
-      if (displayLevel === 2) {
-        return (
-          <h4 key={block.id} className={className} {...sourceRangeAttrs(block)}>
-            {children}
-          </h4>
-        );
-      }
-      return (
-        <h5 key={block.id} className={className} {...sourceRangeAttrs(block)}>
-          {children}
-        </h5>
+      const headingLevel = Math.min(6, displayLevel + (standaloneHeadings ? 0 : headingOffset));
+      const Heading = `h${headingLevel}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+      const headingId = idPrefix ? markdownPreviewHeadingId(block, idPrefix) : undefined;
+      return createElement(
+        Heading,
+        {
+          key: block.id,
+          id: headingId,
+          tabIndex: headingId ? -1 : undefined,
+          className,
+          ...sourceRangeAttrs(block),
+        },
+        children,
       );
     }
 
@@ -149,11 +173,20 @@ export interface MarkdownPreviewProps
   extends Pick<HTMLAttributes<HTMLDivElement>, "onMouseDown" | "onDoubleClick"> {
   content: string;
   className?: string;
+  /** Offset embedded headings so a preview never competes with its host title. */
+  headingOffset?: number;
+  /** Render source heading levels directly (h1 through h6). */
+  standaloneHeadings?: boolean;
+  /** Prefix deterministic heading ids for in-document navigation. */
+  idPrefix?: string;
 }
 
 export const MarkdownPreview = memo(function MarkdownPreview({
   content,
   className = "md-preview",
+  headingOffset = 2,
+  standaloneHeadings = false,
+  idPrefix,
   onMouseDown,
   onDoubleClick,
 }: MarkdownPreviewProps) {
@@ -167,7 +200,7 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       onMouseDown={onMouseDown}
       onDoubleClick={onDoubleClick}
     >
-      {blocks.map(renderBlock)}
+      {blocks.map((block) => renderBlock(block, { headingOffset, standaloneHeadings, idPrefix }))}
     </div>
   );
 });

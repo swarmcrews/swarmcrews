@@ -8,10 +8,12 @@ import { randomUuid } from "../random-id.ts";
 import { ContextLineage, findProducer } from "./ContextLineage.tsx";
 import { formatDuration } from "./GraphSummaryCard.tsx";
 import { IterationTrack } from "./IterationTrack.tsx";
+import { ModelLabel } from "./ModelLabel.tsx";
 import { filterNodes, summarizeGraph, whyNotRunning } from "./model.ts";
 import { NodeState } from "./NodeState.tsx";
 import { PlanMap } from "./PlanMap.tsx";
 import { PlanRail } from "./PlanRail.tsx";
+import { Waterfall } from "./Waterfall.tsx";
 import { Topology } from "./Topology.tsx";
 import { WorkQueue } from "./WorkQueue.tsx";
 import type {
@@ -25,7 +27,7 @@ import type {
 } from "./types.ts";
 import "./task-graph.css";
 
-type Tab = "topology" | "plan" | "evidence" | "overview" | "queue" | "timeline";
+type Tab = "topology" | "waterfall" | "plan" | "evidence" | "overview" | "queue" | "timeline";
 type ActionIntent =
   | { type: "pause" | "resume" | "retry" | "cancel_attempt" | "request_verification" | "cancel_run" }
   | { type: "waive_verification"; reason: string }
@@ -34,6 +36,7 @@ type ActionIntent =
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "topology", label: "Flow" },
+  { id: "waterfall", label: "Waterfall" },
   { id: "plan", label: "Plan map" },
   { id: "evidence", label: "Context lineage" },
   { id: "overview", label: "Overview" },
@@ -181,7 +184,7 @@ export function GraphInspector({
     setSelectedEvidenceId(null);
     setDetailOpen(true);
     if (narrow) setPlanOpen(false);
-    if (revealFlow) setTab("topology");
+    if (revealFlow && tab !== "waterfall") setTab("topology");
   };
   const selectEvidence = (evidenceId: string) => {
     setSelectedEvidenceId(evidenceId);
@@ -192,7 +195,7 @@ export function GraphInspector({
   };
   const selectPlan = (taskId: string | null) => {
     setFocusedPlanTaskId(taskId);
-    setTab("topology");
+    if (tab !== "waterfall") setTab("topology");
   };
   const togglePlan = () => setPlanOpen((open) => {
     if (!open && narrow) setDetailOpen(false);
@@ -264,7 +267,7 @@ export function GraphInspector({
                   >{item.label}</button>
                 ))}
               </div>
-              {tab === "topology" || tab === "queue" ? (
+              {tab === "topology" || tab === "waterfall" || tab === "queue" ? (
                 <div className="tg-filterbar" aria-label="Graph filters">
                   {FILTERS.map((item) => <button key={item.id} aria-pressed={filter === item.id} onClick={() => setFilter(item.id)}>{item.label}</button>)}
                   <span className="tg-filterbar__count">{filteredNodes.length}/{snapshot.nodes.length}</span>
@@ -275,7 +278,8 @@ export function GraphInspector({
             </div>
 
             <main id={`tg-panel-${tab}`} role="tabpanel" aria-labelledby={`tg-tab-${tab}`} className="tg-panel">
-              {tab === "topology" ? <Topology snapshot={snapshot} filter={filter} selectedNodeId={selectedId} focusedPlanTaskId={focusedPlanTaskId} plan={plan} onSelect={(id) => selectNode(id)} /> : null}
+              {tab === "topology" ? <Topology live={controlsEnabled && !stale} snapshot={snapshot} filter={filter} selectedNodeId={selectedId} focusedPlanTaskId={focusedPlanTaskId} plan={plan} onSelect={(id) => selectNode(id)} /> : null}
+              {tab === "waterfall" ? <Waterfall key={snapshot.graphRunId} snapshot={snapshot} filter={filter} selectedNodeId={selectedId} focusedPlanTaskId={focusedPlanTaskId} plan={plan} live={controlsEnabled && !stale} onSelect={(id) => selectNode(id)} /> : null}
               {tab === "plan" ? <PlanMap snapshot={snapshot} plan={plan} selectedTaskId={focusedPlanTaskId} onSelectPlan={setFocusedPlanTaskId} onSelectNode={(id) => selectNode(id, true)} onSelectEvidence={selectEvidence} /> : null}
               {tab === "evidence" ? <ContextLineage snapshot={snapshot} selectedEvidenceId={selectedEvidenceId} onSelectEvidence={selectEvidence} onSelectNode={(id) => selectNode(id)} /> : null}
               {tab === "overview" ? <Overview snapshot={snapshot} onSelect={(id) => selectNode(id, true)} /> : null}
@@ -283,7 +287,7 @@ export function GraphInspector({
               {tab === "timeline" ? <Timeline snapshot={snapshot} onSelect={(id) => selectNode(id, true)} /> : null}
             </main>
 
-            {tab === "topology" || tab === "plan" || tab === "evidence" ? <IterationTrack snapshot={snapshot} onSelectNode={(id) => selectNode(id, true)} onSelectEvidence={selectEvidence} /> : null}
+            {tab === "topology" || tab === "waterfall" || tab === "plan" || tab === "evidence" ? <IterationTrack snapshot={snapshot} onSelectNode={(id) => selectNode(id, true)} onSelectEvidence={selectEvidence} /> : null}
           </section>
 
           {detailOpen ? selected ? (
@@ -342,9 +346,10 @@ function DetailDrawer({ node, controlsEnabled: enabled, onClose, dispatch, recei
     <header><div><span className="tg-eyebrow">{node.kind} · {node.id}</span><h3 id="tg-detail-title">{node.title}</h3></div><button className="tg-close" aria-label="Close task details" onClick={onClose}>×</button></header>
     <TaskRetryFeedback node={node} receipt={receipt} onRefresh={onRefresh} />
     <div className="tg-detail__status-row"><NodeState node={node} /><span>{node.currentAttempt?.executor ?? node.owner ?? "Unassigned"}</span></div>
+    <ModelLabel node={node} />
     <section className="tg-detail__brief" aria-labelledby="tg-brief-heading"><h4 id="tg-brief-heading">Minion brief</h4><p className="tg-detail__objective">{node.objective}</p><BriefList label="Constraints" items={node.constraints} empty="No additional constraints were routed." /><BriefList label="Acceptance criteria" items={node.acceptanceCriteria} empty="No acceptance criteria were declared." /></section>
     <section aria-labelledby="tg-context-heading"><div className="tg-detail__section-heading"><h4 id="tg-context-heading">Routed context</h4><span>{node.context.length} source{node.context.length === 1 ? "" : "s"}</span></div>{node.context.length ? <div className="tg-context-list">{node.context.map((entry) => <article className={`tg-context-card${"withheld" in entry ? " is-withheld" : ""}`} key={`${entry.sourceId}-${entry.contentHash}`}><header><strong>{entry.sourceId}</strong><span>{entry.classification}</span></header>{"withheld" in entry ? <p>Content withheld by its {entry.classification} classification.</p> : <p>{entry.content || "This context source is empty."}</p>}</article>)}</div> : <p className="tg-detail__empty-copy">No routed context was attached to this task.</p>}</section>
-    <section aria-labelledby="tg-responses-heading"><div className="tg-detail__section-heading"><h4 id="tg-responses-heading">Attempt responses</h4><span>{node.attemptHistory.length} attempt{node.attemptHistory.length === 1 ? "" : "s"}</span></div>{node.attemptHistory.length ? <div className="tg-response-list">{node.attemptHistory.slice(-30).reverse().map((attempt) => <article className="tg-response-card" key={attempt.id}><header><strong>Attempt {attempt.number}</strong><span className={`tg-attempt-label tg-attempt-label--${attempt.state}`}>{attempt.state}</span></header><div className="tg-response-card__meta">{attempt.executor ?? "Unassigned"} · ${attempt.costUsd.toFixed(2)} · {attempt.tokens===0&&attempt.state==="running"?"usage pending":`${attempt.tokens.toLocaleString()} tokens`}</div>{attempt.response ? <p>{attempt.response}</p> : <p className="tg-detail__empty-copy">No response was recorded for this attempt.</p>}</article>)}</div> : <p className="tg-detail__empty-copy">This task has not started an attempt yet.</p>}</section>
+    <section aria-labelledby="tg-responses-heading"><div className="tg-detail__section-heading"><h4 id="tg-responses-heading">Attempt responses</h4><span>{node.attemptHistory.length} attempt{node.attemptHistory.length === 1 ? "" : "s"}</span></div>{node.attemptHistory.length ? <div className="tg-response-list">{node.attemptHistory.slice(-30).reverse().map((attempt) => <article className="tg-response-card" key={attempt.id}><header><strong>Attempt {attempt.number}</strong><span className={`tg-attempt-label tg-attempt-label--${attempt.state}`}>{attempt.state}</span></header><div className="tg-response-card__meta">{attempt.executor ?? "Unassigned"} · Model: {attempt.model ?? "not recorded"}{attempt.harness ? ` · ${attempt.harness}` : ""} · ${attempt.costUsd.toFixed(2)} · {attempt.tokens===0&&attempt.state==="running"?"usage pending":`${attempt.tokens.toLocaleString()} tokens`}</div>{attempt.response ? <p>{attempt.response}</p> : <p className="tg-detail__empty-copy">No response was recorded for this attempt.</p>}</article>)}</div> : <p className="tg-detail__empty-copy">This task has not started an attempt yet.</p>}</section>
     <section><h4>Runtime</h4><p>{whyNotRunning(node)}</p><p>{node.currentAttempt?.sessionId ?? "No active session"} · ${node.budgetReservedUsd?.toFixed(2) ?? "0.00"} reserved · ${node.costUsd.toFixed(2)} spent</p></section>
     {node.adjudication ? <section><h4>Leader resolution</h4><p><strong>{node.adjudication.decision}</strong> by {node.adjudication.actor}</p><p>{node.adjudication.reason}</p>{node.adjudication.guidance ? <p>Guidance: {node.adjudication.guidance}</p> : null}</section> : null}
     <section><h4>Inputs &amp; outputs</h4><div className="tg-detail-chips">{node.inputIds.map((id) => <span key={`input-${id}`}>{id}</span>)}{node.outputArtifactIds.map((id) => <span key={`output-${id}`}>{id}</span>)}{!node.inputIds.length && !node.outputArtifactIds.length ? <em>None projected</em> : null}</div></section>

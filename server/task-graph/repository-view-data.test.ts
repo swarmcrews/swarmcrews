@@ -37,8 +37,8 @@ describe("TaskGraphRepository view data",()=>{
       sourceSnapshot:source(),expectedLifecycleRevision:1,at:4});
     storeScopedContextSources(db,[{sourceSnapshotId:"source",nodeId:"node",sourceId:"brief",
       contentHash:HASH,classification:"internal",content:"Frozen task context"}],5);
-    db.prepare(`INSERT INTO sessions (session_key,status,role,final_report)
-      VALUES ('child','completed','minion','Implemented and verified')`).run();
+    db.prepare(`INSERT INTO sessions (session_key,status,role,final_report,model,harness_name)
+      VALUES ('child','completed','minion','Implemented and verified','gpt-5.6-sol','codex')`).run();
     db.prepare(`INSERT INTO task_node_attempts
       (id,run_id,node_id,attempt_number,generation,source_snapshot_id,runtime,outcome,session_run_key,
        progress_seq,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -48,6 +48,7 @@ describe("TaskGraphRepository view data",()=>{
 
     expect(snapshot.contextSources).toEqual([{nodeId:"node",sourceId:"brief",contentHash:HASH,
       classification:"internal",content:"Frozen task context"}]);
-    expect(snapshot.attempts[0]).toMatchObject({id:"attempt",final_report:"Implemented and verified"});
+    expect(snapshot.attempts[0]).toMatchObject({id:"attempt",final_report:"Implemented and verified",
+      model:"gpt-5.6-sol",harness_name:"codex"});
   });
 });

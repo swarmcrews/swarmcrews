@@ -1,3 +1,5 @@
+import { selectedConnectionIds } from "./mcp-connections/context.ts";
+import { listMcpServers } from "./mcp-server-store.ts";
 import { assertLeaderIdentity } from "./leader-identity.ts";
 import { normalizeLeaderOrchestrationMode } from "../shared/leader-planning.ts";
 import { captureSkillSnapshot, readSkillSnapshot, saveSkillSnapshot } from "./skill-snapshot.ts";
@@ -32,7 +34,7 @@ export function buildAgentContext(
 ): AgentTypeContext {
   if (host.role === "leader" || host.role === "minion") {
     const projectPath = host.worktree?.projectPath ?? opts.parentWorktree?.projectPath ?? host.cwd;
-    host.skillSnapshotId ??= captureSkillSnapshot(projectPath, host.skillValues);
+    host.skillSnapshotId ??= captureSkillSnapshot(projectPath, host.skillValues, host.skillIds);
     if (host.role === "leader") {
       const snapshot = readSkillSnapshot(projectPath, host.skillSnapshotId);
       if (JSON.stringify(snapshot.values) !== JSON.stringify(host.skillValues)) {
@@ -77,6 +79,7 @@ export function buildAgentContext(
           ...(params.permissionMode ? { permissionMode: params.permissionMode } : {}),
           ...(params.executorClass ? { executorClass: params.executorClass } : {}),
           ...(params.skillIds ? { skillIds: params.skillIds } : {}),
+          connectionIds: host.connectionIds,
           skillSnapshotId: params.skillSnapshotId,
           ...(params.onAllocated ? { onAllocated: params.onAllocated } : {}),
         });
@@ -103,6 +106,7 @@ export function buildAgentContext(
       sandboxPolicy: isResume ? host.sandboxPolicy?.requested
         : sandboxPolicyForMinion(host.sandboxPolicy?.requested, undefined),
       executorClass: params.executorClass,
+      connectionIds: host.connectionIds,
       skillIds: params.skillIds,
       skillSnapshotId: params.skillSnapshotId,
       });
@@ -166,11 +170,17 @@ export function buildAgentContext(
   if (graphAllowedTools) host.toolAllowlist=[...graphAllowedTools];
   if (host.role === "leader") {
     assertLeaderIdentity({ role: host.role, workItemId: host.workItemId, runKey: host.runKey });
+    ctx.taskGraphExperiments = deps.getTaskGraphExperiments?.(host.runKey);
     ctx.orchestrationMode = normalizeLeaderOrchestrationMode(deps.getLeaderOrchestrationMode?.(host.runKey));
     const planning = deps.getTaskGraphPlanning?.(host.runKey);
     if (planning) ctx.taskGraphPlanning = planning;
   }
   if (host.renderState) ctx.existingRenderState = host.renderState;
+  if (host.connectionIds === undefined) {
+    try { host.connectionIds = selectedConnectionIds(listMcpServers(ctx.parentWorktree?.projectPath ?? ctx.worktreeInfo?.projectPath ?? ctx.cwd).entries); }
+    catch { /* A broken optional catalog must not prevent the agent from starting. */ }
+  }
+  ctx.connectionIds = host.connectionIds;
   if (host.skillIds.length > 0) ctx.skillIds = host.skillIds;
   if (Object.keys(host.skillValues).length > 0) ctx.skillValues = host.skillValues;
   if (opts.parentWorktree) ctx.parentWorktree = opts.parentWorktree;

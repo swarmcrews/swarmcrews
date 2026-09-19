@@ -30,6 +30,13 @@ function setup() {
 }
 
 describe("launchSession", () => {
+  it("allows readiness to reuse its cache when launching", async () => {
+    const h = setup();
+    const getReadiness = vi.fn(async () => snapshot(["codex"]));
+    await launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "cached", cwd: "/work", prompt: "start", role: "leader" }, getReadiness });
+    expect(getReadiness).toHaveBeenCalledWith();
+  });
   it("uses the configured leader default when a draft starts without launch options", async () => {
     const h = setup();
     const result = await launchSession({ registry: h.registry, bus: h.bus,
@@ -77,14 +84,25 @@ describe("launchSession", () => {
     expect(result).toMatchObject({ harness: "codex", model: "gpt-5.6-sol", reasons: ["model_incompatible"] });
   });
 
-  it("falls back to a ready provider's leader model when the configured provider is unavailable", async () => {
+  it.each([undefined, "pi"])("rejects an unavailable default instead of choosing another ready harness (requested: %s)", async (harness) => {
+    const h = setup();
+    await expect(launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "unavailable-default", cwd: "/work", prompt: "start", role: "leader", harness },
+      getReadiness: async () => snapshot(["claude"]),
+    })).rejects.toMatchObject({ code: "HARNESS_NOT_READY" });
+    expect(h.starts).toEqual([]);
+    expect(h.events).toEqual([]);
+    expect(h.registry.releaseCapacity).toHaveBeenCalledOnce();
+  });
+
+  it.each(["leader", "minion"] as const)("uses the built-in %s default when no project override exists", async (role) => {
+    vi.mocked(readSettings).mockReturnValue({});
     const h = setup();
     const result = await launchSession({ registry: h.registry, bus: h.bus,
-      options: { sessionKey: "unavailable-default", cwd: "/work", prompt: "start", role: "leader" },
-      getReadiness: async () => snapshot(["claude"]),
+      options: { sessionKey: "built-in-default", cwd: "/work", prompt: "start", role, harness: "pi" },
+      getReadiness: async () => snapshot(["claude", "codex"]),
     });
-    expect(result).toMatchObject({ harness: "claude", model: "claude-opus-5",
-      reasons: ["harness_not_ready", "model_incompatible"] });
+    expect(result.harness).toBe(role === "leader" ? "codex" : "claude");
   });
 
   it("leaves minion model routing independent of the leader default", async () => {
@@ -94,7 +112,71 @@ describe("launchSession", () => {
       executorClass: "mechanical", getReadiness: async () => snapshot(["codex"]),
     });
     expect(result).toMatchObject({ harness: "codex", model: "gpt-5.6-luna" });
-    expect(readSettings).not.toHaveBeenCalled();
+    expect(readSettings).toHaveBeenCalledWith("/work");
+  });
+
+  it("uses configured Minion defaults for graph children with no explicit model", async () => {
+    const thinkingConfig = { enabled: true, effort: "medium" as const, display: "summarized" as const };
+    vi.mocked(readSettings).mockReturnValue({ defaultLeaderHarness: "claude", defaultLeaderModel: "opus",
+      defaultMinionHarness: "codex", defaultMinionModel: "gpt-5.6-sol",
+      adaptiveMinionModelRouting: false, defaultMinionThinkingConfig: thinkingConfig });
+    const h = setup();
+    const result = await launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "graph-child", cwd: "/work", prompt: "implement", role: "minion" },
+      executorClass: "reasoning", getReadiness: async () => snapshot(["claude", "codex"]),
+    });
+    expect(result).toMatchObject({ harness: "codex", model: "gpt-5.6-sol", reasons: [] });
+    expect(h.starts[0]).toMatchObject({ initialModel: "gpt-5.6-sol", thinkingConfig });
+  });
+
+  it("honors adaptive Minion routing while preserving explicit launch overrides", async () => {
+    vi.mocked(readSettings).mockReturnValue({ defaultMinionHarness: "codex", defaultMinionModel: "gpt-5.6-sol",
+      adaptiveMinionModelRouting: true, reasoningMinionModel: "gpt-5.6-terra",
+      defaultMinionThinkingConfig: { enabled: true, effort: "medium", display: "summarized" } });
+    const h = setup();
+    const options = { sessionKey: "adaptive", cwd: "/work", prompt: "implement", role: "minion" as const };
+    expect(await launchSession({ registry: h.registry, bus: h.bus, options,
+      executorClass: "reasoning", getReadiness: async () => snapshot(["codex"]) })).toMatchObject({ model: "gpt-5.6-terra" });
+    const thinkingConfig = { enabled: true, effort: "low" as const, display: "summarized" as const };
+    expect(await launchSession({ registry: h.registry, bus: h.bus,
+      options: { ...options, initialModel: "gpt-5.6-luna", thinkingConfig },
+      executorClass: "reasoning", getReadiness: async () => snapshot(["codex"]) })).toMatchObject({ model: "gpt-5.6-luna" });
+    expect(h.starts[1]).toMatchObject({ thinkingConfig });
+  });
+
+  it("reads Minion defaults from the source project when the child executes in a worktree", async () => {
+    vi.mocked(readSettings).mockImplementation((projectPath) => projectPath === "/source"
+      ? { defaultMinionHarness: "codex", defaultMinionModel: "gpt-5.6-sol" }
+      : { defaultMinionModel: "gpt-5.6-terra" });
+    const h = setup();
+    const result = await launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "worktree-child", cwd: "/worktree", prompt: "inspect", role: "minion",
+        parentWorktree: { projectPath: "/source", path: "/worktree", branch: "task" } as NonNullable<import("./session-host.ts").StartSessionOptions["parentWorktree"]> },
+      getReadiness: async () => snapshot(["codex"]),
+    });
+    expect(readSettings).toHaveBeenCalledWith("/source");
+    expect(result).toMatchObject({ harness: "codex", model: "gpt-5.6-sol" });
+    expect(h.starts[0]).toMatchObject({ cwd: "/worktree" });
+  });
+
+  it("rejects an unavailable Minion default instead of falling back to the leader provider", async () => {
+    vi.mocked(readSettings).mockReturnValue({ defaultMinionHarness: "copilot", defaultMinionModel: "grok-4.6" });
+    const h = setup();
+    await expect(launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "fallback-child", cwd: "/work", prompt: "inspect", role: "minion" },
+      getReadiness: async () => snapshot(["codex"]),
+    })).rejects.toMatchObject({ code: "HARNESS_NOT_READY" });
+    expect(h.starts).toEqual([]);
+  });
+
+  it("falls back to the configured Minion default independently of the leader default", async () => {
+    vi.mocked(readSettings).mockReturnValue({ defaultLeaderHarness: "claude",
+      defaultMinionHarness: "codex", defaultMinionModel: "gpt-5.6-sol" });
+    const h = setup();
+    expect(await launchSession({ registry: h.registry, bus: h.bus,
+      options: { sessionKey: "fallback-child", cwd: "/work", prompt: "inspect", role: "minion", harness: "pi" },
+      getReadiness: async () => snapshot(["claude", "codex"]),
+    })).toMatchObject({ harness: "codex", model: "gpt-5.6-sol", reasons: ["harness_not_ready", "model_incompatible"] });
   });
 
   it("keeps an existing host's selection without resolving new defaults", async () => {
@@ -165,7 +247,7 @@ describe("launchSession", () => {
       options: { sessionKey: "s1", cwd: "/work", prompt: "hello" },
       getReadiness: vi.fn(async () => {
         await readinessGate;
-        return snapshot(["claude"]);
+        return snapshot(["codex"]);
       }),
     });
 

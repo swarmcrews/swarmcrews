@@ -33,7 +33,7 @@ describe("update_project_context", () => {
     vi.mocked(writeContext).mockClear();
   });
 
-  it("writes workspace-owned context and publishes the live project update", async () => {
+  it("writes source project instructions and publishes the live project update", async () => {
     const tool = createUpdateProjectContextToolDef(ctx);
     await tool.handler({ content: "  # Architecture\n\nUse the typed bus.  " });
 

@@ -18,7 +18,7 @@ export interface SwarmcrewsClientConfiguration {
   codexExecutable:string;
   execution?:import("./execution.js").ExecutionDescriptor; workspaceId?:string; requestTimeoutMs?:number; pollMs?:number;
 }
-interface SavedRun { handle:RunHandle; run:ParticipantRunSpec; sessionKey:string; workItemId?:string; mode:'single'|'graph'; mutationIds:{create:string;start:string}; resolvedTreatment:ReturnType<typeof resolveTreatment>; stopped?:boolean }
+interface SavedRun { handle:RunHandle; run:ParticipantRunSpec; sessionKey:string; workItemId?:string; mode:'single'|'graph'; minimumMeaningfulNodes?:1|2; mutationIds:{create:string;start:string}; resolvedTreatment:ReturnType<typeof resolveTreatment>; stopped?:boolean }
 const terminal=(status:string)=>['idle','done','completed','stopped','error','failed','cancelled'].includes(status);
 export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClient {
   private readonly transport:SwarmcrewsTransport;
@@ -56,11 +56,13 @@ export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClie
   }
   async launch(input:{mode:'single'|'graph';run:ParticipantRunSpec;restrictions:Record<string,unknown>}):Promise<RunHandle> {
     const {run,mode}=input; const resolvedTreatment=resolveTreatment(run.configuration); executionDescriptor(run,this.config.stateRoot);
+    const minimumMeaningfulNodes = input.restrictions.minimumMeaningfulNodes ?? 2;
+    if (minimumMeaningfulNodes !== 1 && minimumMeaningfulNodes !== 2) throw new Error('minimumMeaningfulNodes must be 1 or 2');
     const handleId=createHash('sha256').update(run.idempotencyKey).digest('hex');
     const handle:RunHandle={schemaVersion:1,adapterId:mode==='single'?'minion-single':'minion-graph',handleId,runId:run.runId,createdAt:new Date().toISOString()};
     await mkdir(join(this.config.stateRoot,'minions'),{recursive:true});
     try{await mkdir(this.directory(handleId));}catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;return (await this.load(handle)).handle;}
-    const saved:SavedRun={handle,run,mode,sessionKey:`eval-${handleId}`,mutationIds:{create:randomUUID(),start:randomUUID()},resolvedTreatment}; await this.save(saved);
+    const saved:SavedRun={handle,run,mode,minimumMeaningfulNodes,sessionKey:`eval-${handleId}`,mutationIds:{create:randomUUID(),start:randomUUID()},resolvedTreatment}; await this.save(saved);
     const probe=await this.probe();if(!probe.capabilities.role_tool_restrictions)throw new Error('dedicated Codex wrapper must disable multi_agent and multi_agent_v2');
     const workspaceId=this.config.workspaceId ?? await this.registerWorkspace(run);
     const settings={harness:'codex',...saved.resolvedTreatment,permissionMode:'acceptEdits',sandboxPolicy:{filesystemScope:'workspace-write',approvalPolicy:'never'},skillIds:[]};
@@ -72,7 +74,7 @@ export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClie
       saved.workItemId=detail.workItem.id;await this.save(saved);
       const started=await this.transport.request({type:'start_work_item_run',requestId:saved.mutationIds.start,workItemId:saved.workItemId,
         expectedLifecycleRevision:detail.workItem.lifecycle.lifecycleRevision,expectedCurrentRunKey:detail.workItem.currentRunKey,
-        orchestrationMode:'auto',prompt:`${run.prompt}\n\nUse a participant-authored execution graph with at least two meaningful nodes. Execute the graph, integrate its outputs into the workspace, and verify the result.`,...settings});
+        orchestrationMode:'auto',prompt:`${run.prompt}\n\nUse a participant-authored execution graph with at least ${minimumMeaningfulNodes===1 ? "one meaningful node" : "two meaningful nodes"}. Execute the graph, integrate its outputs into the workspace, and verify the result.`,...settings});
       saved.sessionKey=started.currentRun.runKey;await this.save(saved);
     }
     return handle;
@@ -118,7 +120,7 @@ export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClie
     const saved=await this.load(handle);const {sessions,graph}=await this.discover(saved);
     const participants=sessions.map(s=>({id:s.sessionKey,parentId:s.parentRunKey??null,state:s.status??(s.endedAt?'completed':'unknown'),terminal:s.endedAt!=null||terminal(s.status)}));
     const quiet=participants.every(p=>p.terminal)&&(!graph||['completed','failed','cancelled'].includes(graph.status));
-    const graphValid=saved.mode!=='graph'||Boolean(graph&&graph.nodes?.length>=2&&graph.status==='completed');
+    const graphValid=saved.mode!=='graph'||Boolean(graph&&graph.nodes?.length>=(saved.minimumMeaningfulNodes??2)&&graph.status==='completed');
     return {schemaVersion:1,handle,state:quiet?'terminal':'running',terminalOutcome:quiet?(saved.stopped?'cancelled':!graphValid||saved.mode==='single'&&sessions.some(s=>['error','failed'].includes(s.status))?'failed':'completed'):null,participants,observedAt:new Date().toISOString()};
   }
   async *events(handle:RunHandle,afterSequence=0):AsyncIterable<RunEvent> {
@@ -145,7 +147,11 @@ export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClie
       if(graph)add(`graph:${graph.graphRunId}:${graph.revision}`,null,'graph_changed',graph);
       await writeFile(file+'.tmp',JSON.stringify(ledger),{mode:0o600});await rename(file+'.tmp',file);
       for(const event of ledger)if(event.sequence>delivered){delivered=event.sequence;yield event;}
-      if((await this.snapshot(handle)).state==='terminal')return;
+      // End only on the discovery whose history and usage were emitted above.
+      // A fresh snapshot can become terminal between polls and otherwise skip
+      // the last totals/coverage update (especially after a Leader continuation).
+      if(sessions.every(session=>session.endedAt!=null||terminal(session.status))
+        && (!graph||['completed','failed','cancelled'].includes(graph.status)))return;
       await delay(this.config.pollMs??250);
     }
   }
@@ -169,6 +175,6 @@ export class WebSocketSwarmcrewsProtocolClient implements SwarmcrewsProtocolClie
   async collect(handle:RunHandle):Promise<CollectedExecution> {
     const snapshot=await this.snapshot(handle);if(snapshot.state!=='terminal')throw new Error('cannot collect until all descendants quiesce');
     const saved=await this.load(handle);const artifacts=await collectWorkspace(saved.run.workspace.mountPath);
-    return {schemaVersion:1,handle,artifacts,provenance:{resolvedTreatment:saved.resolvedTreatment,mode:saved.mode,sessionKey:saved.sessionKey,workItemId:saved.workItemId??null,participants:snapshot.participants,workspace:'integrated live workspace',protocolAdherence:saved.mode==='single' ? (snapshot.participants.length===1?'valid':'violated') : ((await this.discover(saved)).graph?.nodes?.length>=2?'valid':'violated')},usageCoverage:'partial',logTruncated:false};
+    return {schemaVersion:1,handle,artifacts,provenance:{resolvedTreatment:saved.resolvedTreatment,mode:saved.mode,minimumMeaningfulNodes:saved.minimumMeaningfulNodes??2,sessionKey:saved.sessionKey,workItemId:saved.workItemId??null,participants:snapshot.participants,workspace:'integrated live workspace',protocolAdherence:saved.mode==='single' ? (snapshot.participants.length===1?'valid':'violated') : ((await this.discover(saved)).graph?.nodes?.length>=(saved.minimumMeaningfulNodes??2)?'valid':'violated')},usageCoverage:'partial',logTruncated:false};
   }
 }

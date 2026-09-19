@@ -20,6 +20,24 @@ async function setup(body:string) {
   return {root,workspace,state,executable,run};
 }
 describe('actual external subprocess launcher',()=>{
+  it('classifies a terminal run against usage delivered after the terminal snapshot',async()=>{
+    const f=await setup(`console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:17,output_tokens:5}}));`);
+    const adapter=new CodexRawAdapter(new LocalCodexProcessLauncher(f.executable));
+    const delayed={id:adapter.id,version:adapter.version,preflight:adapter.preflight.bind(adapter),start:adapter.start.bind(adapter),
+      inspect:adapter.inspect.bind(adapter),stop:adapter.stop.bind(adapter),collect:adapter.collect.bind(adapter),
+      async *observe(handle:Parameters<typeof adapter.observe>[0],after?:number){
+        while((await adapter.inspect(handle)).state!=='terminal')await latency(5);
+        await latency(100);
+        yield* adapter.observe(handle,after);
+      }};
+    const store=new ResultStore(join(f.root,'late-usage-state.json'));
+    const runner=new LifecycleRunner({experimentId:'late-usage',aggregateTokenCap:1000,store,
+      events:new EventStore(join(f.root,'late-usage-events.jsonl'))},delayed);
+    await runner.start({cell:{schemaVersion:1,cellId:'cell',experimentId:'late-usage',taskId:'fixture',adapterId:'codex-raw',repetition:0,fixtureSeed:'seed',status:'planned'},
+      spec:{...f.run,limits:{...f.run.limits,maxTotalTokens:20}}});
+    await runner.drive(f.run.runId);
+    expect(await store.getResult(f.run.runId)).toMatchObject({executionOutcome:'budget_exceeded',usage:{totalTokens:22}});
+  });
   it('probes both disabled features, launches once, replays after observer replacement and collects',async()=>{
     const fixture=await setup(`fs.appendFileSync('launches','1');console.log(JSON.stringify({type:'turn.started'}));console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:17,cached_input_tokens:4,output_tokens:5}}));`);
     const adapter=new CodexRawAdapter(new LocalCodexProcessLauncher(fixture.executable));
@@ -81,6 +99,49 @@ describe('actual external subprocess launcher',()=>{
   });
 });
 describe('actual Swarmcrews HTTP/WS protocol',()=>{
+  it.each([1,2] as const)('freezes and enforces a graph minimum of %i through launch and reconnect',async minimumMeaningfulNodes=>{
+    const f=await setup('');let launchPrompt='';
+    const server=await protocolServer(m=>{
+      if(m.type==='list_harnesses')return {type:'harness_list',harnesses:[{name:'codex'}]};
+      if(m.type==='create_work_item')return {type:'work_item_response',requestId:m.requestId,result:{workItem:{id:'work',lifecycle:{lifecycleRevision:0},currentRunKey:null}}};
+      if(m.type==='start_work_item_run'){launchPrompt=m.prompt;return {type:'work_item_response',requestId:m.requestId,result:{currentRun:{runKey:'leader'}}};}
+      if(m.type==='list_sessions')return {type:'session_list',sessions:[]};
+      if(m.type==='get_work_item_runs')return {type:'work_item_response',command:m.type,result:{runs:[{runKey:'leader'}],nextCursor:null}};
+      if(m.type==='sync_session')return {type:'sync_response',sessionKey:m.sessionKey,found:true,status:'idle',usageTotals:{input:1,output:1},turns:1,totalCost:0};
+      if(m.type==='list_task_graph_attempts')return {type:'task_graph_response',requestId:m.requestId,result:[]};
+      if(m.type==='get_task_graph_snapshot')return {type:'task_graph_snapshot',workItemId:'work',snapshot:{graphRunId:'graph',revision:1,status:'completed',nodes:[{id:'only'}]}};
+      throw new Error(m.type);
+    });cleanups.push(server.close);
+    const config={endpoint:server.endpoint,stateRoot:f.state,codexExecutable:f.executable,workspaceId:'registered'};
+    const handle=await new WebSocketSwarmcrewsProtocolClient(config).launch({mode:'graph',run:f.run,restrictions:{minimumMeaningfulNodes}});
+    expect(launchPrompt).toContain(minimumMeaningfulNodes===1?'at least one meaningful node':'at least two meaningful nodes');
+    const reconnected=new WebSocketSwarmcrewsProtocolClient(config);
+    expect((await reconnected.snapshot(handle)).terminalOutcome).toBe(minimumMeaningfulNodes===1?'completed':'failed');
+    const collected=await reconnected.collect(handle);
+    expect(collected.provenance.minimumMeaningfulNodes).toBe(minimumMeaningfulNodes);
+    expect(collected.provenance.protocolAdherence).toBe(minimumMeaningfulNodes===1?'valid':'violated');
+  });
+  it('drains the final totals when a session becomes terminal between discoveries',async()=>{
+    const f=await setup('');let key='';let discoveries=0;
+    const server=await protocolServer(m=>{
+      if(m.type==='list_harnesses')return {type:'harness_list',harnesses:[{name:'codex'}]};
+      if(m.type==='create_session'){key=m.sessionKey;return {type:'session_created',sessionKey:key};}
+      if(m.type==='list_sessions')return {type:'session_list',sessions:[{sessionKey:key}]};
+      if(m.type==='sync_session'){
+        const done=++discoveries>1;
+        return {type:'sync_response',sessionKey:key,found:true,status:done?'idle':'running',turns:1,totalCost:0,
+          usageTotals:done?{input:20,output:10,cacheRead:5,cacheCreation:0}:{input:2,output:3,cacheRead:0,cacheCreation:0}};
+      }
+      throw new Error(m.type);
+    });cleanups.push(server.close);
+    const client=new WebSocketSwarmcrewsProtocolClient({endpoint:server.endpoint,stateRoot:f.state,
+      codexExecutable:f.executable,workspaceId:'registered',pollMs:1});
+    const handle=await client.launch({mode:'single',run:f.run,restrictions:{}});
+    const events=[];for await(const event of client.events(handle))events.push(event);
+    const totals=events.filter(event=>event.payload.kind==='cumulative_session');
+    expect(totals.map(event=>(event.payload.usage as {totalTokens:number}).totalTokens)).toEqual([5,35]);
+    expect(totals.at(-1)?.payload.usage).toMatchObject({totalTokens:35,coverage:'complete',coverageReasons:[]});
+  });
   it('handles uncorrelated session replies, durable reconnect, history pagination and integrated collection',async()=>{
     const f=await setup('');let key='';let status='idle';
     const server=await protocolServer(m=>{

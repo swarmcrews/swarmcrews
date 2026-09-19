@@ -1,9 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { listSessions } from "./list-sessions.ts";
 import { SessionHost } from "../session-host.ts";
 import { setup, cmd } from "../../tests/support/server-command-harness.ts";
 
 describe("listSessions", () => {
+  it("only opts into archive payloads on an explicit request", () => {
+    const h = setup();
+    const snapshot = vi.spyOn(h.ctx.registry, "snapshot");
+    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    expect(snapshot).toHaveBeenLastCalledWith({ includeArchived: false });
+    listSessions(h.ctx, cmd({ type: "list_sessions", includeArchived: true }), h.ws);
+    expect(snapshot).toHaveBeenLastCalledWith({ includeArchived: true });
+  });
   it("emits a session_list with the live registry snapshot scoped to the global topic", () => {
     const h = setup({ sessionKey: "first" });
     const second = new SessionHost("second", "/p");

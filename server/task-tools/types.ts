@@ -144,6 +144,7 @@ export interface TaskManagerState {
 }
 
 export interface TaskToolContext {
+  decisionContinuations?: boolean | undefined;
   leaderSessionKey: string;
   bus: Bus;
   startMinionSession: (params: {

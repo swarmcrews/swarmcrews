@@ -1,6 +1,6 @@
 import type { WorkItemRunSnapshot } from "../shared/work-item-contracts.ts";
 import type { DisplayMessage } from "./sdk-messages.ts";
-import type { SessionStreamState } from "./session-stream.ts";
+import { preserveOptimisticUserMessages, type SessionStreamState } from "./session-stream.ts";
 import { SessionTranscript, type TranscriptBoundary, type TranscriptEntry } from "./components/SessionTranscript.tsx";
 import type { WorkItemHistoryState } from "./use-work-item-history.ts";
 
@@ -36,18 +36,27 @@ export function buildUnifiedWorkItemMessages(input: {
 } & RunTaskContext): TranscriptEntry[] {
   const { runs, streams, currentRunKey, currentMessages } = input;
   if (runs.length === 0) return [...currentMessages];
+  // A new leader's first run can reach history before its launch receipt
+  // supplies the live session key. Its local prompt belongs to that run.
+  const primaryRuns = runs.filter((run) => run.runKind === "primary");
+  const initialRun = !currentRunKey && primaryRuns.length === 1
+    && primaryRuns[0]?.runNumber === 1
+    && currentMessages.every((message) => message.role === "user" && message.optimistic)
+    ? primaryRuns[0] : undefined;
   const unified: TranscriptEntry[] = [];
   for (const run of runs) {
     unified.push(runBoundary(run, input));
     const replay = streams[run.runKey]?.messages ?? [];
-    const messages = run.runKey === currentRunKey && currentMessages.length > 0
+    const messages = run === initialRun
+      ? preserveOptimisticUserMessages(currentMessages, replay)
+      : run.runKey === currentRunKey && currentMessages.length > 0
       ? currentMessages
       : replay;
     unified.push(...messages);
   }
   // Session updates and ledger pages arrive independently. Preserve the
   // current conversation while its run is still missing from cached history.
-  if (!runs.some((run) => run.runKey === currentRunKey)) {
+  if (!initialRun && !runs.some((run) => run.runKey === currentRunKey)) {
     unified.push(...currentMessages);
   }
   return unified;

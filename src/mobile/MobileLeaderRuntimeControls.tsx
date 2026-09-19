@@ -5,6 +5,7 @@ import type { LaunchModelGroup } from "./launch-models.ts";
 import { parseLaunchModelValue } from "./launch-models.ts";
 
 const EFFORT_LABELS: Record<EffortLevel, string> = {
+  minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",

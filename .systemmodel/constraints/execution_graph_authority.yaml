@@ -17,10 +17,12 @@ applies_to:
     - server/task-graph/repository.ts
     - server/task-graph/service.ts
     - server/commands/task-graph.ts
+    - server/task-graph/connected-graph-source.ts
+    - server/task-graph/planning-inspection.ts
 severity: critical
-agent_instruction: Preserve the ownership hierarchy, reject mutable reuse of a graph revision, fence run start against the current WorkItem lifecycle and primary run, and allocate a fresh durable attempt identity for every retrying child. The current Leader may read historical plans, runtime and valid committed artifacts from earlier primary runs in the same WorkItem; stale callers and cross-WorkItem reads are rejected. Historical inspection grants no mutation or start authority.
+agent_instruction: Preserve the ownership hierarchy, reject mutable reuse of a graph revision, fence run start against the current WorkItem lifecycle and primary run, and allocate a fresh durable attempt identity for every retrying child. The current Leader may read historical plans, runtime and valid committed artifacts from earlier primary runs in the same WorkItem; stale callers and unrelated cross-WorkItem reads are rejected. Full canvas context permits read-only inspection of a connected same-project Leader only after validating the persisted Full edge and both active canvas WorkItem bindings on every read. Browser metadata and transcript IDs never grant graph authority; disconnect or downgrade revokes access. Historical and connected inspection grant no mutation or start authority.
 review_gate: gate.execution_graph_runtime
-suggested_tests: [ tests/contracts/work-item-contracts.test.ts, server/work-item-repo.test.ts, tests/task-graph/runtime.test.ts, server/task-graph/service.test.ts ]
+suggested_tests: [ tests/contracts/work-item-contracts.test.ts, server/work-item-repo.test.ts, tests/task-graph/runtime.test.ts, server/task-graph/service.test.ts, server/task-graph/planning-coordinator.test.ts, tests/contracts/canvas-context.test.ts ]
 evidence: [ decision.server_owned_execution_graphs, decision.canonical_work_item_lifecycle ]
 domain: domain.execution_lifecycle
 scope: targeted

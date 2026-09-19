@@ -1,3 +1,5 @@
+import { readSettings } from "./project-store.ts";
+import { resolveTaskGraphExperiments, resolveTaskGraphExperimentSettings, type TaskGraphExperiments } from "../shared/task-graph-experiments.ts";
 import type { ThinkingConfig } from "./session-host-config.ts";
 import type { ImageAttachment } from "./session-host-types.ts";
 import type { SandboxPolicy } from "../shared/workspace-contracts.ts";
@@ -16,7 +18,7 @@ export interface PrimaryRunConfig {
   permissionMode?: string;
   sandboxPolicy?: SandboxPolicy;
   thinkingConfig?: ThinkingConfig;
-  skillIds?: string[];
+  connectionIds?: string[] | undefined; skillIds?: string[];
   skillValues?: Record<string, Record<string, string>>;
   systemPrompt?: string;
   attachments?: ImageAttachment[];
@@ -25,12 +27,14 @@ export interface PrimaryRunConfig {
   promptAttachments?: ImageAttachment[];
   orchestrationMode?: LeaderOrchestrationMode;
   planningContext?: string;
+  taskGraphExperiments?: TaskGraphExperiments;
   userDirectives?: string[];
 }
 
 interface ConfigInput {
+  taskGraphExperiments?: unknown;
   harness?: string; model?: string; permissionMode?: string; sandboxPolicy?: SandboxPolicy;
-  thinkingConfig?: unknown; skillIds?: string[]; skillValues?: Record<string, Record<string, string>>;
+  thinkingConfig?: unknown; connectionIds?: string[] | undefined; skillIds?: string[]; skillValues?: Record<string, Record<string, string>>;
   systemPrompt?: string; attachments?: unknown[];
   orchestrationMode?: LeaderOrchestrationMode; prompt?: string; displayPrompt?: string;
 }
@@ -38,11 +42,13 @@ interface ConfigInput {
 export function resolvePrimaryRunConfig(previousJson: string | null, input: ConfigInput) {
   const previous = previousJson ? JSON.parse(previousJson) as PrimaryRunConfig : {};
   const config: PrimaryRunConfig = { ...previous };
+  if (input.taskGraphExperiments !== undefined) config.taskGraphExperiments = resolveTaskGraphExperiments(input.taskGraphExperiments);
   if (input.harness !== undefined) config.harness = input.harness;
   if (input.model !== undefined) config.model = input.model;
   if (input.permissionMode !== undefined) config.permissionMode = input.permissionMode;
   if (input.sandboxPolicy !== undefined) config.sandboxPolicy = input.sandboxPolicy;
   if (input.thinkingConfig !== undefined) config.thinkingConfig = input.thinkingConfig as ThinkingConfig;
+  if (input.connectionIds !== undefined) config.connectionIds = input.connectionIds;
   if (input.skillIds !== undefined) config.skillIds = input.skillIds;
   if (input.skillValues !== undefined) config.skillValues = input.skillValues;
   if (input.systemPrompt !== undefined) config.systemPrompt = input.systemPrompt;
@@ -82,6 +88,14 @@ export function compatibleResumeId(
   next: PrimaryRunConfig,
 ): string | undefined {
   if (!previous?.session_id) return undefined;
+  if (JSON.stringify(resolveTaskGraphExperiments(inheritedPrimaryRunConfig(previous).taskGraphExperiments))
+    !== JSON.stringify(resolveTaskGraphExperiments(next.taskGraphExperiments))) return undefined;
   return inheritedPrimaryRunConfig(previous).harness === next.harness
     ? previous.session_id : undefined;
+}
+
+/** New iterations capture current project treatment; resumes use the stored config. */
+export function resolveNewPrimaryRunConfig(previousJson: string | null, input: ConfigInput, projectPath?: string) {
+  return resolvePrimaryRunConfig(previousJson, { ...input, taskGraphExperiments:
+    resolveTaskGraphExperimentSettings(projectPath ? readSettings(projectPath).taskGraphExperiments : undefined) });
 }

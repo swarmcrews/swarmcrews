@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useId,
   type CSSProperties,
   useRef,
   useState,
@@ -17,7 +18,8 @@ import {
   StreamingBubble,
 } from "../../../components/StreamingBubble.tsx";
 import { DEFAULT_THINKING_CONFIG } from "../../../types.ts";
-import { groupMessages } from "../../leader-message-helpers.ts";
+import { groupTranscript, type TranscriptEntry } from "../../../components/SessionTranscript.tsx";
+import { IterationBoundary } from "../messages/IterationBoundary.tsx";
 import { EditableTitle } from "../EditableTitle.tsx";
 import { LeaderStatusIcon } from "../LeaderStatusIcon.tsx";
 import { WaitCountdown } from "../WaitCountdown.tsx";
@@ -40,6 +42,8 @@ import "./leader-fullscreen.css";
 
 export interface LeaderFullscreenProps {
   data: LeaderData;
+  transcript?: TranscriptEntry[];
+  historyLoading?: boolean;
   isWorking: boolean;
   onUpdateData: (next: LeaderData) => void;
   onExit: () => void;
@@ -106,7 +110,10 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
   const [compact, setCompact] = useState(() => window.matchMedia?.("(max-width: 1180px)").matches ?? false);
   const [leftWidth, setLeftWidth] = useState(250);
   const [rightWidth, setRightWidth] = useState(330);
-  const groupedMessages = useMemo(() => groupMessages(data.messages), [data.messages]);
+  const transcript = props.transcript ?? data.messages;
+  const groupedMessages = useMemo(() => groupTranscript(transcript), [transcript]);
+  const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
+  const historyScope = useId();
   const thinkingEffort = data.thinkingConfig?.effort ?? DEFAULT_THINKING_CONFIG.effort;
   const questionCount = partitionDashboardQuestions(data.renderState?.components ?? [], new Map()).questions.length;
   const hasDashboard = Boolean(data.renderState?.components.length);
@@ -114,7 +121,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
   const selectedView = view === "dashboard" && !hasDashboard ? "conversation"
     : view === "minions" && !minionsSlot ? "conversation" : view;
   const approvalPending = selectCanvasChangeMode(data) === "worktree" && data.approvalPending;
-  const chatFollow = useChatFollow(data.sessionKey ?? "new-leader", data.streamingText || data.messages.at(-1), selectedView === "conversation");
+  const chatFollow = useChatFollow(data.sessionKey ?? "new-leader", `${transcript.length}:${data.streamingText}`, selectedView === "conversation");
   const executionHidden = compact ? side !== "activity" : (leftHidden ?? !(data.taskPlan.length || graphProjection));
   const contextHidden = compact ? side !== "context" : rightHidden;
 
@@ -216,11 +223,16 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
           {approvalPending && <button className="leader-fs-attention" onClick={() => { setSide("context"); setRightHidden(false); setReviewRequest(n => n + 1); }}>Changes are ready for review. Open review & settings →</button>}
           <section className="leader-fs-conversation" data-testid="leader-fullscreen-conversation" hidden={selectedView !== "conversation"}>
             <div className="leader-fs-runtime">{toolbarSlot}</div>
-            <div ref={chatFollow.feedRef} className="leader-fs-messages" data-scroll-capture onMouseDown={e => e.stopPropagation()}
+            <div ref={chatFollow.feedRef} className="leader-fs-messages" data-selection-viewport="fullscreen" data-scroll-capture onMouseDown={e => e.stopPropagation()}
               onScroll={chatFollow.onScroll} tabIndex={0} role="region" aria-label="Conversation messages">
               <div ref={chatFollow.contentRef} className="leader-fs-message-content">
-              {data.messages.length === 0 && !isWorking && !data.streamingText && <div className="leader-fs-empty"><MessageSquare size={28} strokeWidth={1.3} /><h2>{data.sessionKey ? "Continue the conversation" : "What would you like to accomplish?"}</h2><p>{data.sessionKey ? "Send a message to steer the next step." : "Describe your goal. Your leader can investigate, build, delegate work, and bring decisions back to you."}</p><span>Use / for commands · Inspect connected sources in Context</span></div>}
+              {props.historyLoading && <div role="status">Loading iteration history…</div>}
+              {transcript.length === 0 && !props.historyLoading && !isWorking && !data.streamingText && <div className="leader-fs-empty"><MessageSquare size={28} strokeWidth={1.3} /><h2>{data.sessionKey ? "Continue the conversation" : "What would you like to accomplish?"}</h2><p>{data.sessionKey ? "Send a message to steer the next step." : "Describe your goal. Your leader can investigate, build, delegate work, and bring decisions back to you."}</p><span>Use / for commands · Inspect connected sources in Context</span></div>}
             {groupedMessages.map((group, gi) => {
+              if (group.kind === "run-boundary") {
+                return <IterationBoundary key={group.id} boundary={group} boundaries={boundaries}
+                  scope={historyScope} onNavigate={chatFollow.onScroll} />;
+              }
               if (group.kind === "tool-group") {
                 return <LeaderToolGroup key={`tg-${gi}`} msgs={group.msgs} />;
               }

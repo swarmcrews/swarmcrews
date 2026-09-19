@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, beforeAll, beforeEach } from "vitest";
 
@@ -332,6 +332,30 @@ describe("LeaderNode: new-session initiation", () => {
     expect(creates()).toHaveLength(1);
   });
 
+  it.each(["", "New draft"])("restores a rejected launch prompt without overwriting a newer draft (%s)", async (draft) => {
+    const { socket, replay } = createReplaySocket();
+    function Probe() {
+      const [data, setData] = useState(disconnectedLeaderData());
+      return <LeaderNodeRenderer node={{ id: "rejected-leader", type: "leader",
+        position: { x: 0, y: 0 }, size: { width: 480, height: 400 }, data }}
+        isSelected={false} projectId="project-1" projectPath="/repo"
+        socketSubscribe={socket.subscribe} socketSend={socket.send}
+        onUpdateData={(next) => setData(next as LeaderData)} />;
+    }
+    render(<Probe />);
+    const prompt = screen.getByTestId("leader-prompt-input-inline");
+    fireEvent.change(prompt, { target: { value: "  Original request  " } });
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(prompt).toHaveValue("");
+    if (draft) fireEvent.change(prompt, { target: { value: draft } });
+    const create = socket.sent.find((message) =>
+      (message as { type?: string }).type === "create_work_item") as { requestId: string };
+    await act(() => replay([{ message: { type: "work_item_response", command: "create_work_item",
+      requestId: create.requestId, success: false, code: "invalid_state", error: "Launch failed" } }]));
+    expect(prompt).toHaveValue(draft || "  Original request  ");
+    expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  });
+
   it.each([false, true])("creates, binds, and reuses a work item without duplicate initial prompts (autoStart=%s)", async (autoStart) => {
     const { socket, replay } = createReplaySocket();
     let latest: LeaderData = { ...disconnectedLeaderData(), harness: "codex",
@@ -354,6 +378,8 @@ describe("LeaderNode: new-session initiation", () => {
       fireEvent.click(screen.getByRole("button", { name: "Start" }));
     }
     expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
+    expect(within(screen.getByLabelText("Conversation messages")).getAllByText("First iteration")).toHaveLength(1);
+    expect(screen.getByTestId("leader-prompt-input-inline")).toHaveValue("");
     const create = latestCommand("create_work_item") as { requestId: string };
     expect(create).toMatchObject({ type: "create_work_item", workspaceId: "project-1",
       title: "First iteration" });
@@ -367,7 +393,23 @@ describe("LeaderNode: new-session initiation", () => {
       requestId: attach.requestId, success: true,
       result: { workItem: canonicalItem(null, 1, "draft", "none"), bindings: [], currentRun: null, runs: [], nextCursor: null } } }]));
     await waitFor(() => expect(latestCommand("continue_work_item")).toBeDefined());
+    expect(screen.getByTestId("leader-prompt-input-inline")).toHaveValue("");
+    // A new draft, even with identical text, belongs to the next submission.
+    fireEvent.change(screen.getByTestId("leader-prompt-input-inline"),
+      { target: { value: "First iteration" } });
     const start = latestCommand("continue_work_item") as { requestId: string };
+    // The run ledger and its replay can arrive before the launch receipt.
+    await act(() => replay([{ message: { type: "work_item_run_created", workItemId: "work-1", timestamp: 1,
+      run: { runKey: "run-1", workItemId: "work-1", runKind: "primary", runNumber: 1,
+        parentRunKey: null, previousRunKey: null, taskId: null, providerSessionId: null,
+        startedAt: 1, endedAt: null, finalReport: null, outcome: "none" } } }]));
+    await act(() => replay([{ message: { type: "sync_response", sessionKey: "run-1",
+      found: true, status: "creating", events: [{ type: "sdk_event", sessionKey: "run-1", timestamp: 1,
+        event: { kind: "text", role: "user", text: "First iteration", id: "initial-prompt" } }] } }]));
+    expect(within(screen.getByLabelText("Conversation messages")).getAllByText("First iteration")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(within(screen.getByRole("region", { name: "Conversation messages" })).getAllByText("First iteration")).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "Escape" });
     // The host can produce a reply before the launch receipt gives React its run key.
     await act(() => replay([{ message: { type: "sdk_event", sessionKey: "run-1",
       event: { kind: "text", role: "assistant", text: "Early launch reply" } } }]));
@@ -375,6 +417,7 @@ describe("LeaderNode: new-session initiation", () => {
       requestId: start.requestId, success: true,
       result: { workItem: canonicalItem("run-1", 2, "starting", "none"), bindings: [], currentRun: null, runs: [], nextCursor: null } } }]));
     await waitFor(() => expect(latest.currentRunKey).toBe("run-1"));
+    expect(screen.getByTestId("leader-prompt-input-inline")).toHaveValue("First iteration");
     expect(latestCommand("sync_session")).toEqual({ type: "sync_session", sessionKey: "run-1" });
     const userEvent = { kind: "text" as const, role: "user" as const,
       text: "First iteration", id: "initial-prompt" };
@@ -404,6 +447,41 @@ describe("LeaderNode: new-session initiation", () => {
       result: { workItem: canonicalItem("run-2", 4, "starting", "none"), bindings: [], currentRun: null, runs: [], nextCursor: null } } }]));
     await waitFor(() => expect([latest.workItemId, latest.currentRunKey]).toEqual(["work-1", "run-2"]));
     expect(latestCommand("sync_session")).toEqual({ type: "sync_session", sessionKey: "run-2" });
+    const secondUserEvent = { kind: "text" as const, role: "user" as const,
+      text: "Second iteration", id: "second-prompt" };
+    await act(() => replay([{ message: { type: "sdk_event", sessionKey: "run-2", event: secondUserEvent } }]));
+    expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
+    await act(() => replay([{ message: { type: "sync_response", sessionKey: "run-2",
+      found: true, status: "running", events: [
+        { type: "sdk_event", sessionKey: "run-2", timestamp: 4, event: secondUserEvent },
+      ] } }]));
+    expect(latest.messages.filter(message => message.role === "user")).toHaveLength(1);
+  });
+
+  it("repairs saved duplicate prompts with a delivery receipt on sync", async () => {
+    const { socket, replay } = createReplaySocket();
+    const text = "Review the documentation";
+    let latest = disconnectedLeaderData({ sessionKey: "run-1", status: "running",
+      messages: [
+        { id: "local-legacy", role: "user", content: text, timestamp: 1 },
+        { id: "lm-user-server", role: "user", content: text, timestamp: 2 },
+      ], messageDelivery: { "local-legacy": { text, state: "accepted" } } });
+    function Probe() {
+      const [data, setData] = useState(latest); latest = data;
+      return <LeaderNodeRenderer node={{ id: "saved-leader", type: "leader",
+        position: { x: 0, y: 0 }, size: { width: 480, height: 400 }, data }}
+        isSelected={false} projectId="project-1" projectPath="/repo"
+        socketSubscribe={socket.subscribe} socketSend={socket.send}
+        onUpdateData={(next) => setData(next as LeaderData)} />;
+    }
+    render(<Probe />);
+    await act(() => replay([{ message: { type: "sync_response", sessionKey: "run-1",
+      found: true, status: "running", events: [
+        { type: "sdk_event", sessionKey: "run-1", timestamp: 2,
+          event: { kind: "text", role: "user", text, id: "server" } },
+      ] } }]));
+    expect(latest.messages.filter(message => message.role === "user"))
+      .toEqual([expect.objectContaining({ id: "lm-user-server", content: text })]);
   });
 
   it("queues guidance for an active work item and confirms deferred delivery", async () => {
@@ -434,8 +512,7 @@ describe("LeaderNode: new-session initiation", () => {
       command: "continue_work_item", requestId: guidance.requestId, success: true,
       result: { workItem: canonicalItem("run-1", 3, "working", "none"),
         bindings: [], currentRun: null, runs: [], nextCursor: null } } }]));
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Queued for leader");
+    expect(await screen.findByText("Queued for leader")).toHaveAttribute("role", "status");
     expect(latest.error).toBeNull();
   });
 

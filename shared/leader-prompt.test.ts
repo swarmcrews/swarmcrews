@@ -66,12 +66,41 @@ describe("leader prompt composition", () => {
     expect(inventory).toContain("callable schemas define arguments and behavior");
   });
 
-  it("makes Graph the standard Minion execution path while allowing Leader local work", () => {
-    expect(TASK_GRAPH_PLANNING_PROMPT).toMatch(/always enabled.*standard Minion execution path/i);
-    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("single-step graph");
-    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("Leaders may still execute");
+  it("defaults to direct execution and makes graph use benefit-driven or user-requested", () => {
+    expect(LEADER_PROMPT_CORE).toContain("Execute tasks directly by default");
+    expect(LEADER_PROMPT_CORE).not.toContain("Delegate broad exploration");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("Execute tasks directly by default, including substantial, tightly coupled implementation");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("complicated, multi-model, or parallelizable work");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("outweigh coordination overhead");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("Otherwise, process the task yourself unless the user explicitly asks for a graph");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("Honor explicit Graph/Crew requests, including `/graph` and `/crew`");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("review and start settings");
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("When delegating work to Minions, submit a graph plan");
     expect(TASK_GRAPH_PLANNING_PROMPT).toContain("server scheduler own admission and child allocation");
-    expect(TASK_GRAPH_PLANNING_PROMPT).not.toContain("optional reasoning");
+    for (const text of [TASK_GRAPH_PLANNING_PROMPT, getLeaderProcedure("graph_authoring")!.body]) {
+      expect(text).not.toMatch(/always enabled|standard Minion execution path|Leaders may still execute/);
+      expect(text).toContain("Do not create a single-step graph merely to hand off work you can complete directly");
+    }
+    expect(LEGACY_PLANNING_PROMPT).not.toContain("Canonical Leaders always use Task Graph");
+  });
+
+  it("surfaces a compact set of catalog-backed graph strategies before authoring", () => {
+    for (const id of ["p01.pipeline", "p02.fork_join", "p03.static_scatter_gather",
+      "p07.independent_verification", "p08.generate_critique_revise_verify", "p13.dialectic"]) {
+      expect(TASK_GRAPH_PATTERN_CATALOG.some(pattern => pattern.id === id)).toBe(true);
+      expect(TASK_GRAPH_PLANNING_PROMPT).toContain(id);
+    }
+    expect(TASK_GRAPH_PLANNING_PROMPT).toContain("Different models should add complementary capabilities or perspectives");
+  });
+
+  it("scopes experimental lifecycle guidance to chosen graphs rather than requiring one", () => {
+    const prompt = composeLeaderPrompt({
+      builtInTools: ["read", "edit"], registeredToolNames: [],
+      taskGraphExperiments: { decisionContinuations: true, semanticPartitioning: true, questionGraph: true },
+    });
+    expect(prompt).toContain("The following guidance applies only when using a graph; it does not require creating one");
+    expect(prompt).toContain("For graph work, make the next decision explicit");
+    expect(prompt).toContain("if children remain active call wait_and_continue");
   });
 
   it("retrieves author-time guidance without injecting every graph pattern", () => {

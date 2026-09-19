@@ -19,6 +19,25 @@ function dataWith(overrides: Partial<LeaderData>): LeaderData {
 const noop = () => {};
 
 describe("HeaderMenu — Open System Model", () => {
+  it("keeps wheel scrolling inside the menu and still dismisses on outside scroll", () => {
+    render(<HeaderMenu onReset={noop} onExportLog={noop} data={dataWith({})} />);
+    fireEvent.click(screen.getByRole("button", { name: /more leader actions/i }));
+    const item = screen.getByRole("menuitem", { name: /export log/i });
+    const outsideWheel = vi.fn();
+    window.addEventListener("wheel", outsideWheel);
+    try {
+      for (const deltaY of [100, -100]) {
+        expect(fireEvent.wheel(item, { deltaY })).toBe(true);
+        expect(screen.getByRole("menu", { name: /leader actions/i })).toBeInTheDocument();
+      }
+      expect(outsideWheel).not.toHaveBeenCalled();
+      fireEvent.wheel(document.body, { deltaY: 100 });
+      expect(screen.queryByRole("menu", { name: /leader actions/i })).toBeNull();
+    } finally {
+      window.removeEventListener("wheel", outsideWheel);
+    }
+  });
+
   it("opens a System Model node preloaded with the session and closes the menu", () => {
     const onOpenSystemModel = vi.fn();
     render(

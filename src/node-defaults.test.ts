@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { applyPromptSeed, createDefaultNodeData } from "./node-defaults.ts";
+import { clearSkills, setAllSkills } from "./skills/registry.ts";
+import { builtInSkillTemplates } from "./skills/built-in-presets.ts";
 import type { ThinkingConfig } from "./types.ts";
 
 describe("createDefaultNodeData leader thinking defaults", () => {
@@ -90,5 +92,25 @@ describe("applyPromptSeed", () => {
   it("returns data untouched for types with nowhere to put text", () => {
     const original = { sessionKey: null };
     expect(applyPromptSeed("claude-session", original, "hi")).toBe(original);
+  });
+});
+
+
+describe("default leader skills", () => {
+  afterEach(clearSkills);
+
+  it("selects project defaults and built-in overrides independently of self-serve", () => {
+    const preset = builtInSkillTemplates[0]!;
+    setAllSkills([
+      { ...preset, isDefault: true, selfServe: false },
+      { ...preset, id: "optional", isDefault: false },
+      { ...preset, id: "legacy" },
+    ]);
+    const first = createDefaultNodeData("leader") as { skillIds: string[] };
+    expect(first.skillIds).toEqual([preset.id]);
+    first.skillIds.length = 0;
+    expect(createDefaultNodeData("leader")).toMatchObject({ skillIds: [preset.id] });
+    setAllSkills([{ ...preset, isDefault: false }]);
+    expect(createDefaultNodeData("leader")).toMatchObject({ skillIds: [] });
   });
 });

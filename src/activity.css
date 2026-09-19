@@ -2225,10 +2225,16 @@
 
 .act-composer-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   width: min(100%, var(--act-chat-max-width));
   margin: 0 auto;
+}
+
+.act-composer .leader-prompt-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
 }
 
 .act-composer textarea {

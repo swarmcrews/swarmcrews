@@ -2,8 +2,26 @@ import { describe, expect, it } from "vitest";
 import type { BufferedEvent } from "../session-host.ts";
 import { syncSession } from "./sync-session.ts";
 import { setup, cmd } from "../../tests/support/server-command-harness.ts";
+import { closePersistDb, disablePersistence, openPersistDb, persistenceDb } from "../session-persist.ts";
 
 describe("sync_session", () => {
+  it("marks explicitly synchronized archive history without hiding the requested snapshot", () => {
+    const h = setup();
+    try {
+      openPersistDb(":memory:");
+      const db = persistenceDb()!;
+      db.prepare(`INSERT INTO work_items (
+        id, project_id, project_path, title, runtime_state, outcome, resolution,
+        change_mode, integration_state, last_transition_at, created_at, updated_at
+      ) VALUES ('old', 'p', '/repo', 'Old', 'inactive', 'completed', 'archived',
+        'live', 'live_clean', 1, 1, 1)`).run();
+      h.host.workItemId = "old";
+      syncSession(h.ctx, cmd({ type: "sync_session", sessionKey: h.host.id }), h.ws);
+      expect(h.wsSent[0]).toMatchObject({ type: "sync_response", found: true, archived: true, events: [] });
+      expect(h.ctx.registry.snapshot()).toEqual([]);
+      expect(h.ctx.registry.get(h.host.id)).toBe(h.host);
+    } finally { closePersistDb(); disablePersistence(); }
+  });
   it("emits sync_response with found=false when the session is unknown", () => {
     const h = setup();
     syncSession(

@@ -26,8 +26,12 @@ permissions:
 
 jobs:
   windows-install:
-    name: Windows install + SQLite smoke
-    runs-on: windows-latest
+    name: ${{ matrix.os }} install + repository paths
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
     timeout-minutes: 10
 
     steps:
@@ -52,6 +56,8 @@ jobs:
         run: pnpm test:install
       - name: Test SQLite native binary
         run: pnpm test:sqlite
+      - name: Test native repository folder discovery
+        run: pnpm exec vitest run server/repository-paths.test.ts server/repository-paths.edge.test.ts server/repository-directory-discovery.test.ts tests/contracts/projects-paths-routes.test.ts
 
   verify:
     name: typecheck + tests + build
@@ -131,6 +137,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Run browser smoke
         run: pnpm test:smoke
+      - name: Test repository folder picker on desktop and mobile
+        run: pnpm exec playwright test tests/e2e/repository-path-picker.spec.mjs
       - name: Upload browser diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

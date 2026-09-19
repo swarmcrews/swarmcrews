@@ -23,11 +23,28 @@ export function snapPositionToGrid(pos: Position): Position {
 
 // ── Viewport helpers ────────────────────────────────────────────
 
+export interface CanvasViewport {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+}
+
+/** Canvas-local space to the right of the floating project dashboard. */
+export function unobstructedCanvasViewport(
+  container: { left: number; width: number; height: number },
+  panelRight: number,
+): CanvasViewport {
+  const overlap = Math.max(0, panelRight - container.left);
+  const x = Math.min(container.width, overlap > 0 ? overlap + 16 : 0);
+  return { x, y: 0, width: Math.max(0, container.width - x), height: container.height };
+}
+
 /** Calculate the canvas-space center of the current viewport.
  *  Useful for placing new nodes where the user is currently looking. */
 export function viewportCenter(
   transform: CanvasTransform,
-  viewport: { width: number; height: number } = {
+  viewport: CanvasViewport = {
     width: window.innerWidth,
     height: window.innerHeight,
   },
@@ -35,15 +52,15 @@ export function viewportCenter(
   const w = viewport.width;
   const h = viewport.height;
   return {
-    x: (w / 2 - transform.x) / transform.scale,
-    y: (h / 2 - transform.y) / transform.scale,
+    x: ((viewport.x ?? 0) + w / 2 - transform.x) / transform.scale,
+    y: ((viewport.y ?? 0) + h / 2 - transform.y) / transform.scale,
   };
 }
 
 /** Fit one or more world-space rectangles inside the viewport and center them. */
 export function focusTransformOnRects(
   rects: ReadonlyArray<{ x: number; y: number; width: number; height: number }>,
-  viewport: { width: number; height: number },
+  viewport: CanvasViewport,
   options: { padding: number; maxScale: number },
 ): CanvasTransform | null {
   if (rects.length === 0 || viewport.width <= 0 || viewport.height <= 0) return null;
@@ -69,19 +86,19 @@ export function focusTransformOnRects(
  * the viewport, preserving the given zoom `scale` (pan only). Used to
  * reposition the camera onto a node after it is dragged to a new placement.
  *
- * `viewport` is the container's pixel size. The returned transform places the
+ * `viewport` is the usable area in container pixels. The returned transform places the
  * rect's center at the viewport's center.
  */
 export function centerTransformOnRect(
   rect: { x: number; y: number; width: number; height: number },
-  viewport: { width: number; height: number },
+  viewport: CanvasViewport,
   scale: number,
 ): CanvasTransform {
   const centerX = rect.x + rect.width / 2;
   const centerY = rect.y + rect.height / 2;
   return {
-    x: viewport.width / 2 - centerX * scale,
-    y: viewport.height / 2 - centerY * scale,
+    x: (viewport.x ?? 0) + viewport.width / 2 - centerX * scale,
+    y: (viewport.y ?? 0) + viewport.height / 2 - centerY * scale,
     scale,
   };
 }

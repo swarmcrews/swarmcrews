@@ -51,6 +51,10 @@ export interface SkillTemplate {
   accentColor: string;
   template: string;
   variables: SkillVariable[];
+  /** Automatically selected on new leader nodes. */
+  isDefault?: boolean;
+  /** Advertise to agents for on-demand selection; enabled when omitted. */
+  selfServe?: boolean;
   attachments?: SkillAttachment[];
   subskills?: SubSkill[];
 }

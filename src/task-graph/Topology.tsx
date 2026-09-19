@@ -2,11 +2,13 @@ import { useId, useMemo, useRef } from "react";
 import { useTopologyCamera } from "./use-topology-camera.ts";
 export { fitTopologyCamera } from "./use-topology-camera.ts";
 import { nodeIdsForPlanItem, projectTopology, runtimeRole, whyNotRunning } from "./model.ts";
+import { graphSignal } from "./graph-appearance.ts";
 import { NodeState } from "./NodeState.tsx";
+import { ModelLabel, modelLabel } from "./ModelLabel.tsx";
 import type { GraphFilter, GraphPlanItem, TaskGraphEdgeView, TaskGraphNodeView, TaskGraphSnapshotView } from "./types.ts";
 
 const NODE_WIDTH = 240;
-const NODE_HEIGHT = 112;
+const NODE_HEIGHT = 140;
 const COLUMN_GAP = 78;
 const ROW_GAP = 32;
 const ROOT_WIDTH = 200;
@@ -26,8 +28,10 @@ export function Topology({
   focusedPlanTaskId = null,
   plan = [],
   onSelect,
+  live = true,
 }: {
   snapshot: TaskGraphSnapshotView;
+  live?: boolean;
   filter: GraphFilter;
   selectedNodeId: string | null;
   focusedPlanTaskId?: string | null;
@@ -59,7 +63,7 @@ export function Topology({
   const rootY = Math.max(PADDING_Y, (layout.height - NODE_HEIGHT) / 2);
 
   return (
-    <div className="tg-flow" aria-label="Relational task graph flow">
+    <div className="tg-flow tg-graph-visual" data-live={live} aria-label="Relational task graph flow">
       <div className="tg-topology__notice">
         <span>Showing {projection.nodes.length} logical nodes and {projection.edges.length} visible edges.</span>
         {projection.hiddenNodeCount > 0 ? <span>{projection.hiddenNodeCount} nodes aggregated; not shown by the current limit or filter.</span> : null}
@@ -163,9 +167,11 @@ export function Topology({
                   <button
                     type="button"
                     key={node.id}
-                    className={`tg-flow-node tg-flow-node--${role}${selected ? " is-selected" : ""}${related ? " is-related" : ""}${dimmed ? " is-dimmed" : ""}`}
+                    data-signal={graphSignal(node)}
+                    aria-pressed={selected}
+                    className={`tg-flow-node tg-graph-card tg-flow-node--${role}${selected ? " is-selected" : ""}${related ? " is-related" : ""}${dimmed ? " is-dimmed" : ""}`}
                     style={{ left: x, top: y }}
-                    aria-label={`${roleLabel(role)} ${node.title}; logical ${node.logicalState}; ${whyNotRunning(node)}`}
+                    aria-label={`${roleLabel(role)} ${node.title}; ${modelLabel(node)}; logical ${node.logicalState}; ${whyNotRunning(node)}`}
                     onClick={() => onSelect(node.id)}
                   >
                     <span className="tg-flow-node__top">
@@ -173,6 +179,7 @@ export function Topology({
                       {mappedPlanIndex >= 0 ? <span className="tg-plan-badge">P{mappedPlanIndex + 1}</span> : null}
                     </span>
                     <strong title={node.title}>{node.title}</strong>
+                    <ModelLabel node={node} />
                     <span className="tg-flow-node__meta">
                       <NodeState node={node} compact />
                       <span>{node.currentAttempt?.state ?? node.readiness}</span>

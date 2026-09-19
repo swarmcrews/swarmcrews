@@ -165,18 +165,15 @@ export function mountCoreRoutes(
       return;
     }
 
-    if (!path.isAbsolute(projectPath) || !fs.existsSync(projectPath)) {
+    const normalizedPath = canonicalizeSourceRoot(projectPath);
+    if (!normalizedPath || !fs.existsSync(normalizedPath)) {
       res.status(404).json({ error: "Directory does not exist" });
       return;
     }
-    const canonicalPath = canonicalizeSourceRoot(projectPath);
-    if (!canonicalPath) {
-      res.status(403).json({ error: "Project path must be an absolute canonical source root" });
-      return;
-    }
+    const canonicalPath = normalizedPath;
     const gitReady = ensureProjectGitReady(res, canonicalPath, gitAction, deps.projectGit);
     if (typeof gitReady === "boolean" ? !gitReady : !(await gitReady)) return;
-    const workspace = registerWorkspace(projectPath);
+    const workspace = registerWorkspace(canonicalPath);
     const absPath = workspace && registerProjectPath(workspace.sourceRoot);
     if (!workspace || !absPath) {
       res.status(403).json({ error: "Project path must be an absolute canonical source root" });

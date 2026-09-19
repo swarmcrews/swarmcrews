@@ -1,3 +1,4 @@
+import { getDefaultSkillIds } from "./skills/registry.ts";
 import { ChatLinkScope } from "./components/ChatLink.tsx";
 import "./nodes/ClaudeSessionNode.tsx";
 import "./nodes/LeaderNode.tsx";
@@ -46,9 +47,9 @@ import { sessionBelongsToProject, needsAttention } from "./mobile/mobile-selecto
 import { requestLeaderFullscreen } from "./leader-fullscreen-request.ts";
 import { McpServersBrowser } from "./McpServersBrowser.tsx";
 import { SkillsBrowser } from "./SkillsBrowser.tsx";
-import { DockProvider, DockBar, SkillsNavButton } from "./BottomRightDock.tsx";
+import { DockProvider, DockBar, SkillsNavButton, ConnectionsNavButton } from "./BottomRightDock.tsx";
 import { DebugModeAffordance } from "./components/DebugModeAffordance.tsx";
-import { LeaderLoadingScreen } from "./LeaderLoadingScreen.tsx";
+import { RootLoadingScreen } from "./RootLoadState.tsx";
 import type { SkillTemplate } from "./skills/types.ts";
 import { getSkill, getAllSkills } from "./skills/registry.ts";
 import { themes, themeMap, applyTheme, DEFAULT_THEME_ID } from "./themes.ts";
@@ -179,11 +180,7 @@ function ProjectView({
   const settingsSaveRevisionRef = useRef(0);
   const failedSettingsRef = useRef<ProjectSettings | null>(null);
   const [loaded, setLoaded] = useState(false);
-  // Loader-overlay state machine: the LeaderLoadingScreen plays its
-  // one-shot animation + 1s hold, then signals `loaderAnimDone`.
-  // Once both `loaded` and `loaderAnimDone` are true we fade the
-  // overlay out, and on transitionend we unmount it.
-  const [loaderAnimDone, setLoaderAnimDone] = useState(false);
+  // Fade the shared loading screen away as soon as project data is ready.
   const [loaderUnmounted, setLoaderUnmounted] = useState(false);
   const [activeView, setActiveView] = useState<ActiveView>("activity");
   const [activityHomeRequest, setActivityHomeRequest] = useState(0);
@@ -330,7 +327,7 @@ function ProjectView({
         },
         // Special flag: auto-start with context explorer prompt
         autoStartPrompt: CONTEXT_EXPLORER_PROMPT(projectPath),
-        skillIds: [],
+        skillIds: getDefaultSkillIds(),
         skillValues: {},
         skillPanelOpen: false,
         orchestrationMode: "auto",
@@ -567,7 +564,7 @@ function ProjectView({
         worktreePath: null,
         worktreeBranch: null,
         worktreeStatus: "none",
-        skillIds: [skillId],
+        skillIds: [...new Set([...getDefaultSkillIds(), skillId])],
         skillValues: {},
         skillPanelOpen: true,
         orchestrationMode: "auto",
@@ -680,14 +677,7 @@ function ProjectView({
     setSkillEditorOpen(true);
   }, []);
 
-  // The loader overlay sits on top of the project until both data is
-  // ready AND the one-shot animation + hold are done. Then it fades
-  // out (350ms) and unmounts. The overlay stays mounted across the
-  // loaded transition so its SVG animation does not restart.
-  const loaderFadingOut = loaded && loaderAnimDone;
-  const handleLoaderComplete = useCallback(() => {
-    setLoaderAnimDone(true);
-  }, []);
+  const loaderFadingOut = loaded;
 
   const loaderOverlay = !loaderUnmounted ? (
     <div
@@ -705,11 +695,7 @@ function ProjectView({
         }
       }}
     >
-      <LeaderLoadingScreen
-        message="Loading project"
-        oneShot
-        onComplete={handleLoaderComplete}
-      />
+      <RootLoadingScreen />
     </div>
   ) : null;
 
@@ -725,7 +711,7 @@ function ProjectView({
           <ChatLinkScope project={projectId} cwd={projectPath}>
           <DockProvider>
             <ProjectHeader
-              actions={<SkillsNavButton />}
+              actions={<><ConnectionsNavButton /><SkillsNavButton /></>}
               projectId={projectId}
               name={projectName}
               saveStatus={saveStatus}
@@ -781,14 +767,14 @@ function ProjectView({
                   workItemRuns={workItemState.runs}
                   runNextCursor={workItemState.runNextCursor}
                   onLoadRuns={workItemState.loadRuns}
-                  onPromptWorkItem={(workItemId, prompt, contextItems) => {
+                  onPromptWorkItem={(workItemId, prompt, contextItems, options) => {
                     const item = workItemState.items[workItemId];
                     if (!item) return false;
                     if (item.lifecycle.runtimeState === "waiting"
                       && item.waitKind === "decision" && item.currentRunKey) {
-                      workItemState.reply(item, prompt, contextItems);
+                      workItemState.reply(item, prompt, contextItems, options);
                     } else {
-                      workItemState.start(item, prompt, contextItems);
+                      workItemState.start(item, prompt, contextItems, options);
                     }
                     return true;
                   }}
@@ -835,12 +821,10 @@ function ProjectView({
                   onUpdateNodeData={(nodeId, data) => dispatch({ type: "UPDATE_NODE_DATA", id: nodeId, data })}
                   onFocusNode={handleFocusNode}
                 />
-                {mcpServersEnabled && (
-                  <McpServersBrowser projectId={projectId} />
-                )}
                   <DockBar />
                 </div>
             )}
+            {mcpServersEnabled && <McpServersBrowser projectId={projectId} />}
             <SkillsBrowser
               onLaunchSkill={handleLaunchSkill}
               onCreateSkill={handleCreateSkill}

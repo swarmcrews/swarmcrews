@@ -17,12 +17,12 @@ const initial: CanvasNode[] = [
   { ...createZone("zone", "Release"), data: { version: 1, name: "Release", leaderIds: ["leader"] } },
 ];
 let current: CanvasNode[];
-function Harness({ initialNodes = initial, socketConnected = false }: { initialNodes?: CanvasNode[]; socketConnected?: boolean }) {
+function Harness({ initialNodes = initial, socketConnected = false, projectPanelRight = 0 }: { initialNodes?: CanvasNode[]; socketConnected?: boolean; projectPanelRight?: number }) {
   const [nodes, dispatch] = useReducer(canvasReducer, initialNodes);
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   current = nodes;
   return <DockProvider><output data-testid="transform">{JSON.stringify(transform)}</output>
-    <Canvas nodes={nodes} dispatch={dispatch} graph={{ edges: [] }} graphDispatch={vi.fn()}
+    <Canvas projectPanelRight={projectPanelRight} nodes={nodes} dispatch={dispatch} graph={{ edges: [] }} graphDispatch={vi.fn()}
       transform={transform} setTransform={setTransform} socketConnected={socketConnected} /></DockProvider>;
 }
 beforeEach(() => {
@@ -62,8 +62,8 @@ it("excludes parked nodes and zone metadata from fit and marquee/delete while le
   expect(screen.getByText("Live leader")).not.toBeVisible();
 });
 
-it("switches to a distant workspace and fits its retained layout without revealing Global content", () => {
-  const { container } = render(<Harness />);
+it.each([0, 356])("switches to a distant workspace and fits its retained layout with panel edge %s", (projectPanelRight) => {
+  const { container } = render(<Harness projectPanelRight={projectPanelRight} />);
   const leaderElement = screen.getByText("Live leader");
   const root = container.querySelector<HTMLElement>(".canvas-root")!;
   vi.spyOn(root, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 600, width: 800, height: 600, toJSON() {} });
@@ -75,7 +75,7 @@ it("switches to a distant workspace and fits its retained layout without reveali
   const camera = JSON.parse(screen.getByTestId("transform").textContent!);
   const node = current.find(n => n.id === "leader")!;
   expect(node.position).toEqual({ x: 10000, y: 10000 });
-  expect(node.position.x * camera.scale + camera.x).toBeGreaterThanOrEqual(0);
+  expect(node.position.x * camera.scale + camera.x).toBeGreaterThanOrEqual(projectPanelRight);
   expect((node.position.x + node.size.width) * camera.scale + camera.x).toBeLessThanOrEqual(800);
   expect(node.position.y * camera.scale + camera.y).toBeGreaterThanOrEqual(64);
   expect((node.position.y + node.size.height) * camera.scale + camera.y).toBeLessThanOrEqual(520);

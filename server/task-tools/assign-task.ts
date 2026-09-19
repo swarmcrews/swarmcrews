@@ -18,8 +18,9 @@ import { isProjectContextEmpty } from "../../shared/project-context.ts";
 import { isValidThinkingConfig } from "../session-host-config.ts";
 import { getSessionCanvasContext } from "../canvas-context-store.ts";
 import { buildTaskSpawnPrompt } from "./task-prompt.ts";
-import { hasSystemModelManifest } from "../system-model/load.ts";
-import { getWorkPacketContextPack } from "../system-model/store.ts";
+import { hasSystemModelManifest, loadSystemModel } from "../system-model/load.ts";
+import { getWorkPacket } from "../system-model/store.ts";
+import { renderWorkPacketContextPack } from "../system-model/compile.ts";
 import { computePacketApplicability, renderPacketNote } from "../system-model/applicability.ts";
 import {
   applyLifecycleEvent,
@@ -135,6 +136,16 @@ export function createAssignTaskToolDef(ctx: TaskToolContext): NormalizedToolDef
       // Track whether this is a retry for the result message
       checkAssignmentAdmission(ctx, { taskId, files: args.files ?? existing?.files,
         ownedPaths: args.ownedPaths ?? existing?.ownedPaths }, args.workPacketId);
+      // Re-render persisted packets before any task mutation or spawn. Older packs
+      // may have omitted mandatory guidance under the previous budget policy.
+      const settings = readSettings(ctx.projectPath);
+      let contextPack: string | null = null;
+      if (args.workPacketId && settings.systemModel !== "off" && hasSystemModelManifest(ctx.cwd)) {
+        const stored = getWorkPacket(ctx.projectPath, args.workPacketId);
+        const model = ctx.systemModel ?? loadSystemModel(ctx.cwd).model;
+        if (!model || !stored) throw new Error("System-model context is unavailable for this Work Packet.");
+        contextPack = renderWorkPacketContextPack(model, stored.packet);
+      }
       const isRetry = existing != null && isRetryableTaskStatus(existing.status);
       const retryAttempt = isRetry ? (existing!.attempt ?? 1) + 1 : undefined;
       const nextAttemptId = randomUUID();
@@ -205,11 +216,7 @@ export function createAssignTaskToolDef(ctx: TaskToolContext): NormalizedToolDef
         skills: snapshot?.skills ?? skills, values: resolvedSkillValues });
       const skillsAddendum = compileSkills(skills, resolvedSkillValues);
       const minionSystemPrompt = buildMinionSystemPrompt(args.context, ctx.minionSystemPrompt) + skillsAddendum;
-      const settings = readSettings(ctx.projectPath);
       const storedProjectContext = readContext(ctx.projectPath);
-      const contextPack = args.workPacketId && settings.systemModel !== "off" && hasSystemModelManifest(ctx.cwd)
-        ? getWorkPacketContextPack(ctx.projectPath, args.workPacketId)
-        : null;
 
       const canvasContext = args.include_canvas_context === false ? null
         : (ctx.getCanvasContext?.() ?? getSessionCanvasContext(ctx.leaderSessionKey));

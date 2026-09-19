@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getProjectSettings, listProjects, restartServer, updateProjectSettings } from "../api.ts";
@@ -142,6 +142,108 @@ describe("MobileApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat" }));
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep first draft");
   });
+
+  it.each(["work item first", "session list first", "session list only"])(
+    "follows a submitted iteration without leaving chat (%s)", async (eventOrder) => {
+      installPushGlobals();
+      vi.mocked(listProjects).mockResolvedValue([
+        { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
+      ]);
+      render(<MobileApp />);
+      fireEvent.click(await screen.findByText("Alpha"));
+      const oldSession = {
+        sessionKey: "run-old", sessionId: null, role: "leader", runKind: "primary",
+        cwd: "/work/alpha", status: "completed", taskName: "Repair callback", workItemId: "work-1",
+      };
+      const item = {
+        id: "work-1", projectId: "alpha", projectPath: "/work/alpha", title: "Repair callback",
+        lifecycle: { runtimeState: "inactive", outcome: "completed", resolution: "open",
+          changeMode: "live", integrationState: "live_clean", lifecycleRevision: 1 },
+        waitKind: null, currentRunKey: "run-old", iteration: 1,
+        lastTransitionAt: 1, createdAt: 1, updatedAt: 1,
+      };
+      emitSocketMessage({ type: "session_list", sessions: [oldSession] });
+      const request = send.mock.calls.find(([command]) => command.type === "list_work_items"
+        && command.projectId === "alpha")![0];
+      emitSocketMessage({ type: "work_item_response", command: "list_work_items",
+        requestId: request.requestId, success: true,
+        result: { projectId: "alpha", items: eventOrder === "session list only" ? [] : [item], nextCursor: null } });
+      fireEvent.click(screen.getByText("Repair callback"));
+      const historyLength = window.history.length;
+      fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Fix the next issue" } });
+      fireEvent.click(screen.getByRole("button", { name: "Send" }));
+      expect(send).toHaveBeenCalledWith({ type: "send_message", sessionKey: "run-old",
+        prompt: "Fix the next issue", displayPrompt: "Fix the next issue" });
+
+      const updateWorkItem = () => emitSocketMessage({ type: "work_item_changed", workItem: {
+        ...item, currentRunKey: "run-new", iteration: 2, updatedAt: 2, lastTransitionAt: 2,
+        lifecycle: { ...item.lifecycle, runtimeState: "working", outcome: "none", lifecycleRevision: 2 },
+      } });
+      const updateSessions = () => emitSocketMessage({ type: "session_list",
+        sessions: [{ ...oldSession, sessionKey: "run-new", status: "running", lastActivityAt: 2 }] });
+      if (eventOrder === "work item first") {
+        updateWorkItem();
+        expect(new URL(window.location.href).searchParams.get("session")).toBe("run-new");
+        updateSessions();
+      } else {
+        updateSessions();
+        expect(screen.queryByRole("heading", { name: "Session unavailable" })).not.toBeInTheDocument();
+        if (eventOrder !== "session list only") updateWorkItem();
+      }
+
+      expect(screen.queryByRole("heading", { name: "Session unavailable" })).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Repair callback" })).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+      expect(new URL(window.location.href).searchParams.get("session")).toBe("run-new");
+      expect(window.history.length).toBe(historyLength);
+      expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-new" });
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({
+        type: "get_work_item_runs", workItemId: "work-1",
+      }));
+      const run = (runKey: string, runNumber: number) => ({
+        runKey, workItemId: "work-1", runKind: "primary", parentRunKey: null,
+        taskId: null, runNumber, previousRunKey: runNumber === 2 ? "run-old" : null,
+        providerSessionId: null, outcome: runNumber === 2 ? "none" : "completed",
+        startedAt: runNumber, endedAt: runNumber === 2 ? null : 2, finalReport: null,
+      });
+      emitSocketMessage({ type: "work_item_response", command: "get_work_item_runs",
+        success: true, result: { workItemId: "work-1", runs: [run("run-new", 2)], nextCursor: "older" } });
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({
+        type: "get_work_item_runs", workItemId: "work-1", cursor: "older",
+      }));
+      emitSocketMessage({ type: "work_item_response", command: "get_work_item_runs",
+        success: true, result: { workItemId: "work-1", runs: [run("run-old", 1),
+          { ...run("child-run", 1), runKind: "child", parentRunKey: "run-old" }], nextCursor: null } });
+      expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-old" });
+      expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "child-run" });
+      for (const [sessionKey, text] of [["run-old", "Earlier conversation"], ["run-new", "Current conversation"]]) {
+        emitSocketMessage({ type: "sync_response", sessionKey, found: true, status: "running",
+          events: [{ type: "sdk_event", sessionKey, timestamp: 1,
+            event: { kind: "text", role: "assistant", text } }] });
+      }
+      expect(screen.getByText("Earlier conversation")).toBeInTheDocument();
+      expect(within(screen.getByLabelText("Conversation")).getAllByText("Current conversation")).toHaveLength(1);
+      const earlier = screen.getByRole("navigation", { name: "Iteration 1 navigation" });
+      const current = screen.getByRole("navigation", { name: "Iteration 2 navigation" });
+      expect(earlier.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      earlier.scrollIntoView = vi.fn();
+      fireEvent.click(screen.getByRole("button", { name: "Previous: Iteration 1" }));
+      expect(earlier.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
+      expect(earlier).toHaveFocus();
+      expect(new URL(window.location.href).searchParams.get("session")).toBe("run-new");
+      send.mockClear();
+      emitSocketMessage({ type: "socket_reconnected" });
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({
+        type: "get_work_item_runs", workItemId: "work-1", cursor: undefined,
+      }));
+      expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-old" });
+      expect(screen.getByText("Earlier conversation")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+      expect(send).toHaveBeenCalledWith({ type: "stop_session", sessionKey: "run-new" });
+      fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+      expect(await screen.findByRole("main", { name: "Activity" })).toBeInTheDocument();
+    },
+  );
 
   it("revalidates a notification target and keeps stale sessions out of the composer", async () => {
     installPushGlobals();
@@ -445,6 +547,7 @@ describe("MobileApp", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Start a new leader" },
     });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
 
     const createPayload = send.mock.calls.find(

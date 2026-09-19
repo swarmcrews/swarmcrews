@@ -1,12 +1,11 @@
+import { renderVerificationPrompt } from "./verification-prompt.ts";
 import { scopedContextForNode } from "./context-sources.ts";
-import { renderScopedContext, verificationCompletionGuidance, type ScopedContext } from "./node-prompt.ts";
 import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import type { GraphRevisionInput,GraphSnapshot } from "../../shared/task-graph-contracts.ts";
 import { serverLogger } from "../logging.ts";
 import { getWorkItemRun } from "../work-item-repo.ts";
 import { runSnapshot } from "../work-item-snapshots.ts";
 import { TaskGraphConflictError,TaskGraphValidationError } from "./errors.ts";
-import { safeArtifactReference } from "./artifact-access.ts";
 import { contentHash } from "./hash.ts";
 import { executeTaskGraphCommand } from "./service-idempotency.ts";
 import type { TaskGraphService } from "./service.ts";
@@ -379,21 +378,4 @@ function verificationSubject(service:TaskGraphService,input:VerificationSubjectI
     AND producer_attempt_id=? AND state='committed' ORDER BY content_hash`)
     .all(input.runId,attempt.id) as Row[];
   return {run,node,attempt,artifacts};
-}
-
-function renderVerificationPrompt(node:GraphRevisionInput["nodes"][number],producer:Row,
-  artifacts:Row[],sourceSnapshotId:string,revision:GraphRevisionInput,context:ScopedContext[]):string {
-  return [
-    "Independently verify an immutable task-graph output. Do not trust or reproduce the producer's reasoning.",
-    `Node: ${node.title} (${node.id})`,`Producer attempt: ${String(producer.id)}`,
-    `Source snapshot: ${sourceSnapshotId}`,
-    `Mission: ${revision.objective}\nObjective: ${node.objective}`,
-    `Relevant constraints: ${JSON.stringify([...revision.constraints,...node.constraints])}\nNon-goals: ${JSON.stringify(revision.nonGoals)}`,
-    "Verification is read-only. Producer write ownership does not authorize verifier writes.",
-    renderScopedContext(context.filter(source=>!source.sourceId.startsWith("skill:"))),
-    `Acceptance criteria:\n${node.acceptanceCriteria.map(value=>`- ${value}`).join("\n")||"- No additional criteria"}`,
-    `Artifacts:\n${artifacts.map(row=>`- ${JSON.stringify(safeArtifactReference(row))}`).join("\n")}`,
-    "Read artifact content only through mcp__task-graph__read_input_artifact using the listed artifactId.",
-    verificationCompletionGuidance(),
-  ].join("\n\n");
 }

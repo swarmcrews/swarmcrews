@@ -168,9 +168,10 @@ export default function MobileApp() {
   const keyboard = useMobileKeyboard();
   const { sessions, mobileSessions, hasLoaded: sessionsLoaded } = useSessionActivity(subscribe);
   const { route, navigate, backToActivity: openActivity, closeGraph } = useMobileNavigation();
-  const { project: selectedProject, sessionKey: selectedSessionKey, screen: activeTab } = route;
+  const { project: selectedProject, sessionKey: routedSessionKey, screen: activeTab } = route;
   const activityMemories = useRef(new Map<string, ActivityViewMemory>());
   const sessionMemories = useRef(new Map<string, SessionViewMemory>());
+  const sessionWorkItems = useRef(new Map<string, string>());
   const [lastSessionKey, setLastSessionKey] = useState<string | null>(null);
   const workItemState = useWorkItems({ projectId: selectedProject?.id ?? null,
     connected, subscribe, send });
@@ -194,7 +195,30 @@ export default function MobileApp() {
     send({ type: "list_sessions" });
   }, [activeTab, connected, send]);
 
-  const selectedSession = canonicalSessions.find((session) => session.sessionKey === selectedSessionKey);
+  // Activity replaces a work item's row when its primary iteration changes.
+  // Retain observed identities so an open chat (or Back entry) can follow that
+  // row even after the old run disappears from the server's session list.
+  useLayoutEffect(() => {
+    for (const session of [...mobileSessions, ...canonicalSessions]) {
+      if (session.workItemId && session.role === "leader" && session.runKind !== "child") {
+        sessionWorkItems.current.set(session.sessionKey, session.workItemId);
+      }
+    }
+  }, [mobileSessions, canonicalSessions]);
+  const routedSession = mobileSessions.find((session) => session.sessionKey === routedSessionKey);
+  const routedWorkItemId = routedSession?.role === "leader" && routedSession.runKind !== "child"
+    ? routedSession.workItemId ?? sessionWorkItems.current.get(routedSessionKey!)
+    : routedSessionKey ? sessionWorkItems.current.get(routedSessionKey) : undefined;
+  const selectedSession = canonicalSessions.find((session) => session.sessionKey === routedSessionKey)
+    ?? (routedWorkItemId ? canonicalSessions.find((session) => session.workItemId === routedWorkItemId) : undefined);
+  const selectedSessionKey = selectedSession?.sessionKey ?? routedSessionKey;
+  useLayoutEffect(() => {
+    if (activeTab !== "chat" || !selectedSessionKey || selectedSessionKey === routedSessionKey) return;
+    setLastSessionKey(selectedSessionKey);
+    // Replace the expired run's URL; submitting an iteration is not a new
+    // navigation step, and Back should still return to the prior screen.
+    navigate({ ...route, sessionKey: selectedSessionKey }, true);
+  }, [activeTab, selectedSessionKey, routedSessionKey, navigate, route]);
 
   // Once a project is chosen, every list screen is scoped to it. Sessions are
   // matched by stable workspace identity plus source/worktree location (see
@@ -381,6 +405,9 @@ export default function MobileApp() {
       {showingActiveSession ? (
         <SessionChatScreen key={selectedSessionKey} sessionKey={selectedSessionKey}
           session={selectedSession} sessionOptions={scopedSessions}
+          runs={selectedSession?.workItemId ? workItemState.runs[selectedSession.workItemId] ?? [] : []}
+          runNextCursor={selectedSession?.workItemId ? workItemState.runNextCursor[selectedSession.workItemId] : undefined}
+          onLoadRuns={workItemState.loadRuns}
           subscribe={subscribe} send={send} onBack={openActivity} onSelectSession={openSession}
           projectName={selectedProject?.name ?? selectedSession?.cwd?.split("/").filter(Boolean).at(-1)}
           connected={connected} reconnectState={reconnectState} onReconnect={manualReconnect}
@@ -415,7 +442,7 @@ export default function MobileApp() {
           onLaunchError={(message) => { if (/Maximum session limit/i.test(message)) showSessionLimitNotice(); }}
           canonicalLaunch={workItemState.launch} lockedProject={selectedProject} />
       ) : activeTab === "settings" ? (
-        <SettingsScreen project={selectedProject} sessions={scopedSessions} send={send} subscribe={subscribe} />
+        <SettingsScreen project={selectedProject} />
       ) : (
         <ActivityScreen key={activityKey} memory={activityMemories.current.get(activityKey)!}
           resumeSession={resumableSession} onOpenReview={openReview}

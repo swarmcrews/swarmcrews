@@ -100,6 +100,7 @@ export function ActivityLaunchForm({
   unavailableReason,
   textareaRef,
   workspaceControl,
+  connectionsControl,
   onInputChange,
   onKeyDown,
   onSubmit,
@@ -116,6 +117,7 @@ export function ActivityLaunchForm({
   unavailableReason?: string | undefined;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   workspaceControl?: ReactNode;
+  connectionsControl?: ReactNode;
   onInputChange: (value: string) => void;
   onKeyDown: (event: KeyboardEvent) => void;
   onSubmit: () => void;
@@ -181,6 +183,7 @@ export function ActivityLaunchForm({
                 <h3>Define the work</h3>
                 <p>Describe the outcome. You can steer the leader from Activity after launch.</p>
               </div>
+              {connectionsControl}
             </div>
 
             <label className="leader-launch-field" htmlFor={`leader-launch-title-${nodeId}`}>
@@ -330,6 +333,7 @@ export function ActivityLaunchForm({
             </label>
 
             <SandboxPolicyControls
+              mcpAvailable={(data.connectionIds?.length ?? 0) > 0}
               policy={data.sandboxPolicy}
               effective={data.effectiveSandboxPolicy}
               support={harnessesLoaded

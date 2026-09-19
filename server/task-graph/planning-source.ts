@@ -1,3 +1,4 @@
+import { hasTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 import { contextAttribute } from "../../shared/connected-context.ts";
 import { readSkillSnapshot, saveSkillSnapshot, selectSnapshotSkills } from "../skill-snapshot.ts";
 import { execFile as execFileCallback } from "node:child_process";
@@ -20,10 +21,12 @@ import { TaskGraphValidationError } from "./errors.ts";
 import { contentHash } from "./hash.ts";
 import { canonicalId } from "./planning-compiler.ts";
 import { assertPlanningContextLimits } from "./planning-context-limits.ts";
+import { graphWorkPacketContext } from "./work-packet-context.ts";
 
 const execFile = promisify(execFileCallback);
 
 export interface PlanningSourceContext {
+  taskGraphExperiments?: TaskGraphExperiments | undefined;
   workItemId: string;
   primaryRunKey: string;
   revisionId: string;
@@ -32,6 +35,8 @@ export interface PlanningSourceContext {
   projectPath: string;
   worktreeIdentity: string;
   connectedContext: string | null;
+  /** Current server-held Full Leader graph bindings; never derived from prose. */
+  connectedGraphSources?: readonly { nodeId:string; workItemId:string; primaryRunKey:string }[];
   skillIds: readonly string[];
   skillSnapshotId?: string | undefined;
   skillValues: Record<string, Record<string, string>>;
@@ -86,7 +91,7 @@ export async function capturePlanningSource(
     ? getWorkPacket(input.projectPath, input.plan.workPacketId) : null;
   const settings = readSettings(input.projectPath);
   const loadedModel = settings.systemModel && settings.systemModel !== "off"
-    ? loadSystemModel(input.projectPath) : { model: null, errors: [] };
+    ? loadSystemModel(input.cwd) : { model: null, errors: [] };
   const systemModelDigest = contentHash({
     mode: settings.systemModel ?? "off",
     model: loadedModel.model ? {
@@ -128,6 +133,7 @@ export async function capturePlanningSource(
     workPacket: storedPacket?.packet ?? null,
     harnessName: input.harnessName,
     allowedTools: [...input.allowedTools].sort(),
+    ...(hasTaskGraphExperiments(input.taskGraphExperiments) ? { taskGraphExperiments: input.taskGraphExperiments } : {}),
   });
   const snapshotId = canonicalId("source", {
     workItemId: input.workItemId,
@@ -180,14 +186,17 @@ export async function capturePlanningSource(
       classification: "internal",
       content: skill.content,
     });
-    if (storedPacket) scopedSources.push({
-      sourceSnapshotId: snapshotId,
-      nodeId,
-      sourceId: `work-packet:${storedPacket.packet.id}`,
-      contentHash: contentHash(storedPacket.contextPack),
-      classification: "internal",
-      content: storedPacket.contextPack,
-    });
+    if (storedPacket) {
+      const content = graphWorkPacketContext(loadedModel.model, storedPacket, step);
+      scopedSources.push({
+        sourceSnapshotId: snapshotId,
+        nodeId,
+        sourceId: `work-packet:${storedPacket.packet.id}`,
+        contentHash: contentHash(content),
+        classification: "internal",
+        content,
+      });
+    }
   }
   assertPlanningContextLimits(scopedSources);
   return { snapshot, fingerprint, scopedSources,

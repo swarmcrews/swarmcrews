@@ -9,16 +9,20 @@ import type { SessionHost, SessionHostDeps } from "./session-host.ts";
 import type { WorkItemService } from "./work-item-service.ts";
 import { WorkItemServiceError } from "./work-item-service.ts";
 import { recoverOrphanedWorkItemRun } from "./work-item-run-repair.ts";
+import { serverLogger } from "./logging.ts";
+
+const log = serverLogger.child("work-item-continuation");
 
 export interface RunContinuationInput {
   requestId: string;
   workItemId: string;
   runKey: string;
   prompt: string;
+  sandboxPolicy?: import("../shared/workspace-contracts.ts").SandboxPolicy;
   displayPrompt?: string;
   attachments?: import("./session-host-types.ts").ImageAttachment[];
   continuitySource?: "system";
-  skillIds?: string[];
+  connectionIds?: string[] | undefined; skillIds?: string[];
   skillValues?: Record<string, Record<string, string>>;
 }
 
@@ -98,7 +102,12 @@ export function drainQueuedWorkItemGuidance(
   const continuation = queue?.shift();
   if (!continuation) return false;
   if (queue!.length === 0) queuedGuidance.delete(host);
-  void Promise.resolve(continuation());
+  // The callback outlives this drain call, so own both throws and rejections here.
+  void Promise.resolve().then(continuation).catch((error: unknown) => {
+    log.error("queued_guidance_failed", {
+      sessionKey: host.id, workItemId: host.workItemId, error,
+    });
+  });
   return true;
 }
 

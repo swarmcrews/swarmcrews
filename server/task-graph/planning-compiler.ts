@@ -1,3 +1,5 @@
+import { resolveTaskGraphExperiments, hasTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
+import { validateExperimentPlanning } from "./experiment-planning.ts";
 import type {
   GraphRevisionInput,
   TaskEdge,
@@ -13,6 +15,9 @@ import { validateRevision, type TaskGraphNodePolicyValidator } from "./validatio
 import {routeTaskGraphPattern} from "./patterns.ts";
 
 export interface CompileSemanticGraphPlanInput {
+  experiments?: TaskGraphExperiments | undefined;
+  /** One-node context preview cannot validate upstream question dependencies. */
+  preview?: boolean;
   workItemId: string;
   workspaceId: string;
   primaryRunKey: string;
@@ -31,11 +36,15 @@ export interface CompiledSemanticGraphPlan {
 
 export function compileSemanticGraphPlan(input: CompileSemanticGraphPlanInput): CompiledSemanticGraphPlan {
   const plan = semanticTaskGraphPlanSchema.parse(input.plan);
+  const experiments = resolveTaskGraphExperiments(input.experiments);
+  const experimental = hasTaskGraphExperiments(experiments);
+  if (!input.preview) validateExperimentPlanning(plan, experiments);
   const definitionId = canonicalId("definition", { workItemId: input.workItemId });
   const revisionId = canonicalId("revision", {
     workItemId: input.workItemId,
     primaryRunKey: input.primaryRunKey,
     proposalRevision: input.proposalRevision,
+    ...(experimental ? { experiments } : {}),
     plan,
   });
   const nodeIdsByStepKey = Object.fromEntries(plan.steps.map((step) => [
@@ -44,6 +53,7 @@ export function compileSemanticGraphPlan(input: CompileSemanticGraphPlanInput): 
   ]));
   const nodes: TaskNode[] = plan.steps.map((step) => ({
     id: nodeIdsByStepKey[step.key]!,
+    ...(experimental ? { planningStepKey: step.key } : {}),
     title: step.title,
     objective: step.objective,
     ...(step.context ? { context: step.context } : {}),
@@ -90,6 +100,7 @@ export function compileSemanticGraphPlan(input: CompileSemanticGraphPlanInput): 
   assertTerminalCoverage(plan, terminalKeys);
   assertParallelWritesDoNotOverlap(plan);
   const revision = validateRevision({
+    ...(experimental ? { taskGraphExperiments: experiments, planningAnalysis: plan.planningAnalysis } : {}),
     definitionId,
     revisionId,
     workItemId: input.workItemId,

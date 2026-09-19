@@ -44,7 +44,7 @@ describe("compileWorkPacket", () => {
 
   it("emits an omission marker when context budget cuts objects", async () => {
     const model = loadSystemModel("tests/fixtures/system-model/valid").model!;
-    model.policies.contextBudgets = { minionContextPack: 45, perObjectSummary: 20, leaderPromptAddendum: 1200 };
+    model.policies.contextBudgets = { minionContextPack: 220, perObjectSummary: 20, leaderPromptAddendum: 1200 };
 
     const result = await compileWorkPacket({
       model,
@@ -55,14 +55,16 @@ describe("compileWorkPacket", () => {
       normalizedGoal: "Approve workspace change",
       matchedCandidates: [{ id: "capability.workspace_management", type: "capability", score: 5, reasons: [] }],
       matchConfidence: "low",
+      acceptanceCriteria: Array.from({ length: 30 }, (_, index) => `Verify case ${index} with evidence`),
       timestampFn: freshTimestamps,
       now: 100,
     });
 
     expect(result.contextPack).toContain("[");
     expect(result.contextPack).toContain("objects omitted by context budget");
-    expect(result.contextPack).toContain("use query_system_model");
-    expect(result.contextPack).toMatch(/constraint\.bus_only|additional-context/);
+    expect(result.contextPack).toContain("Ask the Leader");
+    expect(result.contextPack).toContain("Constraint constraint.bus_only");
+    expect(Math.ceil(result.contextPack.length / 4)).toBeLessThanOrEqual(220);
     expect(result.contextPack).toContain("inspect repo; ask only if required");
   });
 

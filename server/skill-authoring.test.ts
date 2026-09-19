@@ -179,3 +179,10 @@ describe("summarizeSkillLibrary", () => {
     expect(match[0]?.source).toBe("project");
   });
 });
+
+
+it("preserves launch controls through partial authoring edits and accepts explicit false", () => {
+  const base = { ...sampleSkill, isDefault: true, selfServe: false };
+  expect(buildSkillDraft({ description: "Updated" }, base)).toMatchObject({ ok: true, skill: { isDefault: true, selfServe: false } });
+  expect(buildSkillDraft({ isDefault: false, selfServe: true }, base)).toMatchObject({ ok: true, skill: { isDefault: false, selfServe: true } });
+});

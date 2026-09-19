@@ -1,6 +1,16 @@
 node_modules/
 dist/
 coverage/
+
+# Local run records and analysis may contain private paths, session IDs or auth.
+# Keep new run output outside the checkout and working notes in .scratch/<task>/.
+# These rules cover local records, not reusable experiment tooling or fixtures.
+/results/
+/runs/
+/experiments/**/RESULTS.md
+/experiments/**/hypotheses.json
+/experiments/**/*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/
+
 !src/reports/
 !src/reports/**
 !tests/reports/

@@ -21,6 +21,7 @@ import { normalizedToDisplayMessages, type DisplayMessage } from "./sdk-messages
 import { createGraphFixture } from "./task-graph/fixtures.ts";
 import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
 
+import { registerSkill, unregisterSkill } from "./skills/registry.ts";
 import { loadImageFromFile } from "./nodes/image-loader.ts";
 vi.mock("./nodes/image-loader.ts", () => ({ loadImageFromFile: vi.fn() }));
 
@@ -205,7 +206,7 @@ describe("ActivityView", () => {
     expect(within(inspector).queryByRole("tab", { name: /dashboard|minions|graph/i })).not.toBeInTheDocument();
     fireEvent.click(within(inspector).getByText("Session information"));
     expect(within(inspector).queryByText("$0.00")).not.toBeInTheDocument();
-    expect(within(inspector).queryByText("0")).not.toBeInTheDocument();
+    expect(within(within(inspector).getByRole("tabpanel")).queryByText("0")).not.toBeInTheDocument();
     expect(within(inspector).getAllByText("Not reported")).toHaveLength(4);
   });
 
@@ -1197,7 +1198,7 @@ describe("ActivityView", () => {
     );
     fireEvent.click(within(screen.getByRole("region", { name: "Active" })).getByText("Working").closest("button")!);
     const composer = screen.getByRole("textbox", { name: /reply or steer/i });
-    expect(composer).toHaveAttribute("rows", "3");
+    expect(composer).toHaveAttribute("rows", "1");
     fireEvent.change(composer, {
       target: { value: "Use the safer migration." },
     });
@@ -1234,6 +1235,91 @@ describe("ActivityView", () => {
     });
     expect(screen.getByText("I’ll apply that migration.")).toBeInTheDocument();
     expect(screen.queryByText("Leader is thinking…")).not.toBeInTheDocument();
+  });
+
+  it("configures required skill values and can remove the last skill for an iteration", () => {
+    registerSkill({ id: "iteration-config", name: "Iteration Config", description: "Configure iteration",
+      category: "code", icon: "code", accentColor: "#123456",
+      variables: [{ name: "target", label: "Review target", type: "text", required: true }],
+      template: "Review {{target}} carefully." });
+    try {
+      const onPromptWorkItem = vi.fn();
+      render(<ActivityView sessions={[session({ sessionKey: "configure-run", workItemId: "configure-work",
+        canonicalWorkItem: true, status: "inactive", taskName: "Configure task" })]}
+        nodes={[]} {...noop} socketSend={vi.fn()} onPromptWorkItem={onPromptWorkItem} />);
+      fireEvent.click(screen.getByRole("button", { name: /configure task/i }));
+      const composer = screen.getByRole("textbox", { name: /reply or steer/i });
+      fireEvent.change(composer, { target: { value: "@iteration-config" } });
+      fireEvent.keyDown(composer, { key: "Tab" });
+      expect(screen.getByRole("button", { name: /^send$/i })).toBeDisabled();
+      fireEvent.keyDown(composer, { key: "Enter" });
+      expect(onPromptWorkItem).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Configure skills, 1 active" }));
+      fireEvent.change(screen.getByLabelText(/Review target/), { target: { value: "the parser" } });
+      fireEvent.click(screen.getByRole("button", { name: "Close skills" }));
+      fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+      expect(onPromptWorkItem).toHaveBeenLastCalledWith("configure-work",
+        expect.stringContaining("Review the parser carefully."), [], expect.objectContaining({
+          skillIds: ["iteration-config"], skillValues: { "iteration-config": { target: "the parser" } },
+        }));
+      fireEvent.click(screen.getByRole("button", { name: "Configure skills, 1 active" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remove Iteration Config from leader" }));
+      fireEvent.click(screen.getByRole("button", { name: "Close skills" }));
+      fireEvent.change(composer, { target: { value: "Continue without skills" } });
+      fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+      expect(onPromptWorkItem).toHaveBeenLastCalledWith("configure-work",
+        expect.stringContaining("No leader skills are currently active."), [],
+        expect.objectContaining({ skillIds: [], displayPrompt: "Continue without skills" }));
+    } finally {
+      unregisterSkill("iteration-config");
+    }
+  });
+
+  it.each([true, false])("supports commands and skills when iterating (canonical: %s)", canonical => {
+    registerSkill({ id: "iteration-review", name: "Iteration Review", description: "Review this iteration",
+      category: "code", icon: "code", accentColor: "#123456", variables: [],
+      template: "Check the changed behavior carefully." });
+    try {
+      const socketSend = vi.fn();
+      const onPromptWorkItem = vi.fn();
+      render(<ActivityView sessions={[session({ sessionKey: "iteration-run", workItemId: "iteration-work",
+        canonicalWorkItem: canonical, status: "inactive", taskName: "Iteration task" })]}
+        nodes={[]} {...noop} socketSend={socketSend} onPromptWorkItem={onPromptWorkItem}
+        projectSettings={{ dashboardLeaderActions: [{ id: "review-iteration", name: "Review iteration",
+          icon: "microscope", prompt: "Review the next iteration.", skillIds: ["iteration-review", "missing-skill"] }] }} />);
+      fireEvent.click(screen.getByRole("button", { name: /iteration task/i }));
+      const composer = screen.getByRole("textbox", { name: /reply or steer/i });
+      fireEvent.change(composer, { target: { value: "/review iteration" } });
+      expect(screen.getByRole("listbox", { name: "Leader context shortcuts" })).toBeInTheDocument();
+      fireEvent.keyDown(composer, { key: "Enter" });
+      expect(composer).toHaveValue("Review the next iteration.");
+      expect(screen.getByRole("button", { name: "Configure skills, 1 active" })).toBeInTheDocument();
+      expect(screen.getByText(/Unavailable skills.*missing-skill/)).toBeInTheDocument();
+      expect(onPromptWorkItem).not.toHaveBeenCalled();
+      expect(socketSend.mock.calls.some(([message]) => message.type === "send_message")).toBe(false);
+      // Skill completion also works mid-prompt and does not submit the message.
+      fireEvent.change(composer, { target: { value: "Review with @iteration-rev" } });
+      fireEvent.keyDown(composer, { key: "Tab" });
+      expect(composer).toHaveValue("Review with @iteration-review ");
+      fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
+      expect(onPromptWorkItem).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+      const expectedOptions = { displayPrompt: "Review with @iteration-review",
+        skillIds: ["iteration-review"], skillValues: {} };
+      if (canonical) {
+        expect(onPromptWorkItem).toHaveBeenCalledWith("iteration-work",
+          expect.stringContaining("Check the changed behavior carefully."), [], expectedOptions);
+      } else {
+        expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({ type: "send_message",
+          sessionKey: "iteration-run", prompt: expect.stringContaining("Check the changed behavior carefully."),
+          ...expectedOptions }));
+      }
+      expect(composer).toHaveValue("");
+      expect(screen.getByText("Review with @iteration-review")).toBeInTheDocument();
+      expect(screen.queryByText("Check the changed behavior carefully.")).not.toBeInTheDocument();
+    } finally {
+      unregisterSkill("iteration-review");
+    }
   });
 
   it("starts a new iteration for a non-canonical work-item session via send_message", () => {

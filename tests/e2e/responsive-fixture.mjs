@@ -1,5 +1,5 @@
 // Isolated visual fixture: no real sessions, projects, or provider calls.
-export async function openResponsiveFixture(page) {
+export async function openResponsiveFixture(page, { assistantText } = {}) {
   const project = {
     id: "layout-review", workspaceId: "layout-review", name: "Layout Review",
     path: "C:/sample/layout-review", sourceRoot: "C:/sample/layout-review",
@@ -57,7 +57,7 @@ export async function openResponsiveFixture(page) {
           { type: "sdk_event", sessionKey, event: { kind: "text", role: "user",
             text: "Review the layout on laptop screens. Keep the conversation easy to read." } },
           { type: "sdk_event", sessionKey, event: { kind: "text", role: "assistant",
-            text: Array.from({ length: 18 }, (_, i) =>
+            text: assistantText ?? Array.from({ length: 18 }, (_, i) =>
               `${i + 1}. Keep supporting information accessible and preserve room for the conversation. Verify controls, keyboard access, and scrolling at smaller sizes.`,
             ).join("\n\n") } },
         ],

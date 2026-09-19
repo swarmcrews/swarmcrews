@@ -1,3 +1,4 @@
+import { ConnectionsPicker } from "../mcp-connections/ConnectionsPicker.tsx";
 import { SkillIcon } from "../components/SkillIcon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
@@ -63,7 +64,9 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const [worktreeIsolation, setWorktreeIsolation] = useState(false);
   const [loading, setLoading] = useState(!lockedProject);
   const [error, setError] = useState<string | null>(null);
+  const [loadedSkillsProjectId, setLoadedSkillsProjectId] = useState<string | null>(null);
   const [availableSkills, setAvailableSkills] = useState<SkillTemplate[]>([]);
+  const [connectionSelection, setConnectionSelection] = useState<{ project: string; ids: string[] }>();
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [skillValues, setSkillValues] = useState<Record<string, Record<string, string>>>({});
   const [skillsPanelOpen, setSkillsPanelOpen] = useState(false);
@@ -153,8 +156,11 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   // `freezeLeaderSystemPrompt` reads at launch) and expose it for the panel.
   // Best-effort: a failed fetch just leaves the skills section empty.
   useEffect(() => {
+    setLoadedSkillsProjectId(null);
+    setAvailableSkills([]);
+    setSelectedSkillIds([]);
+    setSkillValues({});
     if (!targetProjectId) {
-      setAvailableSkills([]);
       return;
     }
 
@@ -163,11 +169,13 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       .then((skills) => {
         if (cancelled) return;
         setAvailableSkills(skills);
-        // Drop any prior selections that no longer exist in this project.
-        setSelectedSkillIds((current) => current.filter((id) => skills.some((s) => s.id === id)));
+        setSelectedSkillIds(skills.filter((skill) => skill.isDefault === true).map((skill) => skill.id));
       })
       .catch(() => {
         if (!cancelled) setAvailableSkills([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadedSkillsProjectId(targetProjectId);
       });
 
     return () => {
@@ -179,7 +187,8 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const targetName = lockedProject?.name ?? selectedProject?.name ?? null;
   const trimmedPrompt = prompt.trim();
   const attachedFileCount = imageAttachments.length + textAttachments.length;
-  const canSubmit = targetPath !== null && (trimmedPrompt.length > 0 || attachedFileCount > 0);
+  const skillsReady = targetProjectId === loadedSkillsProjectId;
+  const canSubmit = skillsReady && targetPath !== null && (trimmedPrompt.length > 0 || attachedFileCount > 0);
   const selectedModel = parseLaunchModelValue(modelValue);
   const selectedModelGroup = selectedModel
     ? modelGroups.find((group) => group.harness === selectedModel.harness)
@@ -262,7 +271,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (launchingRef.current || !targetPath || (!trimmedPrompt && attachedFileCount === 0)) return;
+    if (!skillsReady || launchingRef.current || !targetPath || (!trimmedPrompt && attachedFileCount === 0)) return;
 
     launchingRef.current = true;
     setLaunching(true);
@@ -289,6 +298,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
         : {};
     const launchPrompt = appendTextAttachmentsToPrompt(trimmedPrompt, textAttachments);
     const runtimeOptions = {
+      ...(connectionSelection?.project === targetProjectId ? { connectionIds: connectionSelection.ids } : {}),
       ...(selectedModel ? { model: selectedModel.model, harness: selectedModel.harness } : {}),
       ...(projectSettings.defaultPermissionMode
         ? { permissionMode: projectSettings.defaultPermissionMode }
@@ -474,6 +484,11 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           onModelChange={handleModelChange}
           onThinkingOverrideChange={setThinkingOverride}
         />
+
+        <ConnectionsPicker key={targetProjectId} projectId={targetProjectId}
+          connectionIds={connectionSelection?.project === targetProjectId ? connectionSelection?.ids : undefined}
+          onChange={ids => { if (targetProjectId) setConnectionSelection({ project: targetProjectId, ids }); }}
+          policy={launchSandboxPolicy} onPolicyChange={setSandboxPolicyOverride} harness={selectedModel?.harness} />
 
         <MobileSandboxAccessControl
           policy={launchSandboxPolicy}

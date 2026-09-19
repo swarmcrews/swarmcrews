@@ -18,7 +18,8 @@ import {
 import { TaskGraphPlanningRepository } from "./planning-repository.ts";
 import { storeScopedContextSources } from "./context-sources.ts";
 import {cancelPlanningGraphRun,inspectPlanningHistory,readPlanningHistoryArtifact,
-  synchronizeLatestPlanningRuntime,type PlanningHistorySelector,type PlanningInspection}
+  synchronizeLatestPlanningRuntime,inspectConnectedPlanningHistory,readConnectedPlanningArtifact,
+  type ConnectedGraphSourceBinding,type PlanningHistorySelector,type PlanningInspection}
   from "./planning-inspection.ts";
 import type { TaskGraphService } from "./service.ts";
 
@@ -49,6 +50,7 @@ export class TaskGraphPlanningCoordinator {
   private readonly captureSource: NonNullable<TaskGraphPlanningCoordinatorOptions["captureSource"]>;
   private readonly attentionTokens = new Map<string, string>();
   private unsubscribe: (() => void) | null = null;
+  private readonly cleanups = new Set<() => void>();
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(readonly options: TaskGraphPlanningCoordinatorOptions) {
@@ -82,7 +84,11 @@ export class TaskGraphPlanningCoordinator {
     this.unsubscribe?.(); this.unsubscribe = null;
     if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
     this.recoveryTimer = null;
+    for (const cleanup of this.cleanups) cleanup();
+    this.cleanups.clear();
   }
+
+  addCleanup(cleanup:()=>void):void { this.cleanups.add(cleanup); }
 
   async submit(input: {
     workItemId: string;
@@ -109,6 +115,7 @@ export class TaskGraphPlanningCoordinator {
         proposalRevision,
         plan,
         defaultHarness: authority.harnessName,
+        experiments: authority.taskGraphExperiments,
         defaultAllowedTools: [...authority.allowedTools],
         validateNodePolicy: this.options.taskGraphs.options.validateNodePolicy,
       });
@@ -181,6 +188,7 @@ export class TaskGraphPlanningCoordinator {
       proposalRevision: proposal.proposalRevision,
       plan,
       defaultHarness: authority.harnessName,
+        experiments: authority.taskGraphExperiments,
       defaultAllowedTools: [...authority.allowedTools],
       validateNodePolicy: this.options.taskGraphs.options.validateNodePolicy,
     });
@@ -267,16 +275,17 @@ export class TaskGraphPlanningCoordinator {
     return this.repo.latest(workItemId, primaryRunKey);
   }
 
-  inspection(workItemId:string,primaryRunKey:string,
-    selector:PlanningHistorySelector={}):PlanningInspection {
-    return inspectPlanningHistory(this.repo,this.options.taskGraphs,workItemId,
-      primaryRunKey,selector);
+  inspection(workItemId:string,primaryRunKey:string, selector:PlanningHistorySelector={}):PlanningInspection {
+    return inspectPlanningHistory(this.repo,this.options.taskGraphs,workItemId,primaryRunKey,selector);
   }
-
-  readArtifact(input: { workItemId: string; primaryRunKey: string; graphRunId?:string;
-    artifactId: string;
-    offset: number; maxBytes: number }): Record<string, unknown> {
-    return readPlanningHistoryArtifact(this.repo,input);
+  readArtifact(input: { workItemId: string; primaryRunKey: string; graphRunId?:string; artifactId: string;
+    offset: number; maxBytes: number }): Record<string, unknown> { return readPlanningHistoryArtifact(this.repo,input); }
+  inspectConnected(input:{recipientWorkItemId:string;recipientPrimaryRunKey:string; source:ConnectedGraphSourceBinding}):PlanningInspection {
+    return inspectConnectedPlanningHistory(this.repo,this.options.taskGraphs,{workItemId:input.recipientWorkItemId,primaryRunKey:input.recipientPrimaryRunKey},input.source);
+  }
+  readConnectedArtifact(input:{recipientWorkItemId:string;recipientPrimaryRunKey:string;
+    source:ConnectedGraphSourceBinding;artifactId:string;offset:number;maxBytes:number}):Record<string,unknown> {
+    return readConnectedPlanningArtifact(this.repo,{workItemId:input.recipientWorkItemId,primaryRunKey:input.recipientPrimaryRunKey},input.source,input);
   }
 
   cancel(input:{workItemId:string;primaryRunKey:string;runId:string;
@@ -332,14 +341,12 @@ export class TaskGraphPlanningCoordinator {
     }
     return deferred;
   }
-
   private async requireAuthority(workItemId: string, primaryRunKey: string):
   Promise<PlanningSourceAuthority> {
     const value = await this.options.resolveSourceAuthority(workItemId, primaryRunKey);
     if (!value) throw new TaskGraphValidationError("planning source authority is unavailable");
     return value;
   }
-
   private assertProposalInput(proposal: TaskGraphPlanSnapshotView,
     input: { workItemId: string; expectedProposalRevision: number }): void {
     if (proposal.workItemId !== input.workItemId) {
@@ -349,7 +356,6 @@ export class TaskGraphPlanningCoordinator {
       throw new TaskGraphConflictError("stale graph-plan proposal revision", proposal);
     }
   }
-
   private reflectGraphStatus(runId: string, rawStatus: string, runRevision: number): void {
     let proposal = this.repo.proposalForRun(runId);
     if (!proposal) return;
@@ -371,7 +377,6 @@ export class TaskGraphPlanningCoordinator {
       this.attentionTokens.delete(runId);
     }
   }
-
   private publish(snapshot: TaskGraphPlanSnapshotView, cause: string): void {
     this.options.bus.emitToWorkItem?.(snapshot.workItemId, {
       type: "task_graph_plan_changed",
@@ -383,7 +388,6 @@ export class TaskGraphPlanningCoordinator {
     });
   }
 }
-
 function graphState(status: string): TaskGraphPlanState {
   if (status === "completed") return "completed";
   if (status === "failed") return "failed";

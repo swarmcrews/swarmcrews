@@ -122,12 +122,13 @@ describe("Phase B — minion harness inheritance", () => {
     deps.startWorkItemChildRun = allocate;
     const host = new SessionHost("primary-run", "/tmp/work");
     host.workItemId = "work-1";
+    host.connectionIds = ["private-docs"];
     const ctx = buildAgentContext(host, { sessionKey: host.id, prompt: "p", cwd: host.cwd }, deps);
     const result = await ctx.startMinionSession!({ sessionKey: "provisional", taskId: "task-1", prompt: "do", cwd: host.cwd, systemPrompt: "s" });
     expect(result?.sessionKey).toBe("allocated-run");
     expect(allocate).toHaveBeenCalledOnce();
     expect(allocate).toHaveBeenCalledWith(expect.objectContaining({
-      workItemId: "work-1", parentRunKey: "primary-run", taskId: "task-1",
+      workItemId: "work-1", parentRunKey: "primary-run", taskId: "task-1", connectionIds: ["private-docs"],
       requestId: "child:primary-run:task-1:provisional",
     }));
     expect(calls).toEqual([]);

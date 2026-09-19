@@ -20,12 +20,12 @@ const initialNodes: CanvasNode[] = [
   { id: "first", type: "leader", position: { x: 100, y: 100 }, size: { width: 250, height: 180 }, data: { taskName: "Repair OAuth", sessionKey: "first-session", status: "idle", tasks: [] } },
   { id: "second", type: "leader", position: { x: 3000, y: 2200 }, size: { width: 250, height: 180 }, data: { taskName: "Review callback tests", sessionKey: "second-session", status: "waiting", tasks: [] } },
 ];
-function Harness({ initialFocusNodeId = null }: { initialFocusNodeId?: string | null }) {
+function Harness({ initialFocusNodeId = null, projectPanelRight = 0 }: { initialFocusNodeId?: string | null; projectPanelRight?: number }) {
   const [nodes, dispatch] = useReducer(canvasReducer, initialNodes);
   const [graph, graphDispatch] = useReducer(graphReducer, { edges: [] });
   const [transform, setTransform] = useState(initial);
   const [focusNodeId, setFocusNodeId] = useState(initialFocusNodeId);
-  return <DockProvider><output data-testid="camera">{JSON.stringify(transform)}</output><Canvas nodes={nodes} dispatch={dispatch} graph={graph} graphDispatch={graphDispatch} transform={transform} setTransform={setTransform} focusNodeId={focusNodeId} onFocusNodeHandled={() => setFocusNodeId(null)} activitySessions={[{ sessionKey: "second-session", sessionId: null, cwd: "/tmp", status: "waiting", role: "leader", taskName: "Review callback tests" }]} /></DockProvider>;
+  return <DockProvider><output data-testid="camera">{JSON.stringify(transform)}</output><Canvas projectPanelRight={projectPanelRight} nodes={nodes} dispatch={dispatch} graph={graph} graphDispatch={graphDispatch} transform={transform} setTransform={setTransform} focusNodeId={focusNodeId} onFocusNodeHandled={() => setFocusNodeId(null)} activitySessions={[{ sessionKey: "second-session", sessionId: null, cwd: "/tmp", status: "waiting", role: "leader", taskName: "Review callback tests" }]} /></DockProvider>;
 }
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
@@ -35,6 +35,42 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Canvas wayfinding integration", () => {
+  it("centers to the right of the dashboard and reads its latest width", () => {
+    const { rerender } = render(<Harness projectPanelRight={356} />);
+    const focus = () => fireEvent.click(screen.getByTitle("Focus next active node (N)"));
+    const camera = () => JSON.parse(screen.getByTestId("camera").textContent!);
+    focus();
+    expect(camera()).toEqual({ x: 561, y: 210, scale: 1 });
+    rerender(<Harness projectPanelRight={180} />);
+    focus();
+    expect(camera()).toEqual({ x: 698 - 3125, y: 400 - 2290, scale: 1 });
+    rerender(<Harness projectPanelRight={0} />);
+    focus();
+    expect(camera()).toEqual({ x: 375, y: 210, scale: 1 });
+  });
+
+  it("fits a focused node inside a narrow canvas without dashboard overlap", () => {
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(600);
+    render(<Harness initialFocusNodeId="second" projectPanelRight={356} />);
+    const camera = JSON.parse(screen.getByTestId("camera").textContent!);
+    const left = 3000 * camera.scale + camera.x;
+    const right = 3250 * camera.scale + camera.x;
+    expect(camera.scale).toBeLessThan(1);
+    expect(left).toBeGreaterThan(356 + 16);
+    expect(right).toBeLessThan(600);
+    expect((left + right) / 2).toBeCloseTo((372 + 600) / 2);
+  });
+
+  it("keeps all nodes clear of the dashboard when fitting the canvas", () => {
+    render(<Harness projectPanelRight={356} />);
+    fireEvent.click(screen.getByTitle("Fit view"));
+    const camera = JSON.parse(screen.getByTestId("camera").textContent!);
+    expect(100 * camera.scale + camera.x).toBeGreaterThan(372);
+    expect(3250 * camera.scale + camera.x).toBeLessThan(1200);
+    expect(100 * camera.scale + camera.y).toBeGreaterThan(0);
+    expect(2380 * camera.scale + camera.y).toBeLessThan(800);
+  });
+
   it("preserves a return view for a focus request received from Activity", () => {
     render(<Harness initialFocusNodeId="second" />);
     expect(screen.getByTestId("camera")).not.toHaveTextContent(JSON.stringify(initial));

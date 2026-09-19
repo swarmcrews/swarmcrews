@@ -153,3 +153,12 @@ it("imports legacy branded bundles and exports the Swarmcrews format", () => {
   const parsed = parseSkillTransfer(old);
   expect(JSON.parse(serializeSkills(parsed.skills, "2026-09-11")).format).toBe("swarmcrews-skills");
 });
+
+
+it("round-trips skill launch controls and ignores malformed flag values", () => {
+  const skill = coerceSkill({ id: "private", name: "Private", template: "Body", isDefault: true, selfServe: false })!;
+  expect(parseSkillTransfer(serializeSkills([skill], "2026-09-13T00:00:00Z")).skills[0]).toMatchObject({ isDefault: true, selfServe: false });
+  const invalid = coerceSkill({ id: "legacy", name: "Legacy", template: "Body", isDefault: "true", selfServe: "false" })!;
+  expect(invalid.isDefault).toBeUndefined();
+  expect(invalid.selfServe).toBeUndefined();
+});

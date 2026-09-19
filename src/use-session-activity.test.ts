@@ -26,6 +26,13 @@ function emptyState() {
 }
 
 describe("launch identity reconciliation", () => {
+  it("does not restore archived work to Activity when its history is explicitly synchronized", () => {
+    const message: ServerMessage = { type: "sync_response", sessionKey: "s1", found: true,
+      archived: true, status: "stopped", events: [] };
+    expect(reduceSessionActivity(emptyState(), message).sessions).toEqual([]);
+    expect(reduceSessionActivity({ ...emptyState(), sessions: [session(), session({ sessionKey: "s2" })] }, message)
+      .sessions.map((s) => s.sessionKey)).toEqual(["s2"]);
+  });
   it("updates live titles and terminal status on every activity surface", () => {
     let state = { ...emptyState(), sessions: [session()] };
     state = reduceSessionActivity(state, {

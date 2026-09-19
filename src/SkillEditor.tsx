@@ -553,6 +553,8 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
     skill?.accentColor ?? "#3b82f6",
   );
   const [description, setDescription] = useState(skill?.description ?? "");
+  const [isDefault, setIsDefault] = useState(skill?.isDefault === true);
+  const [selfServe, setSelfServe] = useState(skill?.selfServe !== false);
   const [template, setTemplate] = useState(skill?.template ?? "");
   const [variables, setVariables] = useState<SkillVariable[]>(
     skill?.variables ?? [],
@@ -683,6 +685,8 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
       accentColor,
       template,
       variables: finalVars,
+      isDefault,
+      selfServe,
       ...(attachments.length > 0 ? { attachments } : {}),
       // Persist only sub-skills that have a name (drops empty scaffolds).
       ...(subskills.some((s) => s.name.trim())
@@ -691,6 +695,8 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
     };
   }, [
     syncedVariables,
+    isDefault,
+    selfServe,
     isEditing,
     skill,
     name,
@@ -895,6 +901,16 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Brief description of what this skill does"
                 />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>
+                  <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Default
+                </label>
+                <p style={panelHintStyle}>Automatically select this skill on new leader nodes.</p>
+                <label style={labelStyle}>
+                  <input type="checkbox" checked={selfServe} onChange={(e) => setSelfServe(e.target.checked)} /> Self-serve
+                </label>
+                <p style={panelHintStyle}>Advertise this skill to leaders so they can select it themselves. When disabled, you can still select it manually or by default.</p>
               </div>
               <div>
                 <label htmlFor="skill-template" style={labelStyle}>Template *</label>

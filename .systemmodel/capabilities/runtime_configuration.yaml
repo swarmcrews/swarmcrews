@@ -1,16 +1,21 @@
 id: capability.runtime_configuration
 type: capability
 name: Runtime configuration
-summary: Users can choose compatible harness and model settings while independently configuring Git change placement and a truthfully reported process sandbox policy.
+summary: Users can choose compatible harness and model settings while independently configuring Git change placement and a truthfully reported process sandbox policy. Project Connections provide guided MCP setup, testing and sign-in; Swarmcrews owns external clients and credentials independently of harness initialization.
 constraints: []
 decisions: [ decision.role_gated_agent_tools, decision.portable_workspace_roots ]
-suggested_files: [ src/SettingsMenu.tsx, src/components/SessionToolbar.tsx, src/nodes/leader/SandboxPolicyControls.tsx, server/harness/sandbox-policy.ts, server/harness/codex/options.ts, server/commands/list-harnesses.ts ]
-suggested_tests: [ src/SettingsMenu.test.tsx, src/components/SessionToolbar.test.tsx, src/nodes/leader/SandboxPolicyControls.test.tsx, server/harness/sandbox-policy.test.ts, server/harness/codex/options.test.ts, server/commands/list-harnesses.test.ts ]
-keywords: [ runtime, harness, model, sandbox, filesystem, approval, unmanaged, worktree, change_mode, control_error ]
+suggested_files: [ src/SettingsMenu.tsx, src/components/SessionToolbar.tsx, src/nodes/leader/SandboxPolicyControls.tsx, server/harness/sandbox-policy.ts, server/harness/codex/options.ts, server/harness/copilot/sandbox.ts, server/commands/list-harnesses.ts ]
+suggested_tests: [ src/SettingsMenu.test.tsx, src/components/SessionToolbar.test.tsx, src/nodes/leader/SandboxPolicyControls.test.tsx, server/harness/sandbox-policy.test.ts, server/harness/codex/options.test.ts, server/harness/copilot/sandbox.test.ts, server/harness/copilot/sandbox.integration.test.ts, server/commands/list-harnesses.test.ts ]
+keywords: [ runtime, harness, model, sandbox, filesystem, approval, unmanaged, worktree, change_mode, control_error, connections, mcp, oauth ]
 entry_points:
+  - surface: surface.agent_tools
+    summary: Discover and invoke project connections through five shared tools; clients are invocation-scoped, credentials stay on the host, and enabled/tool restrictions are checked on each call. External access is independent of the harness filesystem sandbox.
+    files: [ server/mcp-connections/tools.ts, server/mcp-connections/runtime.ts, server/mcp-connections/oauth.ts, server/mcp-connections/credentials.ts, server/session-host.ts ]
+    tests: [ server/mcp-connections/runtime.test.ts, server/mcp-connections/oauth.test.ts, server/mcp-connections/harnesses.test.ts ]
+    flows: [ flow.configure_runtime ]
   - surface: surface.canvas
     summary: Configure Git change mode separately from the requested filesystem and approval sandbox axes.
-    files: [ src/SettingsMenu.tsx, src/components/SessionToolbar.tsx, src/nodes/LeaderNode.tsx, src/nodes/leader/SandboxPolicyControls.tsx, src/nodes/leader/ConfigFooter.tsx ]
+    files: [ src/SettingsMenu.tsx, src/mcp-connections/ConnectionsPanel.tsx, src/mcp-connections/ConnectionForm.tsx, src/components/SessionToolbar.tsx, src/nodes/LeaderNode.tsx, src/nodes/leader/SandboxPolicyControls.tsx, src/nodes/leader/ConfigFooter.tsx ]
     tests: [ src/SettingsMenu.test.tsx, src/components/SessionToolbar.test.tsx, src/nodes/LeaderNode.test.tsx, src/nodes/leader/SandboxPolicyControls.test.tsx, src/nodes/leader/ConfigFooter.test.tsx ]
     flows: [ flow.configure_runtime, flow.launch_leader, flow.steer_session ]
   - surface: surface.mobile

@@ -62,7 +62,8 @@ describe("buildBaseLeaderPrompt", () => {
     expect(LEADER_SYSTEM_PROMPT).toContain("`/graph` and `/crew`");
     expect(LEADER_SYSTEM_PROMPT).toContain("submit_graph_plan");
     expect(LEADER_SYSTEM_PROMPT).toContain("assign_task");
-    expect(LEADER_SYSTEM_PROMPT).toMatch(/always enabled and is the standard Minion execution path/i);
+    expect(LEADER_SYSTEM_PROMPT).toContain("Execute tasks directly by default");
+    expect(LEADER_SYSTEM_PROMPT).toContain("unless the user explicitly asks for a graph");
     expect(LEADER_SYSTEM_PROMPT).not.toContain("## Legacy planning mode (debug)");
     const legacyPrompt = buildBaseLeaderPrompt(CLAUDE_BUILT_IN_TOOLS, "direct");
     expect(legacyPrompt).toBe(LEADER_SYSTEM_PROMPT);

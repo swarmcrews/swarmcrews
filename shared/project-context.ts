@@ -9,6 +9,5 @@ export function defaultProjectContext(projectName: string): string {
 export function isProjectContextEmpty(
   context: { content: string; exists: boolean } | null | undefined,
 ): boolean {
-  return !context?.exists || !context.content.trim()
-    || context.content.includes(UNCONFIGURED_PROJECT_CONTEXT_MESSAGE);
+  return !context?.exists || !context.content.trim();
 }

@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { graphPlanningAnalysisSchema } from "../../shared/task-graph-experiments.ts";
 import { MINION_CONTEXT_GUIDE } from "../../shared/minion-context.ts";
 import { semanticGraphPlanStepSchema, semanticTaskGraphPlanSchema } from "../../shared/task-graph-planning-contracts.ts";
 import { buildMinionSystemPrompt } from "../../shared/prompts/minion-context.ts";
@@ -7,6 +8,9 @@ import { jsonResult } from "../harness/tool-result.ts";
 import { readSkillSnapshot, selectSnapshotSkills } from "../skill-snapshot.ts";
 import { compileSkills, loadSkillsByIds } from "../skills.ts";
 import { getWorkPacket } from "../system-model/store.ts";
+import { loadSystemModel } from "../system-model/load.ts";
+import { readSettings } from "../project-store.ts";
+import { graphModelContextFiles, graphWorkPacketContext } from "./work-packet-context.ts";
 import type { PlanningSourceAuthority } from "./planning-coordinator.ts";
 import { compileSemanticGraphPlan } from "./planning-compiler.ts";
 import { selectContext, splitConnectedContext } from "./planning-source.ts";
@@ -22,6 +26,7 @@ const inventorySchema = z.object({
 const previewSchema = z.object({
   step: semanticGraphPlanStepSchema,
   mission: z.object({
+    planningAnalysis: graphPlanningAnalysisSchema.optional(),
     objective: z.string().trim().min(1).max(4_000),
     constraints: z.array(z.string().trim().min(1).max(4_000)).max(30).default([]),
     nonGoals: z.array(z.string().trim().min(1).max(4_000)).max(30).default([]),
@@ -95,11 +100,13 @@ export function createMinionContextTools(input: {
       });
       const compiled = compileSemanticGraphPlan({ workItemId: "preview", primaryRunKey: "preview",
         workspaceId: source.workspaceId, proposalRevision: 1, plan,
-        defaultHarness: source.harnessName, defaultAllowedTools: [...source.allowedTools] });
+        defaultHarness: source.harnessName, defaultAllowedTools: [...source.allowedTools],
+        experiments: source.taskGraphExperiments, preview: true });
       const node = compiled.revision.nodes[0]!;
       const contexts: ScopedContext[] = selectContext(splitConnectedContext(source.connectedContext), step.contextSelectors)
         .map(item => ({ sourceId: item.sourceId, content: item.content,
           contentHash: contentHash(item.content), classification: "internal" }));
+      let sharedPacketFallback = false;
       const ids = [...new Set(step.skillIds ?? source.skillIds)];
       const snapshot = source.skillSnapshotId ? readSkillSnapshot(source.projectPath, source.skillSnapshotId) : null;
       const skills = snapshot ? selectSnapshotSkills(snapshot, ids) : loadSkillsByIds(source.projectPath, ids);
@@ -113,8 +120,13 @@ export function createMinionContextTools(input: {
       if (args.workPacketId) {
         const packet = getWorkPacket(source.projectPath, args.workPacketId);
         if (!packet) throw new TaskGraphValidationError(`Work Packet ${args.workPacketId} was not found.`);
-        contexts.push({ sourceId: `work-packet:${packet.packet.id}`, content: packet.contextPack,
-          contentHash: contentHash(packet.contextPack), classification: "internal" });
+        const mode = readSettings(source.projectPath).systemModel;
+        const model = mode && mode !== "off" ? loadSystemModel(source.cwd) : { model: null, errors: [] };
+        if (mode && mode !== "off" && !model.model) throw new TaskGraphValidationError("The active system model is unavailable for context preview.");
+        const content = graphWorkPacketContext(model.model, packet, step);
+        sharedPacketFallback = step.systemModelObjectIds === undefined && !graphModelContextFiles(model.model, step).length;
+        contexts.push({ sourceId: `work-packet:${packet.packet.id}`, content,
+          contentHash: contentHash(content), classification: "internal" });
       }
       assertPlanningContextLimits(contexts.map(item => ({ ...item, sourceSnapshotId: "preview", nodeId: node.id })));
       const composed = renderTaskGraphNodePrompts(compiled.revision, node,
@@ -122,6 +134,10 @@ export function createMinionContextTools(input: {
       const systemPrompt = composed.systemPrompt ?? buildMinionSystemPrompt();
       const taskPrompt = composed.prompt;
       const warnings: string[] = [];
+      if (source.taskGraphExperiments?.semanticPartitioning || source.taskGraphExperiments?.questionGraph) warnings.push("One-node preview does not validate planningAnalysis coverage or upstream probe dependencies; submission validates the complete plan.");
+      if (sharedPacketFallback) {
+        warnings.push("No model scope hints: this step retains shared Work Packet context. Declare paths or systemModelObjectIds to narrow it.");
+      }
       if (step.skillIds === undefined && ids.length) warnings.push("skillIds omitted: Leader-selected skills are inherited. Use [] when no optional Swarmcrews playbook is needed.");
       if (step.contextSelectors.some(selector => selector.startsWith("repo:"))) warnings.push("repo: selectors do not inject file contents; supply focused reference excerpts or let the Minion read permitted paths.");
       if (step.dependsOn.length || Object.keys(step.inputBindings).length) warnings.push("Artifact dependencies are not resolved in this preview.");

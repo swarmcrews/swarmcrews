@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { taskGraphExperimentsSchema } from "./task-graph-experiments.ts";
 import { wsEnvelopeSchema } from "./ws-envelope.ts";
 
 const idSchema = z.string().min(1);
@@ -51,6 +52,8 @@ export const taskAttemptViewSchema = z.object({
   number: z.number().int().positive(),
   state: attemptStateViewSchema,
   executor: optionalTextSchema,
+  model: optionalTextSchema,
+  harness: optionalTextSchema,
   sessionId: optionalTextSchema,
   startedAt: z.iso.datetime().optional(),
   finishedAt: z.iso.datetime().optional(),
@@ -69,6 +72,7 @@ export const taskGraphNodeViewSchema = z.object({
   context:z.array(taskContextEntryViewSchema).max(MAX_TASK_VIEW_CONTEXT_ENTRIES),
   kind: z.enum(["task", "stage", "map", "reducer", "terminal"]),
   completionMode:z.enum(["task","verification"]),
+  requestedModel: optionalTextSchema,
   stageId: optionalTextSchema,
   groupId: optionalTextSchema,
   logicalState: logicalStateViewSchema,
@@ -103,6 +107,7 @@ export const taskGraphNodeViewSchema = z.object({
 });
 
 export const taskGraphSnapshotViewSchema = z.object({
+  taskGraphExperiments: taskGraphExperimentsSchema.optional(),
   graphRunId: idSchema,
   revision: revisionSchema,
   title: idSchema,

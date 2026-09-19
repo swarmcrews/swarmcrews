@@ -94,9 +94,24 @@ describe("MarkdownPreview", () => {
     const paragraph = container.querySelector(".md-p");
 
     expect(heading).toHaveAttribute("data-md-block-id", "heading-0-7");
+    expect(heading?.tagName).toBe("H3");
     expect(heading).toHaveAttribute("data-md-source-from", "0");
     expect(heading).toHaveAttribute("data-md-source-to", "7");
     expect(paragraph).toHaveAttribute("data-md-source-from", "9");
     expect(paragraph).toHaveAttribute("data-md-source-to", "18");
+  });
+
+  it("can render standalone headings with deterministic navigation ids", () => {
+    const { container } = render(
+      <MarkdownPreview
+        content={"# Main\n\n###### Deep"}
+        standaloneHeadings
+        idPrefix="reader"
+      />,
+    );
+
+    expect(container.querySelector("h1.md-h1")).toHaveAttribute("id", "reader-main-0");
+    expect(container.querySelector("h6.md-h3")).toHaveAttribute("id", "reader-deep-8");
+    expect(container.querySelector("h1")).toHaveAttribute("data-md-source-from", "0");
   });
 });

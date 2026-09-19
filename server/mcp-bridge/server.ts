@@ -26,6 +26,7 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { isAllowedOrigin } from "../network-access.ts";
 import type { NormalizedToolDef } from "../harness/types.ts";
 import { BridgeRegistry, type McpBridgeRegistration } from "./registry.ts";
 import {
@@ -192,6 +193,13 @@ async function handleRequest(
   res: ServerResponse,
   registry: BridgeRegistry,
 ): Promise<void> {
+  if (req.headers.origin && !isAllowedOrigin(req.headers.origin)) {
+    writeJsonRpcError(res, null, ERR_UNAUTHORIZED, "Origin not allowed", 403); return;
+  }
+  const version = req.headers["mcp-protocol-version"];
+  if (version && version !== "2025-06-18" && version !== "2025-03-26") {
+    writeJsonRpcError(res, null, ERR_INVALID_REQUEST, "Unsupported MCP protocol version; this bridge supports 2025-06-18", 400); return;
+  }
   if (req.method !== "POST") {
     // The streamable HTTP spec also defines GET (for SSE) and DELETE (for
     // session termination). We don't need either: clients send single

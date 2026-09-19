@@ -115,6 +115,7 @@ const minionAgent: AgentType = {
       projectPath,
       skillSnapshotId: ctx.skillSnapshotId,
       skillValues: ctx.skillValues,
+      skillIds: ctx.skillIds,
     });
 
     // Skill-authoring tools are opt-in: load them only when this run was armed

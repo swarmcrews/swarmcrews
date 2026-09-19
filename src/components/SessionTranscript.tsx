@@ -22,7 +22,7 @@ export interface TranscriptBoundary {
 
 export type TranscriptEntry = DisplayMessage | TranscriptBoundary;
 
-function groupTranscript(entries: TranscriptEntry[]): (LeaderMessageGroup | TranscriptBoundary)[] {
+export function groupTranscript(entries: TranscriptEntry[]): (LeaderMessageGroup | TranscriptBoundary)[] {
   const groups: (LeaderMessageGroup | TranscriptBoundary)[] = [];
   let messages: DisplayMessage[] = [];
   for (const entry of entries) {

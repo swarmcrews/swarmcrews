@@ -57,16 +57,16 @@ npm install -g pnpm@10.15.1
 ```
 
 You also need at least one authenticated agent harness: **Claude Code, OpenAI
-Codex, OpenCode, or Pi**. Authenticate with your chosen harness on the machine
+Codex, GitHub Copilot, OpenCode, or Pi**. Authenticate with your chosen harness on the machine
 running Swarmcrews. Swarmcrews uses that harness's runtime and model catalog; it does
 not supply a model-service account. Claude and Codex can use bundled SDK
-runtimes; OpenCode and Pi must be discoverable on the server's `PATH` or through
+runtimes; Copilot, OpenCode, and Pi must be discoverable on the server's `PATH` or through
 their executable overrides.
 
 For provider-specific setup and executable/credential overrides, see the
 [README prerequisites](../README.md#prerequisites) and
 [harness troubleshooting](../README.md#troubleshooting). You do not need all
-four harnesses to get started.
+five harnesses to get started.
 
 ### Install the app
 
@@ -144,8 +144,10 @@ the agents will edit.
 ## 3. Open your project
 
 On the Projects page, select **Open Folder**, enter the absolute repository
-path, and click **Open**. Use the actual path from `pwd`, not the example
-`/home/you/...` path in the screenshot.
+path, or use **Browse** to select a folder, and click **Open**. Typing a partial
+path also suggests matching folders. Paths refer to the server machine, including
+when you connect from a phone. See [Choosing repository folders](./repository-folders.md)
+for Windows paths and additional browsing locations.
 
 [![Projects page showing Open Folder, the repository-path field, Open, and a recent Swarmcrews Playground project.](./images/getting-started-projects.png)](./images/getting-started-projects.png)
 
@@ -591,6 +593,48 @@ contracts. Split independent work by file ownership, then verify the
 integrated result. Show dependencies, acceptance criteria, blockers,
 and the final evidence. Ask for any missing product decision in a form.
 ```
+
+## Connect apps and MCP tools
+
+Open **Settings → Connections** in a project, or **Connections** in the canvas dock.
+On mobile, open the project's **Settings**. Select **Add connection** and paste a
+server URL, a Claude/Codex install command, or MCP JSON. Review the imported fields
+and select **Save & test connection**. If the server requires OAuth, select
+**Sign in**, finish in the new tab, return, and test again.
+
+A successful test shows **Verified** and the available tools. Expand
+**Explore capabilities**, then ask an agent to use the connection by name.
+Swarmcrews supplies discovery and invocation tools to leaders and child agents
+across Claude Code, Codex, Copilot, OpenCode and Pi. Saved connections become
+available on the next request; no per-harness MCP configuration or restart is needed.
+Existing sessions started before this application upgrade need a new turn to
+receive the shared connection tools.
+
+You can also ask a Leader to add or configure a server in the project's
+Connections catalog. Leaders can save HTTP, SSE, or local command settings,
+credentials, enabled state, and tool restrictions, then test the connection.
+Existing credentials stay masked when the Leader reads configuration. Plan-mode
+Leaders can read settings; saving requires an execution run. OAuth browser
+sign-in still takes place in **Connections**.
+
+**Verified** records the last successful check. **Retry connection** checks a
+failure again; **Edit** changes configuration; **Disable** immediately prevents
+further requests. **More → Clear sign-in** clears locally saved OAuth credentials.
+**Remove** deletes the connection and its saved sign-in. Disabling or removing a
+connection cannot undo an external operation that has already run.
+
+Remote servers use HTTPS (local HTTP is supported for development); Streamable
+HTTP is the default, with legacy SSE under advanced settings. Local commands run
+on the Swarmcrews host from the project's source folder with the host user's
+permissions. These permissions are independent of a harness's filesystem sandbox.
+Environment values, headers and OAuth secrets are kept in private workspace
+storage and masked when settings are read. Add only servers you intend the
+project's agents to use; optionally restrict their tool names in advanced settings.
+
+Swarmcrews also exposes MCP resource reads and prompts. The current cross-harness
+result format is JSON text, bounded to 1 MB per response; binary/image results
+aren't rendered as native model images. Servers that need interactive sampling or
+elicitation during calls aren't supported by this connection client yet.
 
 ## Troubleshooting and support
 

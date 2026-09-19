@@ -147,4 +147,21 @@ describe("resolveLeaderContextItem", () => {
       resolveLeaderContextItem(leaderNode([msg("tool", "only a tool")]), "lean"),
     ).toBeNull();
   });
+
+  it("keeps a graph-only Full source and binds its durable identity", () => {
+    const source = leaderNode([], "Graph-only") as CanvasNode;
+    (source.data as Record<string, unknown>)["workItemId"] = "source-work";
+    (source.data as Record<string, unknown>)["currentRunKey"] = "source-run";
+    const item = resolveLeaderContextItem(source, "full");
+    expect(item?.content).not.toMatch(/graph available/i);
+    expect(item?.content).toContain("Connected Leader source");
+    expect(item?.leaderGraphSource).toEqual({ workItemId: "source-work", primaryRunKey: "source-run" });
+  });
+
+  it("does not expose a graph binding from Lean context", () => {
+    const source = leaderNode([msg("assistant", "done")]) as CanvasNode;
+    (source.data as Record<string, unknown>)["workItemId"] = "source-work";
+    (source.data as Record<string, unknown>)["currentRunKey"] = "source-run";
+    expect(resolveLeaderContextItem(source, "lean")?.leaderGraphSource).toBeUndefined();
+  });
 });

@@ -33,7 +33,7 @@ import { executeWorkItemCommand, findCommandResult } from "./work-item-command-l
 import { getWorkItemReceipt, saveWorkItemReceipt } from "./work-item-receipts.ts";
 import { emitBindingChanged, emitItemChanged, emitRunChanged } from "./work-item-service-events.ts";
 import { buildRunHandoff, inheritRunContinuity } from "./work-item-handoff.ts";
-import { compatibleResumeId, inheritedPrimaryRunConfig, resolvePrimaryRunConfig } from "./work-item-run-config.ts";
+import { compatibleResumeId, inheritedPrimaryRunConfig, resolvePrimaryRunConfig, resolveNewPrimaryRunConfig } from "./work-item-run-config.ts";
 import { resolveWorkItemMutation } from "./work-item-archive.ts";
 import { continueChildWorkItemRun, continueWorkItemIntent, type RunContinuationInput } from "./work-item-continuation.ts";
 import { bindingSnapshot, itemSnapshot, runSnapshot } from "./work-item-snapshots.ts";
@@ -128,7 +128,8 @@ export class SqliteWorkItemService implements WorkItemService {
       : null;
     const inherited = previous ? JSON.stringify(inheritedPrimaryRunConfig(previous)) : null;
     try {
-      const resolved = resolvePrimaryRunConfig(inheritRunContinuity(this.options.db, previous, inherited), input);
+      const resolved = resolveNewPrimaryRunConfig(inheritRunContinuity(this.options.db, previous, inherited), input,
+        getWorkItem(this.options.db, input.workItemId)?.project_path);
       const ledger = executeWorkItemCommand(this.options.db, { requestId: input.requestId,
         workItemId: input.workItemId, command: "start_run", payload: input, at: this.now() }, () =>
         startWorkItemIteration(this.options.db, {
@@ -161,6 +162,7 @@ export class SqliteWorkItemService implements WorkItemService {
           prompt: !resumeId ? freshThreadPrompt ?? input.prompt : input.prompt, invocationKind: "new_run",
           freshThreadPrompt,
           ...(input.displayPrompt ? { displayPrompt: input.displayPrompt } : {}),
+          ...(input.connectionIds !== undefined ? { connectionIds: input.connectionIds } : {}),
           ...(input.skillIds !== undefined ? { skillIds: input.skillIds } : {}),
           ...(input.skillValues !== undefined ? { skillValues: input.skillValues } : {}),
           ...(resumeId ? { resumeId } : {}), ...(plannedContribution ? { plannedContribution } : {}), ...config,
@@ -337,7 +339,7 @@ export class SqliteWorkItemService implements WorkItemService {
     systemPrompt?: string; model?: string; thinkingConfig?: ThinkingConfig; harness?: string;
     permissionMode?: string; sandboxPolicy?: import("../shared/workspace-contracts.ts").SandboxPolicy;
     executorClass?: "mechanical" | "standard" | "reasoning";
-    skillIds?: string[]; skillSnapshotId?: string | undefined; toolAllowlist?: string[]; }) {
+    connectionIds?: string[] | undefined; skillIds?: string[]; skillSnapshotId?: string | undefined; toolAllowlist?: string[]; }) {
     const runKey = this.options.generateKey("run", input.requestId);
     const ledger = executeWorkItemCommand(this.options.db, { requestId: input.requestId,
       workItemId: input.workItemId, command: "start_child_run", payload: input, at: this.now() }, () =>
@@ -363,7 +365,7 @@ export class SqliteWorkItemService implements WorkItemService {
           ...(input.resumeId?{resumeId:input.resumeId}:{}),systemPrompt: input.systemPrompt,
           model: input.model, thinkingConfig: input.thinkingConfig, harness: input.harness,
           permissionMode: input.permissionMode,...(input.sandboxPolicy?{sandboxPolicy:input.sandboxPolicy}:{}),
-          executorClass: input.executorClass, skillIds: input.skillIds, skillSnapshotId: input.skillSnapshotId,
+          executorClass: input.executorClass, connectionIds: input.connectionIds, skillIds: input.skillIds, skillSnapshotId: input.skillSnapshotId,
           toolAllowlist:input.toolAllowlist });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

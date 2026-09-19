@@ -1,3 +1,4 @@
+import type { TaskGraphExperiments } from "../shared/task-graph-experiments.ts";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -10,7 +11,6 @@ import {
   normalizeContextActions,
   type ContextActionConfig,
 } from "../shared/context-actions.ts";
-import { defaultProjectContext } from "../shared/project-context.ts";
 import { normalizeProjectSandboxPolicy } from "./project-defaults.ts";
 export { resolveMinionModelForHarness } from "./project-model-settings.ts";
 const SIDECAR_DIR = ".minions";
@@ -26,7 +26,7 @@ export interface RecentProject {
 }
 export interface ProjectContext {
   content: string;       // raw markdown
-  exists: boolean;       // whether context.md existed on disk
+  exists: boolean;       // whether the project's AGENTS.md (or agents.md) exists
 }
 
 export interface ProjectSettings {
@@ -57,6 +57,8 @@ export interface ProjectSettings {
   systemModel?: "off" | "advisory" | "enforced";
   /** Beta: add decision-oriented role contracts to Leader and Minion prompts. */
   roleSystemBeta?: boolean;
+  /** Default-off A/B treatments, frozen when a new primary run starts. */
+  taskGraphExperiments?: Partial<TaskGraphExperiments>;
   /**
    * User-configurable Context Actions (Leader slash commands). Ordered and
    * freely extensible. Absent = built-in defaults. Legacy installs stored two
@@ -73,7 +75,7 @@ export type DashboardLeaderActionConfig = Omit<ContextActionConfig, "skillIds"> 
 
 export type ExecutorClass = "mechanical" | "standard" | "reasoning";
 
-export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type EffortLevel = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type ThinkingDisplay = "summarized" | "omitted";
 
 export interface ThinkingConfig {
@@ -148,7 +150,8 @@ export function hasSidecar(projectPath: string): boolean {
 
 /**
  * Initialize central workspace state below SWARMCREWS_HOME.
- * Creates the directory, SQLite DB, empty context.md, and default settings.
+ * Creates the directory, SQLite DB, and default settings.
+ * Project instructions are only created when the user saves or generates Context.
  * Returns the initialized database handle.
  */
 export function initSidecar(projectPath: string, initialSettings: ProjectSettings): Database.Database {
@@ -157,12 +160,6 @@ export function initSidecar(projectPath: string, initialSettings: ProjectSetting
 
   const dbPath = path.join(sidecar, "canvas.db");
   const db = initDb(dbPath);
-
-  const contextPath = path.join(sidecar, "context.md");
-  if (!fs.existsSync(contextPath)) {
-    const dirName = path.basename(projectPath);
-    fs.writeFileSync(contextPath, defaultProjectContext(dirName));
-  }
 
   const settingsPath = path.join(sidecar, "settings.json");
   if (!fs.existsSync(settingsPath)) {
@@ -183,8 +180,14 @@ export function openProjectDb(projectPath: string): Database.Database {
   return initDb(dbPath);
 }
 
+function projectContextPath(projectPath: string): string {
+  const canonical = path.join(projectPath, "AGENTS.md");
+  const lowercase = path.join(projectPath, "agents.md");
+  return !fs.existsSync(canonical) && fs.existsSync(lowercase) ? lowercase : canonical;
+}
+
 export function readContext(projectPath: string): ProjectContext {
-  const contextPath = path.join(sidecarPath(projectPath), "context.md");
+  const contextPath = projectContextPath(projectPath);
   if (!fs.existsSync(contextPath)) {
     return { content: "", exists: false };
   }
@@ -195,8 +198,7 @@ export function readContext(projectPath: string): ProjectContext {
 }
 
 export function writeContext(projectPath: string, content: string): void {
-  const contextPath = path.join(sidecarPath(projectPath), "context.md");
-  fs.mkdirSync(path.dirname(contextPath), { recursive: true });
+  const contextPath = projectContextPath(projectPath);
   fs.writeFileSync(contextPath, content);
 }
 

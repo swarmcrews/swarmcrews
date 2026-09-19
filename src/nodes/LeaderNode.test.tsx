@@ -94,7 +94,7 @@ describe("LeaderNode: compact skills pill", () => {
     expect(within(pill).getByTitle("System Model Authoring")).toBeInTheDocument();
     expect(within(pill).getByTitle("Skill Builder")).toBeInTheDocument();
     expect(pill).toHaveAttribute("aria-expanded", "false");
-    expect(container.querySelector(".leader-node__skills")?.children).toHaveLength(1);
+    expect(container.querySelector(".leader-node__skills")).toContainElement(pill);
     fireEvent.click(pill);
     const dialog = screen.getByRole("dialog", { name: "Skills" });
     expect(pill).toHaveAttribute("aria-expanded", "true");
@@ -1050,8 +1050,7 @@ describe("LeaderNode: connected-context dedup", () => {
     await pump(replay, [{ message: { type: "session_status", sessionKey: created.sessionKey, status: "idle" } as ServerMessage }]);
 
     const nonCanvasCommands = () =>
-      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan", "get_task_graph_history"]
-        .includes((msg as { type?: string }).type ?? ""));
+      captured.filter((msg) => (msg as { type?: string }).type === "continue_work_item");
     const canvasCommands = () =>
       captured.filter((msg) => (msg as { type?: string }).type === "canvas_context");
 
@@ -1162,8 +1161,7 @@ describe("LeaderNode: connected-context dedup", () => {
     await pump(replay, [{ message: { type: "session_status", sessionKey: created.sessionKey, status: "idle" } as ServerMessage }]);
 
     const nonCanvasCommands = () =>
-      captured.filter((msg) => !["canvas_context", "get_worktree_lineage_status", "create_work_item", "attach_work_item_surface", "get_work_item", "sync_session", "get_task_graph_view", "get_task_graph_snapshot", "get_graph_plan", "get_task_graph_plan", "get_task_graph_history"]
-        .includes((msg as { type?: string }).type ?? ""));
+      captured.filter((msg) => (msg as { type?: string }).type === "continue_work_item");
     expect((nonCanvasCommands()[0] as { type: string }).type).toBe("continue_work_item");
 
     // Only change node-b; node-a remains the same

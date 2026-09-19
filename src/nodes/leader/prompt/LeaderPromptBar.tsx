@@ -68,6 +68,7 @@ export function LeaderPromptBar({
   slashCommands,
   portalSlashMenu = false,
   showSubmit = true,
+  ariaLabel = "Leader prompt",
 }: {
   input: string;
   onInputChange: (value: string) => void;
@@ -86,6 +87,7 @@ export function LeaderPromptBar({
   portalSlashMenu?: boolean;
   /** Allow a containing form to keep its submit action outside scrolling content. */
   showSubmit?: boolean;
+  ariaLabel?: string;
 }) {
   const attachments = useContext(PromptAttachmentsContext);
   const slashCommandContext = useContext(LeaderSlashCommandsContext);
@@ -230,7 +232,7 @@ export function LeaderPromptBar({
             {...(attachments ? { onPaste: attachments.onPaste } : {})}
             autoFocus={autoFocus}
             canvasFocusTarget
-            ariaLabel="Leader prompt"
+            ariaLabel={ariaLabel}
             ariaControls={query !== null ? slashMenuId : undefined}
             ariaExpanded={menuOpen}
             ariaActiveDescendant={menuOpen && matches[selectedIndex]

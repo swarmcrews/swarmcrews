@@ -220,6 +220,7 @@ export class TaskGraphPlanningRepository {
     const patternRecommendation=routeTaskGraphPattern(plan);
     const patternDescriptor=taskGraphPatternDescriptor(plan.pattern?.id??patternRecommendation.id);
     return taskGraphPlanSnapshotViewSchema.parse({
+      ...(plan.planningAnalysis ? { planningAnalysis: plan.planningAnalysis } : {}),
       proposalId: row.id,
       workItemId: row.work_item_id,
       primaryRunKey: row.primary_run_key,

@@ -68,6 +68,7 @@ describe("SandboxPolicyControls", () => {
 
     expect(screen.getByLabelText("Sandbox file access")).toHaveTextContent("Unmanaged by harness");
     expect(screen.getByLabelText("Sandbox approval policy")).toHaveTextContent("Unmanaged by harness");
+    expect(screen.getByText(/Enabled editing tools can change files/)).toBeInTheDocument();
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
   });
 });

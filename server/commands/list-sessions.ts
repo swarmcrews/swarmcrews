@@ -5,9 +5,9 @@
 import { unicastGlobal } from "../bus.ts";
 import type { CommandHandler } from "./types.ts";
 
-export const listSessions: CommandHandler = (ctx, _cmd, ws) => {
+export const listSessions: CommandHandler = (ctx, cmd, ws) => {
   unicastGlobal(ws, {
     type: "session_list",
-    sessions: ctx.registry.snapshot(),
+    sessions: ctx.registry.snapshot({ includeArchived: cmd.includeArchived === true }),
   });
 };

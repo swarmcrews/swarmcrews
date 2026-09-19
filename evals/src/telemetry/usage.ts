@@ -11,7 +11,7 @@ export interface RawUsageObservation {
   sequence?: number;
   coversThroughSequence?: number;
   kind: "delta" | "turn_snapshot" | "cumulative_session";
-  semantics: "codex_raw" | "minions_codex";
+  semantics: "codex_raw" | "minions_codex" | "pi_raw";
   input: number;
   output: number;
   cacheRead?: number;
@@ -30,18 +30,19 @@ function finite(value: number | undefined, field: string): number {
   return result;
 }
 
-/** Converts the two verified Codex representations without guessing other providers. */
+/** Codex raw input includes caches; Swarmcrews and Pi input exclude them. */
 export function normalizeUsage(raw: RawUsageObservation): Usage {
   const input = finite(raw.input, "input"); const output = finite(raw.output, "output");
   const cacheRead = finite(raw.cacheRead, "cacheRead"); const cacheWrite = finite(raw.cacheWrite, "cacheWrite");
   const reasoning = raw.reasoning === undefined ? null : finite(raw.reasoning, "reasoning");
   if (reasoning !== null && reasoning > output) throw new Error("reasoning exceeds output");
   // Swarmcrews stores ordinary input after subtracting both cache categories; raw Codex input is inclusive.
-  const totalInput = raw.semantics === "minions_codex" ? input + cacheRead + cacheWrite : input;
+  const exclusiveInput = raw.semantics !== "codex_raw";
+  const totalInput = exclusiveInput ? input + cacheRead + cacheWrite : input;
   if (raw.semantics === "codex_raw" && cacheRead + cacheWrite > input) throw new Error("cache categories overlap raw input");
   return UsageSchema.parse({ schemaVersion: 1, sourceId: raw.sourceId, participantId: raw.participantId,
     turnId: raw.turnId, observationKind: raw.kind, inputTokensTotal: totalInput,
-    inputTokensUncached: raw.semantics === "minions_codex" ? input : raw.cacheRead === undefined && raw.cacheWrite === undefined ? null : input - cacheRead - cacheWrite,
+    inputTokensUncached: exclusiveInput ? input : raw.cacheRead === undefined && raw.cacheWrite === undefined ? null : input - cacheRead - cacheWrite,
     cacheReadTokens: raw.cacheRead === undefined ? null : cacheRead, cacheWriteTokens: raw.cacheWrite === undefined ? null : cacheWrite, outputTokensTotal: output,
     reasoningTokens: reasoning, totalTokens: totalInput + output, reportedCostUSD: raw.reportedCostUSD ?? null,
     estimatedCostUSD: null, coverage: raw.coverage ?? "complete", coverageReasons: raw.coverageReasons ?? [] });

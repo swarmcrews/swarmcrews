@@ -311,6 +311,7 @@
 
 .leader-node__skills {
   display: flex;
+  gap: 4px;
   flex: 0 0 auto;
   align-items: center;
 }

@@ -45,6 +45,7 @@ export interface LeaderPreset {
   permissionMode: PermissionMode;
   thinkingConfig: ThinkingConfig;
   worktreeIsolation: boolean;
+  connectionIds?: string[] | undefined;
   skillIds: string[];
   skillValues: Record<string, Record<string, string>>;
   skillPanelOpen: boolean;
@@ -87,6 +88,7 @@ export function captureLeaderPreset(
     permissionMode: source.permissionMode,
     thinkingConfig: { ...(source.thinkingConfig ?? DEFAULT_THINKING_CONFIG) },
     worktreeIsolation: source.worktreeIsolation,
+    ...(source.connectionIds !== undefined ? { connectionIds: [...source.connectionIds] } : {}),
     skillIds: [...(source.skillIds ?? [])],
     skillValues: structuredClone(source.skillValues ?? {}),
     skillPanelOpen: source.skillPanelOpen,
@@ -127,6 +129,7 @@ export function applyPresetToLeaderData(
     permissionMode: preset.permissionMode,
     thinkingConfig: { ...preset.thinkingConfig },
     worktreeIsolation: preset.worktreeIsolation,
+    connectionIds: preset.connectionIds ? [...preset.connectionIds] : undefined,
     skillIds: [...preset.skillIds],
     skillValues: structuredClone(preset.skillValues),
     skillPanelOpen: preset.skillPanelOpen,
