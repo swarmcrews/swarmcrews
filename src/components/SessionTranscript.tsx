@@ -1,5 +1,5 @@
 import { AgentMessageText } from "./AgentMessageText.tsx";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { DisplayMessage } from "../sdk-messages.ts";
 import { MessageTimestamp } from "./MessageTimestamp.tsx";
@@ -18,6 +18,7 @@ export interface TranscriptBoundary {
   label: string;
   content: string;
   onInspect?: () => void;
+  disclosure?: (navigation: ReactNode) => ReactNode;
 }
 
 export type TranscriptEntry = DisplayMessage | TranscriptBoundary;
@@ -114,10 +115,12 @@ export function SessionTranscript({
   messages,
   streamingText,
   thinking = false,
+  autoFollow = true,
 }: {
   messages: TranscriptEntry[];
   streamingText: string;
   thinking?: boolean | undefined;
+  autoFollow?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const wasAtBottomRef = useRef(true);
@@ -135,10 +138,10 @@ export function SessionTranscript({
   }, []);
 
   useEffect(() => {
-    if (wasAtBottomRef.current && scrollRef.current) {
+    if (autoFollow && wasAtBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, streamingText, thinking]);
+  }, [messages.length, streamingText, thinking, autoFollow]);
 
   const groups = useMemo(() => groupTranscript(messages), [messages]);
   const boundaries = groups.filter((group) => group.kind === "run-boundary");
@@ -159,17 +162,18 @@ export function SessionTranscript({
                 document.getElementById(anchorId(target))?.focus({ preventScroll: true });
               }}>{text}</a>
           );
-          return (
-            <nav key={group.id} id={anchorId(group)} tabIndex={-1}
+          const navigation = (
+            <nav id={anchorId(group)} tabIndex={-1}
               className="act-tx-run-boundary" aria-label={`${group.label} navigation`}>
-              {jumpLink(group, group.content)}
-              <span className="act-tx-run-boundary-line" aria-hidden="true" />
+              {!group.disclosure && <>{jumpLink(group, group.content)}
+                <span className="act-tx-run-boundary-line" aria-hidden="true" /></>}
               {group.onInspect && <button type="button" onClick={group.onInspect}
                 aria-label={`Inspect ${group.label}`}>Inspect</button>}
               {previous && jumpLink(previous, "↑", `Previous: ${previous.label}`)}
               {next && jumpLink(next, "↓", `Next: ${next.label}`)}
             </nav>
           );
+          return <Fragment key={group.id}>{group.disclosure ? group.disclosure(navigation) : navigation}</Fragment>;
         }
         if (group.kind === "tool-group") {
           return <ToolChip key={`tools-${i}`} msgs={group.msgs} />;

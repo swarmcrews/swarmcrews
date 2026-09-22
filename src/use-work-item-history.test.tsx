@@ -36,6 +36,75 @@ function socketHarness() {
 }
 
 describe("useWorkItemHistory", () => {
+  it("does not replay children or iterations older than the latest three", () => {
+    const socket = socketHarness();
+    const send = vi.fn();
+    const loadRuns = vi.fn();
+    const runs = [1, 2, 3, 4, 5].map((n) => run(`run-${n}`, n * 10, n));
+    runs.push({ ...run("child", 55, 0), runKind: "child", parentRunKey: "run-5" });
+    renderHook(() => useWorkItemHistory({
+      workItemId: "work-1", runs, runNextCursor: "older-page",
+      onLoadRuns: loadRuns, socketSend: send, socketSubscribe: socket.subscribe,
+    }));
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-3", "run-4", "run-5"]);
+    expect(loadRuns).not.toHaveBeenCalled();
+    socket.emit({ type: "sdk_event", sessionKey: "child", timestamp: 56,
+      event: { kind: "text", role: "assistant", text: "Hidden child" } });
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it("releases closed transcripts, shares open requests, and reconnects only visible runs", () => {
+    const socket = socketHarness();
+    const send = vi.fn();
+    const runs = [1, 2, 3, 4, 5].map((n) => run(`run-${n}`, n * 10, n));
+    const { result } = renderHook(() => useWorkItemHistory({
+      workItemId: "work-1", runs, runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe,
+    }));
+    act(() => { result.current.loadRun("run-1"); result.current.loadRun("run-1"); });
+    expect(send).toHaveBeenCalledTimes(4);
+    socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, events: [
+      { type: "sdk_event", sessionKey: "run-1", timestamp: 11,
+        event: { kind: "text", role: "assistant", text: "Old answer" } },
+    ] });
+    expect(result.current.streams["run-1"]?.messages).toHaveLength(1);
+    act(() => result.current.releaseRun("run-1"));
+    expect(result.current.streams["run-1"]?.messages).toHaveLength(1);
+    act(() => result.current.releaseRun("run-1"));
+    expect(result.current.streams["run-1"]).toBeUndefined();
+    send.mockClear();
+    socket.emit({ type: "socket_reconnected" });
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-3", "run-4", "run-5"]);
+    socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, events: [] });
+    expect(result.current.streams["run-1"]).toBeUndefined();
+  });
+
+  it("reserves a recent slot for a current run missing from the ledger", () => {
+    const send = vi.fn();
+    const socket = socketHarness();
+    const { result } = renderHook(() => useWorkItemHistory({
+      workItemId: "work-1", runs: [1, 2, 3].map((n) => run(`run-${n}`, n * 10, n)),
+      currentRunKey: "run-4", runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe,
+    }));
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-2", "run-3"]);
+    expect(result.current.olderRuns.map((entry) => entry.runKey)).toEqual(["run-1"]);
+  });
+
+  it("discards opened runs and late responses when switching work items", () => {
+    const send = vi.fn();
+    const socket = socketHarness();
+    const { result, rerender } = renderHook(({ workItemId, runs }) => useWorkItemHistory({
+      workItemId, runs, runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe,
+    }), { initialProps: { workItemId: "work-1", runs: [run("run-1", 10, 1)] } });
+    act(() => result.current.loadRun("child"));
+    send.mockClear();
+    rerender({ workItemId: "work-2", runs: [] });
+    socket.emit({ type: "sync_response", sessionKey: "child", found: true, events: [] });
+    expect(result.current.streams).toEqual({});
+    expect(send).not.toHaveBeenCalled();
+    rerender({ workItemId: "work-1", runs: [run("run-1", 10, 1)] });
+    expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "child" });
+  });
+
   it("retains the displayed run before replay and clears it when changing work items", () => {
     const first = emptySessionStreamState("run-1");
     first.messages = [{ id: "restored", role: "assistant", content: "Visible before replay", timestamp: 11 }];
@@ -54,7 +123,7 @@ describe("useWorkItemHistory", () => {
     expect(result.current.streams).toEqual({});
   });
 
-  it("loads every run page and syncs each ledger-linked transcript", () => {
+  it("loads metadata until three recent iterations are available", () => {
     const socket = socketHarness();
     const send = vi.fn();
     const loadRuns = vi.fn();

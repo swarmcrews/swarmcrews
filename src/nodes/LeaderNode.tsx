@@ -226,9 +226,9 @@ export function LeaderNodeRenderer({
     socketSend, socketSubscribe,
   });
   const transcript = useMemo(() => buildUnifiedWorkItemMessages({
-    runs: history.orderedRuns, streams: history.streams,
+    runs: history.orderedRuns, streams: history.streams, history,
     currentRunKey: data.sessionKey ?? "", currentMessages: data.messages,
-  }), [history.orderedRuns, history.streams, data.sessionKey, data.messages]);
+  }), [history, data.sessionKey, data.messages]);
   const groupedMessages = useMemo(() => groupTranscript(transcript), [transcript]);
   const chatFollow = useChatFollow(data.sessionKey ?? "new-leader",
     `${transcript.length}:${data.streamingText}`, !isFullscreen);

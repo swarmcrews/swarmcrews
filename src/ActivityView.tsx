@@ -815,7 +815,7 @@ function Inspector({
     markPromptSubmitted(displayPrompt);
   };
   const workItemHistory = useWorkItemHistory({
-    workItemId: session.workItemId,
+    workItemId: session.workItemId, currentRunKey: session.sessionKey,
     runs,
     runNextCursor,
     ...(onLoadRuns ? { onLoadRuns } : {}),
@@ -827,6 +827,12 @@ function Inspector({
   );
   const previewRun = historicalRuns.find((run) => run.runKey === previewRunKey) ?? null;
   const previewStream = previewRun ? workItemHistory.streams[previewRun.runKey] : undefined;
+  const { loadRun: loadPreviewRun, releaseRun: releasePreviewRun } = workItemHistory;
+  useEffect(() => {
+    if (!previewRunKey) return;
+    loadPreviewRun(previewRunKey);
+    return () => releasePreviewRun(previewRunKey);
+  }, [previewRunKey, loadPreviewRun, releasePreviewRun]);
   useEffect(() => {
     if (previewRunKey && !historicalRuns.some((run) => run.runKey === previewRunKey)) {
       setPreviewRunKey(null);
@@ -1306,6 +1312,8 @@ function Inspector({
                           })}
                         </ol>
                       )}
+                      {workItemHistory.hasMore && <button type="button" disabled={workItemHistory.loading}
+                        onClick={workItemHistory.loadMore}>Load earlier iterations</button>}
                       {onLoadRuns && workItemHistory.loading && historicalRuns.length > 0 ? (
                         <p className="act-run-history-loading" role="status">
                           Loading earlier iterations…
@@ -1329,7 +1337,9 @@ function Inspector({
                               <X size={13} aria-hidden />
                             </button>
                           </header>
-                          {previewStream ? (
+                          {workItemHistory.runStatus[previewRun.runKey] === "unavailable" ? (
+                            <p role="status">This run's transcript is unavailable.</p>
+                          ) : previewStream ? (
                             <SessionTranscript messages={previewStream.messages} streamingText="" />
                           ) : (
                             <p className="act-empty-copy" role="status">Loading iteration preview…</p>

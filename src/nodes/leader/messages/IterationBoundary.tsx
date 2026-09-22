@@ -17,13 +17,14 @@ export function IterationBoundary({ boundary, boundaries, scope, onNavigate }: {
     element?.focus({ preventScroll: true });
     onNavigate?.();
   }
-  return <nav className="act-tx-run-boundary" id={anchorId(boundary)} tabIndex={-1}
+  const navigation = <nav className="act-tx-run-boundary" id={anchorId(boundary)} tabIndex={-1}
     aria-label={`${boundary.label} navigation`}>
-    <span>{boundary.content}</span>
-    <span className="act-tx-run-boundary-line" aria-hidden="true" />
+    {!boundary.disclosure && <><span>{boundary.content}</span>
+      <span className="act-tx-run-boundary-line" aria-hidden="true" /></>}
     {previous && <button type="button" aria-label={`Previous: ${previous.label}`}
       onClick={() => jump(previous)}>↑</button>}
     {next && <button type="button" aria-label={`Next: ${next.label}`}
       onClick={() => jump(next)}>↓</button>}
   </nav>;
+  return boundary.disclosure ? boundary.disclosure(navigation) : navigation;
 }

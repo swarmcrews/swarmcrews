@@ -725,14 +725,14 @@ function SessionChatContent({
     if (historyWorkItemId) onLoadRuns?.(historyWorkItemId, cursor);
   }, [historyWorkItemId, onLoadRuns]);
   const history = useWorkItemHistory({
-    workItemId: historyWorkItemId, runs: primaryRuns, runNextCursor,
+    workItemId: historyWorkItemId, runs: primaryRuns, runNextCursor, currentRunKey: sessionKey,
     ...(onLoadRuns ? { onLoadRuns: loadRuns } : {}),
     socketSend: send, socketSubscribe: subscribe,
   });
   const transcript = useMemo(() => buildUnifiedWorkItemMessages({
-    runs: history.orderedRuns, streams: history.streams,
+    runs: history.orderedRuns, streams: history.streams, history,
     currentRunKey: sessionKey, currentMessages: state.messages,
-  }), [history.orderedRuns, history.streams, sessionKey, state.messages]);
+  }), [history, sessionKey, state.messages]);
   const groupedMessages = useMemo(() => groupMobileMessages(transcript), [transcript]);
   const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
   const boundaryRefs = useRef(new Map<string, HTMLElement>());
@@ -960,18 +960,19 @@ function SessionChatContent({
                 const index = boundaries.indexOf(group);
                 const previous = boundaries[index - 1];
                 const next = boundaries[index + 1];
-                return <nav key={group.id} className="mob-iteration-boundary" tabIndex={-1}
+                const navigation = <nav className="mob-iteration-boundary" tabIndex={-1}
                   aria-label={`${group.label} navigation`}
                   ref={(element) => {
                     if (element) boundaryRefs.current.set(group.id, element);
                     else boundaryRefs.current.delete(group.id);
                   }}>
-                  <span>{group.content}</span>
+                  {!group.disclosure && <span>{group.content}</span>}
                   {previous ? <button type="button" aria-label={`Previous: ${previous.label}`}
                     onClick={() => jumpToIteration(previous)}>↑</button> : null}
                   {next ? <button type="button" aria-label={`Next: ${next.label}`}
                     onClick={() => jumpToIteration(next)}>↓</button> : null}
                 </nav>;
+                return <div key={group.id}>{group.disclosure ? group.disclosure(navigation) : navigation}</div>;
               }
               return group.kind === "activity" ? (
                 <ActivityMessageGroup key={`activity-${group.messages[0]!.id}`} messages={group.messages} />

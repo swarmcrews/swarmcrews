@@ -88,7 +88,7 @@ describe("Canvas leader iteration history", () => {
     checkFeed(screen.getByRole("region", { name: "Conversation messages" }));
   });
 
-  it.each(["topics", "legacy"])("loads all iterations in card and fullscreen with %s sockets", (mode) => {
+  it.each(["topics", "legacy"])("progressively loads iterations in card and fullscreen with %s sockets", (mode) => {
     const listeners = new Set<(message: unknown) => void>();
     const subscribe = Object.assign((topicOrListener: string | ((message: unknown) => void),
       callback?: (message: unknown) => void) => {
@@ -183,6 +183,13 @@ describe("Canvas leader iteration history", () => {
     emit({ type: "sdk_event", sessionKey: "run-4", timestamp: 4,
       event: { kind: "text", role: "assistant", text: "Fourth iteration output" } });
     const nextFullscreen = screen.getByRole("region", { name: "Conversation messages" });
+    expect(within(nextFullscreen).queryByText("Earlier conversation 1")).not.toBeInTheDocument();
+    fireEvent.click(within(nextFullscreen).getByRole("button", { name: /Browse older iterations/ }));
+    fireEvent.click(within(nextFullscreen).getByRole("button", { name: /Iteration 1 · completed/ }));
+    expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-1" });
+    emit({ type: "sync_response", found: true, sessionKey: "run-1", status: "completed",
+      events: [{ type: "sdk_event", sessionKey: "run-1", timestamp: 1,
+        event: { kind: "text", role: "assistant", text: "Earlier conversation 1" } }] });
     expect(within(nextFullscreen).getByText("Earlier conversation 1")).toBeInTheDocument();
     expect(within(nextFullscreen).getAllByText("Current conversation")).toHaveLength(1);
     expect(within(nextFullscreen).getAllByText("New live output")).toHaveLength(1);
@@ -196,7 +203,8 @@ describe("Canvas leader iteration history", () => {
       })) });
     fireEvent.keyDown(window, { key: "Escape" });
     const nextCard = screen.getByLabelText("Conversation messages");
-    expect(within(nextCard).getByText("Earlier conversation 1")).toBeInTheDocument();
+    expect(within(nextCard).queryByText("Earlier conversation 1")).not.toBeInTheDocument();
+    expect(within(nextCard).getByRole("button", { name: /Browse older iterations/ })).toBeInTheDocument();
     expect(within(nextCard).getAllByText("Current conversation")).toHaveLength(1);
     expect(within(nextCard).getAllByText("New live output")).toHaveLength(1);
     expect(within(nextCard).getByText("Fourth iteration output")).toBeInTheDocument();
