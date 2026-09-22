@@ -76,6 +76,26 @@ describe("exec — happy path", () => {
 });
 
 describe("exec — error path", () => {
+  it("reports output overflow instead of dumping the partial file list", async () => {
+    nextResult = {
+      error: Object.assign(new Error("stdout maxBuffer length exceeded"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" }),
+      stdout: ".gitignore\0" + "generated/file.txt\0".repeat(100_000),
+      stderr: "warning: incidental warning",
+    };
+    await expect(exec(["ls-files", "-z"], "/repo")).rejects.toThrow(
+      "git ls-files: output exceeded the 16 MiB safety limit",
+    );
+  });
+
+  it("bounds diagnostics and removes NUL delimiters", async () => {
+    nextResult = { error: new Error("exit 1"), stdout: "", stderr: "fatal:\0" + "x".repeat(10_000) };
+    const error = await exec(["diff"], "/repo").catch(error => error as Error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message.length).toBeLessThan(2200);
+    expect((error as Error).message).not.toContain("\0");
+    expect((error as Error).message).toContain("[truncated]");
+  });
+
   it("rejects with `git <verb>: <stderr>` when stderr is non-empty", async () => {
     nextResult = {
       error: new Error("Command failed"),
