@@ -2,7 +2,7 @@
  * Contract — top-level dev-loop script wiring in package.json.
  *
  * `pnpm start` must be the NON-BLOCKING background launcher (scripts/start.mjs),
- * so it detaches and returns the terminal immediately. The foreground,
+ * so it detaches and returns after a bounded startup check. The foreground,
  * log-streaming supervisor lives under `pnpm dev` (scripts/run.mjs).
  *
  * These are behavioural guarantees users depend on; this test fails loudly if
@@ -24,7 +24,7 @@ describe("package.json dev-loop scripts", () => {
     expect(
       scripts["start"],
       "`pnpm start` must launch the background service so it returns the " +
-        "terminal immediately. It should invoke scripts/start.mjs, not the " +
+        "terminal after its startup check. It should invoke scripts/start.mjs, not the " +
         "foreground supervisor scripts/run.mjs.",
     ).toBe("node scripts/start.mjs start");
   });

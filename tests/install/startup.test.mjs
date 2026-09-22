@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
 import Database from "better-sqlite3";
 import { boundedLog } from "../../scripts/bounded-log.mjs";
 import { supervise } from "../../scripts/launcher-supervisor.mjs";
@@ -14,6 +13,9 @@ import { supervise } from "../../scripts/launcher-supervisor.mjs";
 // Fixture CLIs are standalone processes, not Node test-runner workers.
 const fixtureEnv = { ...process.env };
 delete fixtureEnv.NODE_TEST_CONTEXT;
+// Foreground fixtures must not inherit the live installation's background log.
+delete fixtureEnv.SWARMCREWS_LAUNCH_LOG;
+delete fixtureEnv.MINIONS_LAUNCH_LOG;
 
 // Fixture CLIs never read stdin. Avoid creating an unnecessary input pipe,
 // which restricted process sandboxes may refuse even when the child succeeds.
@@ -146,15 +148,11 @@ test("startup launches both services from a checkout path with spaces without sh
         env: { ...fixtureEnv, MINIONS_NO_OPEN: "1", HOST: "127.0.0.1", VITE_PORT: "6273" },
       });
       assert.ifError(result.error);
-      assert.equal(result.status, command === "start" ? 0 : 1, result.stderr);
+      // A service that exits during startup is a failure, including background start.
+      assert.equal(result.status, 1, result.stderr);
       if (command === "start") {
-        const pid = Number.parseInt(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8"), 10);
-        const deadline = Date.now() + 10_000;
-        while (Date.now() < deadline) {
-          try { process.kill(pid, 0); } catch { break; }
-          await delay(50);
-        }
-        assert.throws(() => process.kill(pid, 0), "background runner should finish");
+        assert.match(result.stderr, /Swarmcrews failed to start/);
+        assert.equal(existsSync(join(fixture, ".run", "swarmcrews.pid")), false);
       }
       assert.deepEqual(JSON.parse(readFileSync(join(fixture, "tsx.json"), "utf8")), ["server/index.ts"]);
       assert.deepEqual(JSON.parse(readFileSync(join(fixture, "vite.json"), "utf8")), [
@@ -351,6 +349,73 @@ test("partial startup failure stops the other service without blocking future st
     assert.match(run.output(), /automatic crash restart is disabled/);
     assert.ok(!existsSync(join(fixture, ".run", "recovery-required")));
   } finally { run.child.kill("SIGKILL"); await run.closed; rmSync(fixture, { recursive: true, force: true }); }
+});
+
+test("background start and restart report early service failures in the terminal", { timeout: 20_000 }, async () => {
+  for (const [action, failingService] of [["start", "backend"], ["restart", "frontend"]]) {
+    const failure = `setImmediate(() => { console.error("fixture ${failingService} startup error"); process.exit(9); });`;
+    const running = 'setInterval(() => {}, 1000);';
+    const fixture = launcherFixture(failingService === "backend" ? failure : running, failingService === "frontend" ? failure : running);
+    try {
+      const result = spawnSync(process.execPath, ["scripts/start.mjs", action], {
+        cwd: fixture, env: { ...fixtureEnv, MINIONS_NO_OPEN: "1" }, encoding: "utf8", timeout: 10_000,
+      });
+      assert.ifError(result.error);
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stderr, /Swarmcrews failed to start/);
+      assert.ok(result.stderr.includes(`fixture ${failingService} startup error`), result.stderr);
+      assert.doesNotMatch(result.stdout, /started in background/);
+      assert.equal(existsSync(join(fixture, ".run", "swarmcrews.pid")), false);
+    } finally {
+      // Also clean up the old implementation when the regression is red.
+      spawnSync(process.execPath, ["scripts/start.mjs", "stop"], { cwd: fixture, env: fixtureEnv, timeout: 10_000 });
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  }
+});
+
+test("successful background startup detaches and continues logging after the observation window", { timeout: 20_000 }, async () => {
+  const running = 'console.log("fixture-ready"); setInterval(() => console.log("fixture-running"), 100);';
+  const fixture = launcherFixture(running, running);
+  try {
+    const result = spawnSync(process.execPath, ["scripts/start.mjs", "start"], {
+      cwd: fixture, env: { ...fixtureEnv, MINIONS_NO_OPEN: "1" }, encoding: "utf8", timeout: 10_000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /started in background/);
+    const pid = Number(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8"));
+    process.kill(pid, 0);
+    assert.match(readFileSync(join(fixture, ".run", "swarmcrews.log"), "utf8"), /fixture-running/);
+    const alreadyRunning = spawnSync(process.execPath, ["scripts/start.mjs", "start"], {
+      cwd: fixture, env: fixtureEnv, encoding: "utf8", timeout: 10_000,
+    });
+    assert.equal(alreadyRunning.status, 0, alreadyRunning.stderr);
+    assert.match(alreadyRunning.stdout, /already running/);
+  } finally {
+    const stopped = spawnSync(process.execPath, ["scripts/start.mjs", "stop"], {
+      cwd: fixture, env: fixtureEnv, encoding: "utf8", timeout: 10_000,
+    });
+    rmSync(fixture, { recursive: true, force: true });
+    assert.equal(stopped.status, 0, stopped.stderr);
+  }
+});
+
+test("background startup exposes runner errors before log initialization", () => {
+  const fixture = launcherFixture('', '');
+  try {
+    writeFileSync(join(fixture, "scripts", "run.mjs"), 'throw new Error("fixture bootstrap failure");');
+    const result = spawnSync(process.execPath, ["scripts/start.mjs", "start"], {
+      cwd: fixture, env: fixtureEnv, encoding: "utf8", timeout: 10_000,
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /fixture bootstrap failure/);
+    assert.equal(existsSync(join(fixture, ".run", "swarmcrews.pid")), false);
+  } finally {
+    spawnSync(process.execPath, ["scripts/start.mjs", "stop"], { cwd: fixture, env: fixtureEnv, timeout: 10_000 });
+    rmSync(fixture, { recursive: true, force: true });
+  }
 });
 
 test("production runner supervises two explicit restarts then stops on a crash", { timeout: 15_000, skip: process.platform === "win32" }, async () => {

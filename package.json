@@ -40,7 +40,7 @@
     "typecheck:server": "tsc -p server/tsconfig.json --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:install": "node --test tests/install/startup.test.mjs",
+    "test:install": "node --test tests/install/startup.test.mjs scripts/startup-observer.test.mjs",
     "test:sqlite": "node --import ./scripts/register-typescript.mjs scripts/sqlite-smoke.mjs",
     "test:coverage": "vitest run --coverage",
     "test:smoke": "playwright test --config playwright.smoke.config.mjs",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Launches Swarmcrews (server + vite) detached in the background and returns to
-// the terminal. Logs are redirected to a file rather than streamed inline.
+// the terminal after a short early-failure check. Startup errors are shown inline;
+// ongoing logs are redirected to a file.
 //   pnpm start          start in background
 //   pnpm start stop     stop the background service
 //   pnpm start restart  restart the background service
@@ -17,6 +18,7 @@ import {
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkDependencies } from "./check-dependencies.mjs";
+import { observeStartup, releaseStartupObserver } from "./startup-observer.mjs";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const root = join(scriptDir, "..");
@@ -42,10 +44,10 @@ switch (action) {
     status();
     break;
   case "restart":
-    restart();
+    await restart();
     break;
   case "start":
-    start();
+    await start();
     break;
   default:
     console.error(`Unknown action "${action}". Use start, stop, restart, or status.`);
@@ -77,7 +79,7 @@ function rel(p) {
   return relative(process.cwd(), p) || p;
 }
 
-function start(enableTail = tailscale) {
+async function start(enableTail = tailscale) {
   const existing = readPid();
   if (isRunning(existing)) {
     console.log(`Swarmcrews is already running (pid ${existing}).`);
@@ -99,15 +101,28 @@ function start(enableTail = tailscale) {
     cwd: root,
     detached: true,
     // The runner owns rotation; inherited append descriptors bypass its bound.
-    stdio: "ignore",
+    // Pipes catch bootstrap errors before logging is initialized; IPC carries
+    // service failure diagnostics without reading stale/rotated log files.
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
     env: { ...process.env, SWARMCREWS_LAUNCH_LOG: logFile },
     shell: false,
     windowsHide: true,
   });
 
-  writeFileSync(pidFile, String(child.pid));
-  // Detach from the parent's event loop so the terminal returns immediately.
-  child.unref();
+  const startup = observeStartup(child);
+  if (child.pid) writeFileSync(pidFile, String(child.pid));
+  try {
+    await startup;
+  } catch (error) {
+    console.error(`Swarmcrews failed to start: ${error.message}`);
+    console.error(`  logs: ${rel(logFile)}`);
+    // Preserve ownership if a failed runner has not finished cleaning up yet.
+    if (!isRunning(child.pid) && readPid() === child.pid) rmSync(pidFile, { force: true });
+    process.exitCode = 1;
+    return;
+  } finally {
+    releaseStartupObserver(child);
+  }
 
   if (enableTail) {
     try {
@@ -172,7 +187,7 @@ function stop() {
   console.log(`Swarmcrews stopped (pid ${pid}).`);
 }
 
-function restart() {
+async function restart() {
   checkDependencies(["tsx", "vite", "better-sqlite3"]);
   const restoreTailscale = tailscale || existsSync(tailscaleFile);
   const pid = readPid();
@@ -185,7 +200,7 @@ function restart() {
   } else if (existsSync(pidFile)) {
     rmSync(pidFile);
   }
-  start(restoreTailscale);
+  await start(restoreTailscale);
 }
 
 function status() {

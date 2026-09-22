@@ -29,9 +29,16 @@ const children = new Set();
 const backendGroups = new Set();
 let stopping = false;
 let frontend;
+let startupOutput = "";
+process.on("disconnect", () => { startupOutput = ""; });
+function writeLog(chunk) {
+  // Retain only this launch's bounded diagnostic tail while start.mjs watches.
+  if (process.connected) startupOutput = (startupOutput + chunk).slice(-64 * 1024);
+  logger.write(chunk);
+}
 function diagnostic(message) {
   try {
-    if (logger) logger.write(`${message}\n`);
+    if (logger) writeLog(`${message}\n`);
     else console.error(message);
   } catch { /* A disk error must not prevent shutdown. */ }
 }
@@ -75,6 +82,11 @@ async function stop(code = 0) {
 }
 function fail(error) {
   diagnostic(`Swarmcrews stopped after a service failure; automatic crash restart is disabled: ${error.message}`);
+  if (process.connected) {
+    // The parent may detach concurrently. A closed IPC channel must not prevent
+    // service cleanup or affect a successfully backgrounded runner.
+    process.send({ type: "startup-failure", message: error.message, output: startupOutput }, () => {});
+  }
   void stop(1);
 }
 function launch(args, backend = false) {
@@ -88,7 +100,7 @@ function launch(args, backend = false) {
   child.once("exit", () => children.delete(child));
   child.once("error", () => children.delete(child));
   for (const stream of [child.stdout, child.stderr]) {
-    stream?.on("data", chunk => { try { logger.write(chunk); } catch (error) { fail(error); } });
+    stream?.on("data", chunk => { try { writeLog(chunk); } catch (error) { fail(error); } });
     stream?.on("error", fail);
   }
   return child;
