@@ -13,6 +13,9 @@ dist/
 /artifacts/
 /evaluations/
 
+# Local research reference, not application source or published documentation.
+/proceduralgraph.pdf
+
 # Local agent work: notes, handoffs, reproductions, evidence and patch backups.
 # Prefer .scratch/<task>/; never force-add its contents. See CONTRIBUTING.md.
 .scratch/
