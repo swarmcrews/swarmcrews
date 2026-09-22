@@ -44,6 +44,22 @@ describe("POST /api/projects/path-suggestions", () => {
     });
   });
 
+  it.each([
+    { host: "localhost", origin: "http://localhost" },
+    { host: "workstation.example.ts.net", origin: "https://workstation.example.ts.net" },
+    { host: "100.101.102.103", origin: "http://100.101.102.103:6173" },
+  ])("offers allowed locations from ancestors on local and remote hosts: $host", async (headers) => {
+    const response = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
+      method: "POST", headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify({ path: path.dirname(root), mode: "browse" }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      directory: null,
+      entries: [{ path: fs.realpathSync(root) }],
+    });
+  });
+
   it.each([null, [], 42, { path: 42 }, { path: "a".repeat(32_769) }])("rejects malformed body %#", async (body) => {
     const response = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
       method: "POST", headers: { "content-type": "application/json", host: "localhost" }, body: JSON.stringify(body),

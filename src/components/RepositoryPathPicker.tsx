@@ -16,6 +16,21 @@ interface RepositoryPathPickerProps {
 
 type Lookup = { path: string; mode: "complete" | "browse"; delay: number };
 
+function folderErrorMessage(error: string): string {
+  const apiError = /^API error \d+: ([\s\S]*)$/.exec(error);
+  if (!apiError) return error;
+  try {
+    const body: unknown = JSON.parse(apiError[1]!);
+    if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
+      if (body.error === "Folder is unavailable or outside configured browse roots") {
+        return "This folder is unavailable or outside the server’s browsing locations. Choose Browse locations, or check the folder’s permissions and SWARMCREWS_BROWSE_ROOTS on the server.";
+      }
+      return body.error;
+    }
+  } catch { /* A proxy may return HTML rather than a JSON error. */ }
+  return "Could not load folders from the server. Try Browse locations or retry shortly.";
+}
+
 /** All filesystem navigation comes from the server; paths remain opaque here. */
 export function RepositoryPathPicker({
   value, onChange, disabled = false, placeholder = "Type or paste a repository path",
@@ -130,7 +145,7 @@ export function RepositoryPathPicker({
           Browse
         </button>
       </div>
-      <p id={`${id}-help`} className="repository-path-picker__help">Type a path or browse folders on the machine running Swarmcrews.</p>
+      <p id={`${id}-help`} className="repository-path-picker__help">Paths are on the machine running Swarmcrews, not this browser’s device. Use ~ for the server user’s home folder.</p>
       <input ref={inputRef} id={id} type="text" value={value} placeholder={placeholder} disabled={disabled}
         autoFocus={autoFocus} autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
         role="combobox" aria-autocomplete="list" aria-expanded={open} aria-describedby={`${id}-help`}
@@ -148,10 +163,10 @@ export function RepositoryPathPicker({
           {loading && <div className="repository-path-picker__state" role="status">Loading folders…</div>}
           {error && (isUntrustedRequest ? (
             <div className="repository-path-picker__state repository-path-picker__state--info" role="status">
-              We can’t preview the remote filesystem from an untrusted machine. You can still type or paste a repository path.
+              Folder browsing was blocked for this address. Open Swarmcrews through localhost or the server’s Tailscale address. You can still type or paste a repository path.
             </div>
           ) : (
-            <div className="repository-path-picker__state repository-path-picker__state--error" role="alert">{error}. You can still type a path.</div>
+            <div className="repository-path-picker__state repository-path-picker__state--error" role="alert">{folderErrorMessage(error)} You can still type or paste a path.</div>
           ))}
           {!loading && !error && result && (
             <>
@@ -176,7 +191,9 @@ export function RepositoryPathPicker({
                   </li>
                 ))}
               </ul>
-              {entries.length === 0 && <div className="repository-path-picker__state">{!result.directory && result.roots.length ? "Choose a browsing location." : "No matching folders."}</div>}
+              {entries.length === 0 && <div className="repository-path-picker__state">{!result.roots.length
+                ? "No browsing locations are available. Check SWARMCREWS_BROWSE_ROOTS and folder permissions on the server. You can still type or paste a path."
+                : !result.directory ? "Choose a browsing location." : "No matching folders."}</div>}
               {result.truncated && <div className="repository-path-picker__state">More folders are available; type more to narrow the list.</div>}
             </>
           )}

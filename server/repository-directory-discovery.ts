@@ -99,7 +99,7 @@ export async function discoverRepositoryDirectories(request: RepositoryPathReque
   const mode = request.mode ?? "complete";
   if (mode !== "browse" && mode !== "complete") return null;
   const target = normalizeRepositoryPath(request.path);
-  if (!target || !inScope(target, roots)) return null;
+  if (!target) return null;
 
   let directory = target;
   let prefix = "";
@@ -111,6 +111,20 @@ export async function discoverRepositoryDirectories(request: RepositoryPathReque
     // folder. Only a trailing separator asks to complete its children.
     directory = path.dirname(target);
     prefix = path.basename(target);
+  }
+  if (!inScope(target, roots)) {
+    // Typing /home (or /ho) must lead to the allowed home folder, not a
+    // permissions error. Suggest only roots we already disclose; never open
+    // or stat their ancestors, siblings, or partially typed paths.
+    const matches = roots.filter((root) => [root.path, root.real].some((candidate) => {
+      if (inside(target, candidate)) return true;
+      if (mode !== "complete" || !prefix || !inside(directory, candidate)) return false;
+      const segment = path.relative(directory, candidate).split(path.sep)[0] ?? "";
+      return segment.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase());
+    }));
+    if (!matches.length) return null;
+    const entries = [...new Map(matches.map((root) => [root.real, rootDirectory(root)])).values()];
+    return { ...responseBase, directory: null, parent: null, breadcrumbs: [], entries, truncated: false };
   }
   const realDirectory = await safeRealDirectory(directory, roots);
   if (!realDirectory) return null;

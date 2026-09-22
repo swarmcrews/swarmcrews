@@ -11,6 +11,12 @@ lets you navigate folders and breadcrumbs; **Use this folder** fills the path
 field. Click **Open** or **Create** when you are ready to initialize the project.
 You can also type a new folder path directly.
 
+When you type an ancestor or partial ancestor of a browsing location (for
+example `/home` or `/ho` when the server home is `/home/alex`), suggestions
+point directly to the permitted location. Swarmcrews does not list other users’
+folders or make the ancestor selectable. **Browse locations** always returns to
+the configured locations, including after an unavailable path.
+
 ## Paths on each server platform
 
 | Server | Example |
@@ -29,6 +35,17 @@ Use a full drive path such as `C:\projects\my-app`; `C:projects\my-app` and
 `\projects\my-app` depend on a working drive and are rejected. Windows device
 namespaces and alternate data streams are not repository paths. Filesystem
 permissions and the host's path-length support still apply.
+
+## Local and remote access
+
+Browsing uses the same server-side filesystem whether you connect locally or
+remotely. A remote browser cannot select files from its own device through this
+picker. Use `~` to start from the server account’s home directory, which may be
+different from your desktop account’s home.
+
+Connect through localhost (including an SSH tunnel) or the server’s Tailscale
+address. Unsupported or mismatched request hosts/origins are blocked; changing
+browsing roots does not change that access policy.
 
 ## Configure browsing locations
 
@@ -53,7 +70,10 @@ pnpm start
 Use locations that exist and are readable by the account running the server.
 Restart an already-running server after changing its startup environment.
 An empty array disables directory discovery. Malformed configuration fails
-closed. The browser cannot expand these roots through an API request.
+closed. The browser cannot expand these roots through an API request. If no
+locations appear, check both this setting and permissions for the server account.
+If a folder is outside the configured locations, add it on the server and restart,
+or type its path manually instead of browsing.
 
 Discovery lists directories within the configured roots, including checks on
 resolved symlink or junction targets. It does not read file contents, create

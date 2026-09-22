@@ -20,6 +20,19 @@ afterEach(() => {
 });
 
 describe("discoverRepositoryDirectories", () => {
+  it("guides /home-style ancestors to the default server home without listing other users", async () => {
+    const home = path.join(root, "home", "alex");
+    fs.mkdirSync(home, { recursive: true });
+    fs.mkdirSync(path.join(root, "home", "other-user"));
+    vi.stubEnv("SWARMCREWS_BROWSE_ROOTS", undefined);
+    vi.spyOn(os, "homedir").mockReturnValue(home);
+    const opendir = vi.spyOn(fs.promises, "opendir");
+    const result = await discoverRepositoryDirectories({ path: path.dirname(home) });
+    expect(result?.entries).toEqual([{ name: "alex", path: fs.realpathSync(home) }]);
+    expect(result?.directory).toBeNull();
+    expect(opendir).not.toHaveBeenCalled();
+  });
+
   it("accepts an explicitly configured alias and returns canonical navigation paths", async () => {
     const alias = path.join(outside, "allowed-alias");
     fs.symlinkSync(root, alias, "junction");
@@ -30,6 +43,37 @@ describe("discoverRepositoryDirectories", () => {
     expect(result?.entries[0]?.path).toBe(path.join(fs.realpathSync(root), "Résumé project"));
     expect(await discoverRepositoryDirectories({ path: result!.entries[0]!.path, mode: "browse" }))
       .toMatchObject({ parent: fs.realpathSync(root) });
+  });
+
+  it.each(["browse", "complete"] as const)("suggests allowed roots from an ancestor in %s mode without listing it", async (mode) => {
+    const ancestor = path.dirname(root);
+    const opendir = vi.spyOn(fs.promises, "opendir");
+    const result = await discoverRepositoryDirectories({ path: ancestor, mode });
+    expect(result).toMatchObject({ directory: null, parent: null, breadcrumbs: [], truncated: false });
+    expect(result?.entries).toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
+    expect(opendir).not.toHaveBeenCalled();
+  });
+
+  it("completes partial ancestors using only configured root names", async () => {
+    const ancestor = path.join(outside, "home", "alex", "projects");
+    fs.mkdirSync(ancestor, { recursive: true });
+    vi.stubEnv("SWARMCREWS_BROWSE_ROOTS", JSON.stringify([ancestor]));
+    const opendir = vi.spyOn(fs.promises, "opendir");
+    for (const input of [path.join(outside, "ho"), path.join(outside, "home", "al"), `${outside}${path.sep}`]) {
+      const result = await discoverRepositoryDirectories({ path: input });
+      expect(result?.entries).toEqual([{ name: "projects", path: fs.realpathSync(ancestor) }]);
+    }
+    expect(opendir).not.toHaveBeenCalled();
+    expect(await discoverRepositoryDirectories({ path: path.join(outside, "ho"), mode: "browse" })).toBeNull();
+    expect(await discoverRepositoryDirectories({ path: path.join(outside, "homeless") })).toBeNull();
+  });
+
+  it("suggests canonical roots while completing a configured alias ancestor", async () => {
+    const alias = path.join(outside, "alias");
+    fs.symlinkSync(root, alias, "junction");
+    vi.stubEnv("SWARMCREWS_BROWSE_ROOTS", JSON.stringify([alias]));
+    expect((await discoverRepositoryDirectories({ path: path.join(outside, "ali") }))?.entries)
+      .toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
   });
 
   it("caps results and can narrow a truncated listing", async () => {
