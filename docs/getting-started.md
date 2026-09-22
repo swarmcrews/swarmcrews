@@ -40,9 +40,17 @@ are included for maintainers.
 
 ### Check the prerequisites
 
-Install **Node.js 22 or newer**, **git**, and **pnpm**. This repository pins its
-package-manager version in `package.json`; use that version if your environment
-does not select it automatically.
+Install these tools using their official, platform-specific instructions:
+
+| Tool | Installation guide |
+|---|---|
+| **Node.js 22 or newer** | [Download and install Node.js](https://nodejs.org/en/download) (install before pnpm) |
+| **Git** | [Install Git](https://git-scm.com/downloads) |
+| **pnpm** | [Install pnpm](https://pnpm.io/installation) |
+
+This repository pins its package-manager version in `package.json`; use that
+version if your environment does not select it automatically. Verify the tools
+are available in your terminal:
 
 ```bash
 node --version
@@ -56,10 +64,18 @@ If pnpm is missing:
 npm install -g pnpm@10.15.1
 ```
 
-You also need at least one authenticated agent harness: **Claude Code, OpenAI
-Codex, GitHub Copilot, OpenCode, or Pi**. Authenticate with your chosen harness on the machine
-running Swarmcrews. Swarmcrews uses that harness's runtime and model catalog; it does
-not supply a model-service account. Claude and Codex can use bundled SDK
+You also need at least one authenticated agent harness. Choose one and follow
+its installation and authentication guide:
+
+- [Claude Code setup](https://code.claude.com/docs/en/setup)
+- [OpenAI Codex CLI setup](https://developers.openai.com/codex/cli/)
+- [GitHub Copilot CLI installation](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
+- [OpenCode installation](https://opencode.ai/docs/#install)
+- [Pi installation and quick start](https://github.com/earendil-works/pi/tree/main/packages/coding-agent#quick-start)
+
+Authenticate with your chosen harness on the machine running Swarmcrews.
+Swarmcrews uses that harness's runtime and model catalog; it does not supply a
+model-service account. Claude and Codex can use bundled SDK
 runtimes; Copilot, OpenCode, and Pi must be discoverable on the server's `PATH` or through
 their executable overrides.
 
@@ -553,8 +569,8 @@ verify them when switching projects.
 
 ### Mobile companion
 
-For tailnet access, install and sign in to Tailscale on the host and your phone,
-then start Swarmcrews with:
+For optional tailnet access, [install Tailscale](https://tailscale.com/download)
+and sign in on the host and your phone, then start Swarmcrews with:
 
 ```bash
 pnpm start -- --tailscale

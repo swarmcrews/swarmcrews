@@ -32,15 +32,23 @@ Swarmcrews gives you a spatial interface for orchestrating coding agents:
 
 ## Prerequisites
 
-You need all of the following installed before starting:
+Install the required tools using the official guides below. Tailscale is optional.
 
 | Requirement | Why |
 |---|---|
 | **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. Copilot, OpenCode, and Pi are discovered on `PATH` (or via `COPILOT_CLI_PATH` / `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
-| **Node.js ≥ 22** | Required by the agent SDKs and modern runtime features |
-| **pnpm** | Package manager (`npm install -g pnpm` if you don't have it) |
-| **git** | Used for repository access and optional worktree isolation |
+| **[Node.js ≥ 22](https://nodejs.org/en/download)** | Required by the agent SDKs and modern runtime features; install Node.js before pnpm |
+| **[pnpm](https://pnpm.io/installation)** | Package manager; use the version pinned in `package.json` (`npm install -g pnpm@10.15.1`) |
+| **[Git](https://git-scm.com/downloads)** | Used for repository access and optional worktree isolation |
 | **[Tailscale](https://tailscale.com/download)** | Optional, for tailnet HTTPS and the mobile companion |
+
+Choose at least one harness and follow its installation and authentication guide:
+
+- [Claude Code setup](https://code.claude.com/docs/en/setup)
+- [OpenAI Codex CLI setup](https://developers.openai.com/codex/cli/)
+- [GitHub Copilot CLI installation](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
+- [OpenCode installation](https://opencode.ai/docs/#install)
+- [Pi installation and quick start](https://github.com/earendil-works/pi/tree/main/packages/coding-agent#quick-start)
 
 ### Verify your setup
 
@@ -395,7 +403,7 @@ scripts/              Utility scripts (preflight, permission setup)
 ## Troubleshooting
 
 **"claude: command not found"**
-Install Claude Code and sign in: https://docs.anthropic.com/en/docs/claude-code
+[Install Claude Code](https://code.claude.com/docs/en/setup) and sign in.
 
 **Sessions fail to start**
 Make sure `claude` works on its own first — run `claude` in your terminal to verify authentication.
@@ -406,7 +414,8 @@ available in the server environment.
 
 **Copilot does not appear with models**
 
-Install `copilot`, run `copilot login`, and ensure the server can find it on
+[Install Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli),
+run `copilot login`, and ensure the server can find it on
 `PATH` or through `COPILOT_CLI_PATH`. Refresh readiness after signing in. Model
 choices and capabilities come from the SDK catalog for your account. See
 [harness model discovery](docs/features/harness-model-discovery.md) for metadata
