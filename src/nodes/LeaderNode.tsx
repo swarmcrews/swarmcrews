@@ -793,9 +793,9 @@ export function LeaderNodeRenderer({
     if (!prompt || dataRef.current.sessionKey || !socketSend || syncedRef.current) return;
     if (!claimLeaderAutoStart(node.id, prompt)) return;
     autoStartFired.current = true;
-    launchFeedback.begin(prompt);
+    const userPrompt = dataRef.current.autoStartDisplayPrompt ?? prompt;
+    launchFeedback.begin(userPrompt);
     submittedAttachmentIds.current = promptAttachments.drafts.map(draft => draft.id);
-
 
     const contextItems = getContextForNode?.() ?? [];
     const { prompt: fullPrompt, frozen: frozenPrompt, previousMessages: prevMessages,
@@ -805,18 +805,18 @@ export function LeaderNodeRenderer({
 
     if (projectId && projectPath) {
       syncedRef.current = true;
-      emitUpdate({ ...dataRef.current, status: "creating", autoStartPrompt: null,
+      emitUpdate({ ...dataRef.current, status: "creating", autoStartPrompt: null, autoStartDisplayPrompt: null,
         contextDelivery, messages: [...prevMessages, { id: msgId(), role: "user" as const,
-          content: prompt, timestamp: Date.now(), optimistic: true }] });
-      void beginCanonicalRun({ userPrompt: prompt, prompt: fullPrompt,
+          content: userPrompt, timestamp: Date.now(), optimistic: true }] });
+      void beginCanonicalRun({ userPrompt, prompt: fullPrompt,
         systemPrompt: frozenPrompt.systemPrompt, attachments, contextItems })
         .catch((error: unknown) => {
           const uncertain = !(error instanceof WorkItemCommandError);
           launchFeedback.failed(uncertain);
           syncedRef.current = uncertain;
           if (!uncertain) releaseLeaderAutoStart(node.id, prompt);
-          setInput((draft) => draft || prompt);
-          emitUpdate({ ...dataRef.current, status: "error", autoStartPrompt: null,
+          setInput((draft) => draft || userPrompt);
+          emitUpdate({ ...dataRef.current, status: "error", autoStartPrompt: null, autoStartDisplayPrompt: null,
             error: error instanceof Error ? error.message : String(error) });
         });
       return;

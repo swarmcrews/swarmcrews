@@ -12,6 +12,7 @@ import type { CanvasNode, NodeRenderProps } from "../types.ts";
 import { DEFAULT_THINKING_CONFIG } from "../types.ts";
 import type { ServerMessage } from "../use-socket.ts";
 import { createReplaySocket } from "../../tests/harness/ws-replay.ts";
+import { buildEmptyCanvasLeaderPrompt } from "../empty-canvas.ts";
 import type { WorkItemSnapshot } from "../../shared/work-item-contracts.ts";
 
 beforeAll(() => {
@@ -332,10 +333,14 @@ describe("LeaderNode: new-session initiation", () => {
     expect(creates()).toHaveLength(1);
   });
 
-  it.each(["", "New draft"])("restores a rejected launch prompt without overwriting a newer draft (%s)", async (draft) => {
+  it.each(["", "New draft"].flatMap(draft => [false, true].map(autoStart => ({ draft, autoStart }))))(
+    "restores a rejected launch prompt without overwriting a newer draft ($draft, autoStart=$autoStart)", async ({ draft, autoStart }) => {
     const { socket, replay } = createReplaySocket();
     function Probe() {
-      const [data, setData] = useState(disconnectedLeaderData());
+      const [data, setData] = useState(disconnectedLeaderData(autoStart ? {
+        autoStartPrompt: buildEmptyCanvasLeaderPrompt("  Original request  "),
+        autoStartDisplayPrompt: "Original request",
+      } : {}));
       return <LeaderNodeRenderer node={{ id: "rejected-leader", type: "leader",
         position: { x: 0, y: 0 }, size: { width: 480, height: 400 }, data }}
         isSelected={false} projectId="project-1" projectPath="/repo"
@@ -344,22 +349,27 @@ describe("LeaderNode: new-session initiation", () => {
     }
     render(<Probe />);
     const prompt = screen.getByTestId("leader-prompt-input-inline");
-    fireEvent.change(prompt, { target: { value: "  Original request  " } });
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    if (!autoStart) {
+      fireEvent.change(prompt, { target: { value: "  Original request  " } });
+      fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    }
     expect(prompt).toHaveValue("");
     if (draft) fireEvent.change(prompt, { target: { value: draft } });
     const create = socket.sent.find((message) =>
       (message as { type?: string }).type === "create_work_item") as { requestId: string };
     await act(() => replay([{ message: { type: "work_item_response", command: "create_work_item",
       requestId: create.requestId, success: false, code: "invalid_state", error: "Launch failed" } }]));
-    expect(prompt).toHaveValue(draft || "  Original request  ");
+    expect(prompt).toHaveValue(draft || (autoStart ? "Original request" : "  Original request  "));
     expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
   });
 
-  it.each([false, true])("creates, binds, and reuses a work item without duplicate initial prompts (autoStart=%s)", async (autoStart) => {
+  it.each(["manual", "auto", "empty-canvas"])("creates, binds, and reuses a work item without duplicate initial prompts (%s)", async (mode) => {
+    const autoStart = mode !== "manual";
+    const prompt = mode === "empty-canvas" ? buildEmptyCanvasLeaderPrompt("First iteration") : "First iteration";
     const { socket, replay } = createReplaySocket();
     let latest: LeaderData = { ...disconnectedLeaderData(), harness: "codex",
-      ...(autoStart ? { autoStartPrompt: "First iteration" } : {}) };
+      ...(autoStart ? { autoStartPrompt: prompt } : {}),
+      ...(mode === "empty-canvas" ? { autoStartDisplayPrompt: "First iteration" } : {}) };
     function Probe() {
       const [data, setData] = useState(latest);
       latest = data;
@@ -398,6 +408,8 @@ describe("LeaderNode: new-session initiation", () => {
     fireEvent.change(screen.getByTestId("leader-prompt-input-inline"),
       { target: { value: "First iteration" } });
     const start = latestCommand("continue_work_item") as { requestId: string };
+    expect(start).toMatchObject({ prompt, displayPrompt: "First iteration" });
+    if (autoStart) expect(latest.autoStartDisplayPrompt).toBeNull();
     // The run ledger and its replay can arrive before the launch receipt.
     await act(() => replay([{ message: { type: "work_item_run_created", workItemId: "work-1", timestamp: 1,
       run: { runKey: "run-1", workItemId: "work-1", runKind: "primary", runNumber: 1,

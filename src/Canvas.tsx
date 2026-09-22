@@ -2680,12 +2680,12 @@ export function Canvas({
       type: string,
       {
         anchor,
-        prompt = null,
+        prompt = null, displayPrompt,
         focus = false,
         leaderPreset = null,
       }: {
         anchor: CreateNodeAnchor;
-        prompt?: string | null;
+        prompt?: string | null; displayPrompt?: string;
         focus?: boolean;
         leaderPreset?: LeaderPreset | null;
       },
@@ -2705,7 +2705,7 @@ export function Canvas({
       // Seed the new node's data with any typed value (Ctrl+K palette): a
       // leader auto-starts with it, a markdown/note/etc. gets it as content.
       const data = trimmedPrompt
-        ? applyPromptSeed(type, presetData, trimmedPrompt)
+        ? applyPromptSeed(type, presetData, trimmedPrompt, displayPrompt)
         : type === "leader" && draftPrompt
           ? { ...presetData as LeaderData, draftPrompt }
           : presetData;
@@ -2765,7 +2765,7 @@ export function Canvas({
     (description: string) => {
       createNode("leader", {
         anchor: { kind: "smart", preferCursor: false },
-        prompt: buildEmptyCanvasLeaderPrompt(description),
+        prompt: buildEmptyCanvasLeaderPrompt(description), displayPrompt: description.trim(),
         focus: true,
       });
     },

@@ -119,6 +119,7 @@ export function applyPromptSeed(
   type: string,
   data: unknown,
   value: string,
+  displayPrompt?: string,
 ): unknown {
   const seed = value.trim();
   if (!seed) return data;
@@ -126,7 +127,8 @@ export function applyPromptSeed(
   switch (type) {
     case "leader":
       // Auto-start the session with the typed prompt.
-      return { ...base, autoStartPrompt: seed };
+      return { ...base, autoStartPrompt: seed,
+        ...(displayPrompt !== undefined ? { autoStartDisplayPrompt: displayPrompt } : {}) };
     case "markdown":
       return { ...base, content: seed, title: deriveTitle(seed) };
     case "note":

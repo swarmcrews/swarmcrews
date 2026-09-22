@@ -50,3 +50,18 @@ it.each(["  Keep this context\nwith its formatting.  ", "short", ""].flatMap(des
       (input as HTMLTextAreaElement).value)).toEqual([`${description} More details`, ""]);
   },
 );
+
+it("shows only the description when starting from the empty canvas", () => {
+  render(<Harness />);
+  const description = "Build the onboarding dashboard.";
+  fireEvent.change(screen.getByRole("textbox", { name: "Context description" }), {
+    target: { value: `  ${description}  ` },
+  });
+  fireEvent.submit(screen.getByRole("form", { name: "Start canvas with context" }));
+
+  expect(within(screen.getByLabelText("Conversation messages")).getByText(description)).toBeVisible();
+  expect(screen.queryByText(/The user is starting from an empty canvas/)).toBeNull();
+  expect(socketSend).toHaveBeenCalledWith(expect.objectContaining({
+    type: "create_work_item", title: description,
+  }));
+});

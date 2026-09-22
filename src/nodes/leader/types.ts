@@ -106,6 +106,8 @@ export interface LeaderData {
   systemPromptPrefix?: string | null | undefined;
   /** If set, auto-start a session with this prompt (then clear it) */
   autoStartPrompt?: string | null | undefined;
+  /** User-visible text for an auto-start prompt containing internal launch instructions. */
+  autoStartDisplayPrompt?: string | null | undefined;
   /** If set, pre-fill the prompt input once (then clear it) */
   draftPrompt?: string | null | undefined;
   /** Display name set by the agent via set_task_name */

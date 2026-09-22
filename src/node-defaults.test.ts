@@ -66,6 +66,11 @@ describe("applyPromptSeed", () => {
     expect(data).toEqual({ model: "opus", autoStartPrompt: "build a thing" });
   });
 
+  it("keeps auto-start instructions separate from the user-visible prompt", () => {
+    expect(applyPromptSeed("leader", { model: "opus" }, "Internal instructions", "Build a dashboard"))
+      .toEqual({ model: "opus", autoStartPrompt: "Internal instructions", autoStartDisplayPrompt: "Build a dashboard" });
+  });
+
   it("seeds markdown content and derives a title from the first line", () => {
     const data = applyPromptSeed(
       "markdown",
