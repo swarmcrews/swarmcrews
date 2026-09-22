@@ -8,7 +8,7 @@ test('Activity opens at latest, preserves history while streaming, and resumes f
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   const fixture = await openResponsiveFixture(page);
-  await page.locator('.act-session-home__open').click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   const feed = page.getByRole('region', { name: 'Conversation messages' });
   await expect(feed).toContainText('Verify controls, keyboard access, and scrolling at smaller sizes.');
   await expect.poll(() => bottomGap(feed)).toBeLessThan(2);
@@ -46,10 +46,10 @@ test('fullscreen keeps conversation spacious and panels dismissible, then return
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await openResponsiveFixture(page);
-  await page.locator('.act-session-home__open').click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   await page.getByRole('button', { name: 'Add to canvas', exact: true }).click();
   await page.getByRole('tab', { name: /^Activity(?: \d+)?$/ }).click();
-  await page.locator('.act-session-home__open').click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   await page.getByRole('button', { name: 'Expand fullscreen', exact: true }).click();
   const overlay = page.getByRole('dialog', { name: 'Leader fullscreen cockpit' });
   const feed = overlay.getByRole('region', { name: 'Conversation messages' });

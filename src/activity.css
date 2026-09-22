@@ -1066,7 +1066,7 @@
 }
 
 .act-session-home__content {
-  width: min(820px, 100%);
+  width: min(1120px, 100%);
   margin: 0 auto;
 }
 
@@ -1131,9 +1131,52 @@
   border-color: var(--border-hover);
 }
 
+.act-session-active {
+  margin-bottom: 24px;
+}
+
+.act-session-active__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.act-session-active__heading h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font: 600 13px/1.3 var(--font-sans);
+}
+
+.act-session-active__heading > span {
+  color: var(--text-muted);
+  font: 500 10px/1.3 var(--font-mono);
+}
+
+.act-session-active__cards {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding: 3px 3px 10px;
+  scroll-snap-type: x proximity;
+}
+
+.act-session-home__empty {
+  margin: 0;
+  padding: 16px;
+  color: var(--text-muted);
+  font: 400 12px/1.55 var(--font-sans);
+}
+
 .act-session-feature {
   position: relative;
-  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  scroll-snap-align: start;
   overflow: hidden;
   background: color-mix(in srgb, var(--bg-surface) 72%, var(--bg-secondary));
   border: 1px solid var(--border-default);
@@ -1178,20 +1221,15 @@
 }
 
 .act-session-feature__body {
-  padding: 18px 18px 17px;
+  flex: 1;
+  padding: 16px 18px;
+  overflow-wrap: anywhere;
 }
 
-.act-session-home__reason {
-  display: inline-flex;
-  margin-bottom: 8px;
-  color: var(--text-secondary);
-  font: 600 10px/1 var(--font-mono);
-}
-
-.act-session-feature__body h3 {
+.act-session-feature__body h4 {
   margin: 0 0 7px;
   color: var(--text-primary);
-  font: 650 21px/1.25 var(--font-sans);
+  font: 650 16px/1.3 var(--font-sans);
   letter-spacing: -0.015em;
 }
 
@@ -3180,11 +3218,11 @@
 }
 
 /* Context disclosure and actionable focus targets. */
-.act-session-metadata > summary, .act-session-more > summary { cursor: pointer; }
+.act-session-metadata > summary { cursor: pointer; }
 .act-session-metadata > summary { display: flex; justify-content: space-between; }
 .act-session-metadata[open] > summary svg { transform: rotate(90deg); }
 .act-session-metadata .act-detail-list { padding: 0 16px 16px; }
-.act-session-metadata > summary:focus-visible, .act-session-more > summary:focus-visible,
+.act-session-metadata > summary:focus-visible,
 [data-activity-target]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .act-decision-card { border-color: color-mix(in srgb, var(--status-warning) 45%, var(--border-default)); }
 .act-triage-row .act-mini-btn--primary {
@@ -3243,8 +3281,6 @@
 
 .act-decision-card .dashboard-header { display: none; }
 
-.act-session-more__chevron { flex-shrink: 0; color: var(--text-muted); }
-.act-session-more[open] .act-session-more__chevron { transform: rotate(90deg); }
 
 /* Keep the draft renderer mounted while browsing so its prompt and uploads survive. */
 .act-launch-panel[hidden], .act-empty-workspace[hidden] { display: none; }

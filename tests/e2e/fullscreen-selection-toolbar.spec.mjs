@@ -8,10 +8,10 @@ async function openFullscreen(page) {
       `Paragraph ${i + 1}. Keep supporting information accessible and preserve room for the conversation. Verify controls, keyboard access, and scrolling at smaller sizes.`,
     ).join("\n\n"),
   });
-  await page.locator(".act-session-home__open").click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   await page.getByRole("button", { name: "Add to canvas", exact: true }).click();
   await page.getByRole("tab", { name: /^Activity(?: \d+)?$/ }).click();
-  await page.locator(".act-session-home__open").click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   await page.getByRole("button", { name: "Expand fullscreen", exact: true }).click();
   const overlay = page.getByRole("dialog", { name: "Leader fullscreen cockpit" });
   const feed = overlay.getByRole("region", { name: "Conversation messages" });

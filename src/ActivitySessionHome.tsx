@@ -1,5 +1,5 @@
 import { agentMessagePreview } from "./agent-message-format.ts";
-import { ArrowRight, ChevronRight, Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 
 import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
 import {
@@ -86,10 +86,20 @@ export function sessionRelevanceLabel(session: MobileSessionInfo): string {
   return "Recent session";
 }
 
+function isActiveTask(session: MobileSessionInfo): boolean {
+  const presentation = session.workItemPresentation;
+  // Monitor executing work only, not tasks paused for input or files.
+  // Canonical work-item state wins over a stale session transport status.
+  return presentation
+    ? presentation.badge === "active"
+    : session.status === "running" || session.status === "creating";
+}
+
 function sessionSummary(session: MobileSessionInfo): string {
+  const report = session.reviewLifecycle?.finalReport?.trim();
+  const activity = session.lastActivity?.trim();
   const source = [
-    session.reviewLifecycle?.finalReport?.trim(),
-    session.lastActivity?.trim(),
+    ...(isActiveTask(session) ? [activity, report] : [report, activity]),
     session.reviewLifecycle?.reviewReason?.trim(),
   ].find((candidate) => candidate && !isSessionTitleEcho(session, candidate));
   if (!source) {
@@ -133,10 +143,14 @@ export function ActivitySessionHome({
   onOpenSession: (sessionKey: string) => void;
   onLaunch: () => void;
 }) {
-  const relevant = selectRelevantSessions(sessions);
-  const primary = relevant[0];
+  const active = selectRelevantSessions(sessions.filter(isActiveTask), sessions.length);
+  // This is history, not the sidebar's attention queue. Old decisions must not
+  // displace newer completed work, and every loaded entry stays reachable.
+  const recent = sessions.filter((session) => !isActiveTask(session))
+    .sort((a, b) => relevanceTimestamp(b) - relevanceTimestamp(a)
+      || sessionDisplayTitle(a).localeCompare(sessionDisplayTitle(b)));
   const attentionCount = sessions.filter(needsAttention).length;
-  if (!primary) return null;
+  if (sessions.length === 0) return null;
 
   return (
     <main className="act-session-home" aria-label="Session dashboard">
@@ -144,7 +158,7 @@ export function ActivitySessionHome({
         <header className="act-session-home__heading">
           <div>
             <span>Activity overview</span>
-            <h2>{needsAttention(primary) ? "Your next step" : "Pick up your work"}</h2>
+            <h2>{attentionCount > 0 ? "Your next step" : "Pick up your work"}</h2>
             <p>
               {attentionCount > 0
                 ? `${attentionCount} ${attentionCount === 1 ? "session needs" : "sessions need"} your attention.`
@@ -157,48 +171,57 @@ export function ActivitySessionHome({
           </button>
         </header>
 
-        <div
-          className={`act-session-feature act-session-feature--${relevanceTone(primary)}`}
-          aria-labelledby="act-session-feature-title"
-        >
-          <div className="act-session-feature__heading">
-            <span>Best next step</span>
-            <span className={`act-pill act-pill--${activityStatusTone(primary)}`}>{activityStatusLabel(primary)}</span>
-          </div>
-          <div className="act-session-feature__body">
-            {sessionRelevanceLabel(primary) !== activityStatusLabel(primary) && (
-              <span className="act-session-home__reason">{sessionRelevanceLabel(primary)}</span>
-            )}
-            <h3 id="act-session-feature-title">{sessionDisplayTitle(primary)}</h3>
-            <p>{sessionSummary(primary)}</p>
-          </div>
-          <footer className="act-session-feature__footer">
-            <span>{sessionMeta(primary)}</span>
-            <button
-              className="act-session-home__open"
-              type="button"
-              onClick={() => onOpenSession(primary.sessionKey)}
-            >
-              <span>{needsAttention(primary) ? attentionAction(primary) : "Open session"}</span>
-              <ArrowRight size={14} strokeWidth={2.25} aria-hidden />
-            </button>
-          </footer>
-        </div>
+        {active.length > 0 && (
+          <section className="act-session-active" aria-labelledby="act-session-active-title">
+            <header className="act-session-active__heading">
+              <h3 id="act-session-active-title">Active tasks</h3>
+              <span>{active.length} active</span>
+            </header>
+            <div className="act-session-active__cards">
+              {active.map((session) => (
+                <article
+                  key={session.sessionKey}
+                  className={`act-session-feature act-session-feature--${relevanceTone(session)}`}
+                  aria-label={sessionDisplayTitle(session)}
+                >
+                  <div className="act-session-feature__heading">
+                    <span>{sessionRoleLabel(session)}</span>
+                    <span className={`act-pill act-pill--${activityStatusTone(session)}`}>
+                      {activityStatusLabel(session)}
+                    </span>
+                  </div>
+                  <div className="act-session-feature__body">
+                    <h4>{sessionDisplayTitle(session)}</h4>
+                    <p>{sessionSummary(session)}</p>
+                  </div>
+                  <footer className="act-session-feature__footer">
+                    <span>{sessionMeta(session)}</span>
+                    <button
+                      className="act-session-home__open"
+                      type="button"
+                      onClick={() => onOpenSession(session.sessionKey)}
+                    >
+                      <span>{needsAttention(session) ? attentionAction(session) : "Open session"}</span>
+                      <ArrowRight size={14} strokeWidth={2.25} aria-hidden />
+                    </button>
+                  </footer>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
-        {relevant.length > 1 && (
-          <details className="act-session-more" aria-labelledby="act-session-more-title">
-            <summary className="act-session-more__heading">
+        {recent.length > 0 ? (
+          <section className="act-session-more" aria-labelledby="act-session-more-title">
+            <header className="act-session-more__heading">
               <div>
-                <h3 id="act-session-more-title">Other sessions</h3>
-                <p>Recent work and sessions in progress.</p>
+                <h3 id="act-session-more-title">Recent work</h3>
+                <p>Recently completed work and sessions ready for review.</p>
               </div>
-              {sessions.length > relevant.length && (
-                <span>{sessions.length - relevant.length} more in Activity</span>
-              )}
-              <ChevronRight className="act-session-more__chevron" size={16} aria-hidden />
-            </summary>
+              <span>{recent.length} {recent.length === 1 ? "session" : "sessions"}</span>
+            </header>
             <div className="act-session-more__list">
-              {relevant.slice(1).map((session) => (
+              {recent.map((session) => (
                 <button
                   key={session.sessionKey}
                   type="button"
@@ -226,7 +249,14 @@ export function ActivitySessionHome({
                 </button>
               ))}
             </div>
-          </details>
+          </section>
+        ) : (
+          <section className="act-session-more" aria-labelledby="act-session-more-title">
+            <header className="act-session-more__heading">
+              <h3 id="act-session-more-title">Recent work</h3>
+            </header>
+            <p className="act-session-home__empty">No recently completed work to review yet.</p>
+          </section>
         )}
       </div>
     </main>

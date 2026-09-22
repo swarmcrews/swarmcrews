@@ -28,7 +28,7 @@ async function expectContained(locator, width, height) {
 }
 
 test("keeps conversation, supporting context, and navigation usable across sizes", async ({ page }) => {
-  await page.locator('.act-session-home__open').click();
+  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
   const conversation = page.getByRole('main', { name: 'Conversation' });
   const context = page.getByRole('region', { name: 'Leader context' });
   const draft = page.getByRole('textbox', { name: 'Reply or steer this agent' });
@@ -65,6 +65,10 @@ test("keeps conversation, supporting context, and navigation usable across sizes
     const project = await page.locator('.project-switcher__trigger').boundingBox();
     const tabs = await page.getByRole('tablist', { name: 'View mode' }).boundingBox();
     expect(project.x + project.width).toBeLessThanOrEqual(tabs.x + 1);
+    // Header actions must remain reachable when labels and badges cannot fit.
+    for (const name of ["Connections", "Skills", "Open settings"]) {
+      await expectContained(page.getByRole("button", { name, exact: true }), width, height);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     const categories = page.locator('.act-summary');
     if (await categories.isVisible()) {

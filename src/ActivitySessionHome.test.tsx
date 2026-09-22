@@ -90,11 +90,135 @@ describe("selectRelevantSessions", () => {
 });
 
 describe("ActivitySessionHome", () => {
+  it("shows every active task above a visible recent-work review list", () => {
+    const onOpenSession = vi.fn();
+    render(<ActivitySessionHome sessions={[
+      session({ sessionKey: "done", taskName: "Completed audit", status: "completed", lastActivity: "Review the findings" }),
+      ...Array.from({ length: 5 }, (_, index) => session({
+        sessionKey: `live-${index}`, taskName: `Live task ${index}`, status: "running",
+      })),
+      session({ sessionKey: "starting", taskName: "Starting task", status: "creating" }),
+      session({ sessionKey: "waiting", taskName: "Approval task", status: "waiting" }),
+    ]} onOpenSession={onOpenSession} onLaunch={() => {}} />);
+
+    const active = screen.getByRole("region", { name: "Active tasks" });
+    const recent = screen.getByRole("region", { name: "Recent work" });
+    expect(within(active).getAllByRole("article")).toHaveLength(6);
+    expect(within(active).getByText("Starting task")).toBeVisible();
+    expect(within(active).queryByText("Approval task")).not.toBeInTheDocument();
+    expect(within(recent).getByText("Approval task")).toBeVisible();
+    expect(within(active).queryByText("Completed audit")).not.toBeInTheDocument();
+    expect(within(recent).getByText("Completed audit")).toBeVisible();
+    expect(within(recent).queryByText("Live task 0")).not.toBeInTheDocument();
+    expect(active.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(within(recent).getByRole("button", { name: /completed audit/i }));
+    expect(onOpenSession).toHaveBeenCalledWith("done");
+  });
+
+  it.each([
+    { label: "Decision needed", needsAttention: true },
+    { label: "Waiting for files", needsAttention: true },
+    { label: "Waiting", needsAttention: false },
+  ])("keeps $label tasks out of the active row, even with stale running status", (presentation) => {
+    render(<ActivitySessionHome sessions={[
+      session({ sessionKey: "waiting", taskName: "Paused task", status: "running",
+        workItemPresentation: { ...presentation, badge: "waiting", attentionRank: 0, availableActions: [] },
+      }),
+      session({ sessionKey: "legacy", taskName: "Waiting legacy task", status: "waiting" }),
+    ]} onOpenSession={() => {}} onLaunch={() => {}} />);
+    expect(screen.queryByRole("region", { name: "Active tasks" })).not.toBeInTheDocument();
+    const recent = screen.getByRole("region", { name: "Recent work" });
+    expect(within(recent).getByText("Paused task")).toBeVisible();
+    expect(within(recent).getByText("Waiting legacy task")).toBeVisible();
+  });
+
+  it("removes a task from monitoring when it waits and restores it when it resumes", () => {
+    const props = { onOpenSession: vi.fn(), onLaunch: vi.fn() };
+    const { rerender } = render(<ActivitySessionHome {...props} sessions={[
+      session({ taskName: "Live task", status: "running" }),
+    ]} />);
+    expect(screen.getByRole("region", { name: "Active tasks" })).toBeVisible();
+    rerender(<ActivitySessionHome {...props} sessions={[
+      session({ taskName: "Live task", status: "waiting" }),
+    ]} />);
+    expect(screen.queryByRole("region", { name: "Active tasks" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Recent work" })).getByText("Live task")).toBeVisible();
+    rerender(<ActivitySessionHome {...props} sessions={[
+      session({ taskName: "Live task", status: "running" }),
+    ]} />);
+    expect(within(screen.getByRole("region", { name: "Active tasks" })).getByText("Live task")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Recent work" })).queryByText("Live task")).not.toBeInTheDocument();
+  });
+
+  it("uses canonical status to group work and shows current activity on live cards", () => {
+    render(<ActivitySessionHome sessions={[
+      session({ sessionKey: "live", taskName: "Integrating task", status: "completed",
+        lastActivity: "Applying the patch",
+        workItemPresentation: { label: "Integrating", badge: "active", attentionRank: 4,
+          needsAttention: false, availableActions: [] },
+        reviewLifecycle: { reviewState: "none", finalReport: "Previous run finished",
+          reviewReason: null, finalDashboardRevision: null, dashboardRevision: 0,
+          terminalReason: "completed", terminalAt: 20, acknowledgedAt: null,
+          dismissedAt: null, lifecycleRevision: 1 },
+      }),
+      session({ sessionKey: "done", taskName: "Finished task", status: "running",
+        workItemPresentation: { label: "Completed", badge: "success", attentionRank: 5,
+          needsAttention: false, availableActions: [] },
+      }),
+    ]} onOpenSession={() => {}} onLaunch={() => {}} />);
+    const active = screen.getByRole("region", { name: "Active tasks" });
+    expect(within(active).getByText("Integrating")).toBeVisible();
+    expect(within(active).getByText("Applying the patch")).toBeVisible();
+    expect(within(active).queryByText("Previous run finished")).not.toBeInTheDocument();
+    expect(within(active).queryByText("Finished task")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Recent work" }))
+      .getByText("Finished task")).toBeVisible();
+  });
+
+  it("moves finished tasks from live cards into the review list on updates", () => {
+    const props = { onOpenSession: vi.fn(), onLaunch: vi.fn() };
+    const { rerender } = render(<ActivitySessionHome {...props} sessions={[
+      session({ taskName: "Live task", status: "running" }),
+    ]} />);
+    expect(screen.getByText("No recently completed work to review yet.")).toBeVisible();
+    rerender(<ActivitySessionHome {...props} sessions={[
+      session({ taskName: "Live task", status: "completed" }),
+    ]} />);
+    expect(screen.queryByRole("region", { name: "Active tasks" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/No active tasks/)).not.toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Recent work" }))
+      .getByText("Live task")).toBeVisible();
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  });
+
+  it("shows newest completed work before old unresolved errors and decisions", () => {
+    const lifecycle = (reviewState: "decision_needed" | "completion_to_review" | "error_to_review", terminalAt: number | null) => ({
+      reviewState, terminalAt, finalReport: null, reviewReason: null,
+      finalDashboardRevision: null, dashboardRevision: 0, terminalReason: null,
+      acknowledgedAt: null, dismissedAt: null, lifecycleRevision: 1,
+    });
+    render(<ActivitySessionHome sessions={[
+      session({ sessionKey: "old-decision", taskName: "Old decision", status: "inactive",
+        lastActivityAt: 10, reviewLifecycle: lifecycle("decision_needed", null) }),
+      session({ sessionKey: "old-error", taskName: "Old error", status: "error",
+        lastActivityAt: 20, reviewLifecycle: lifecycle("error_to_review", 20) }),
+      session({ sessionKey: "done", taskName: "Latest completed work", status: "completed",
+        lastActivityAt: 100, reviewLifecycle: lifecycle("completion_to_review", 100) }),
+      session({ sessionKey: "recent", taskName: "Recent completed work", status: "completed",
+        lastActivityAt: 90, reviewLifecycle: lifecycle("completion_to_review", 90) }),
+    ]} onOpenSession={() => {}} onLaunch={() => {}} />);
+    expect(screen.queryByRole("region", { name: "Active tasks" })).not.toBeInTheDocument();
+    const rows = within(screen.getByRole("region", { name: "Recent work" })).getAllByRole("button");
+    expect(rows.map((row) => row.querySelector("strong")?.textContent)).toEqual([
+      "Latest completed work", "Recent completed work", "Old error", "Old decision",
+    ]);
+  });
+
   it("invites users to open a structured report instead of showing evidence in the preview", () => {
     render(<ActivitySessionHome sessions={[session({ taskName: "Audit changes",
       lastActivity: JSON.stringify({ summary: "Audit finished", nextSteps: ["Review findings"] }) })]}
       onOpenSession={() => {}} onLaunch={() => {}} />);
-    expect(document.querySelector(".act-session-feature__body p"))
+    expect(screen.getByRole("button", { name: /audit changes/i }))
       .toHaveTextContent("Agent report available. Open session to view details.");
   });
 
@@ -181,8 +305,7 @@ describe("ActivitySessionHome", () => {
       />,
     );
 
-    const primary = document.querySelector(".act-session-feature")!;
-    expect(primary.querySelector(".act-session-feature__body p"))
+    expect(screen.getByRole("button", { name: /release checklist/i }))
       .toHaveTextContent("Deployment is ready");
 
     const activity = screen.getByRole("button", { name: /dependency audit/i });
@@ -220,14 +343,14 @@ describe("ActivitySessionHome", () => {
       />,
     );
 
-    const feature = document.querySelector(".act-session-feature");
-    expect(feature).toHaveClass("act-session-feature--inactive");
-    expect(feature).not.toHaveClass("act-session-feature--error");
+    const row = screen.getByRole("button", { name: /paused work/i });
+    expect(row.querySelector(".act-session-row__signal"))
+      .toHaveClass("act-session-row__signal--inactive");
     expect(screen.getAllByText("Inactive")).not.toHaveLength(0);
     expect(screen.queryByText("Interrupted")).not.toBeInTheDocument();
   });
 
-  it("opens the best next session and keeps new work available", () => {
+  it("opens a waiting task and keeps new work available", () => {
     const onOpenSession = vi.fn();
     const onLaunch = vi.fn();
     render(
@@ -253,17 +376,17 @@ describe("ActivitySessionHome", () => {
 
     const dashboard = screen.getByRole("main", { name: /session dashboard/i });
     expect(within(dashboard).queryByText(/select a session/i)).not.toBeInTheDocument();
-    expect(within(dashboard).getByRole("heading", { name: "Release decision" })).toBeInTheDocument();
+    expect(within(dashboard).getByRole("button", { name: /Release decision/ })).toBeInTheDocument();
     expect(within(dashboard).getByText("Waiting for you")).toBeInTheDocument();
 
-    fireEvent.click(within(dashboard).getByRole("button", { name: /^Reply$/i }));
+    fireEvent.click(within(dashboard).getByRole("button", { name: /Release decision/ }));
     expect(onOpenSession).toHaveBeenCalledWith("waiting");
 
     fireEvent.click(within(dashboard).getByRole("button", { name: /new leader/i }));
     expect(onLaunch).toHaveBeenCalledTimes(1);
   });
 
-  it("shows only a short continuation list and opens a secondary session", () => {
+  it("shows all recent work without a hidden cutoff and opens a session", () => {
     const onOpenSession = vi.fn();
     render(
       <ActivitySessionHome
@@ -272,19 +395,19 @@ describe("ActivitySessionHome", () => {
           session({ sessionKey: "two", taskName: "Two", status: "idle", lastActivityAt: 40 }),
           session({ sessionKey: "three", taskName: "Three", status: "idle", lastActivityAt: 30 }),
           session({ sessionKey: "four", taskName: "Four", status: "idle", lastActivityAt: 20 }),
-          session({ sessionKey: "five", taskName: "Five", status: "idle", lastActivityAt: 10 }),
+          session({ sessionKey: "five", taskName: "Five", status: "completed", lastActivityAt: 10 }),
+          session({ sessionKey: "six", taskName: "Six", status: "completed", lastActivityAt: 5 }),
         ]}
         onOpenSession={onOpenSession}
         onLaunch={() => {}}
       />,
     );
 
-    expect(screen.getByText("1 more in Activity")).toBeInTheDocument();
-    expect(screen.queryByText("Five")).not.toBeInTheDocument();
-    const disclosure = screen.getByText("Other sessions").closest("details")!;
-    expect(disclosure.open).toBe(false);
-    fireEvent.click(screen.getByText("Other sessions"));
-    expect(disclosure.open).toBe(true);
+    expect(screen.queryByText(/more in Activity/)).not.toBeInTheDocument();
+    expect(screen.getByText("Five")).toBeVisible();
+    expect(screen.getByText("Six")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Recent work" })).toBeVisible();
+    expect(screen.getByText("Two")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: /two/i }));
     expect(onOpenSession).toHaveBeenCalledWith("two");
   });

@@ -129,7 +129,7 @@ describe("ActivityView", () => {
         finalReport: structured ? JSON.stringify({ summary }) : summary,
       },
     })]} nodes={[]} {...noop} />);
-    fireEvent.click(screen.getByRole("button", { name: /audit report/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /audit report/i }));
     const report = screen.getByRole("article", { name: "Final report" });
     const link = within(report).getByRole("link", { name: "Completed audit and graph" });
     const url = new URL(link.getAttribute("href")!, "http://localhost");
@@ -220,7 +220,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /focused session/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /focused session/i }));
 
     const inspector = screen.getByRole("complementary", { name: "Session details" });
     const back = within(inspector).getByRole("button", { name: "Back to activity" });
@@ -436,7 +436,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /leader-with-stale-roster/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /leader-with-stale-roster/i }));
     const inspector = screen.getByRole("complementary", { name: /session details/i });
     expect(within(inspector).getByRole("tab", { name: /minions2/i }))
       .toHaveAttribute("aria-selected", "true");
@@ -446,7 +446,7 @@ describe("ActivityView", () => {
     expect(within(inspector).queryByText("Leader work")).not.toBeInTheDocument();
   });
 
-  it("opens on a relevance-first session dashboard instead of an instruction", () => {
+  it("opens on an active-task dashboard instead of an instruction", () => {
     const onLaunchLeader = vi.fn();
     render(
       <ActivityView
@@ -465,7 +465,7 @@ describe("ActivityView", () => {
     );
 
     const dashboard = screen.getByRole("main", { name: /session dashboard/i });
-    expect(within(dashboard).getByText("Best next step")).toBeInTheDocument();
+    expect(within(dashboard).getByRole("region", { name: "Active tasks" })).toBeInTheDocument();
     expect(within(dashboard).getByRole("heading", { name: "Continue the release" }))
       .toBeInTheDocument();
     expect(within(dashboard).queryByText(/select a session/i)).not.toBeInTheDocument();
@@ -490,10 +490,10 @@ describe("ActivityView", () => {
         {...noop}
       />,
     );
-    expect(screen.getByRole("button", { name: /open work/i })).toBeInTheDocument();
+    expect(within(activityList()).getByRole("button", { name: /open work/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /dismissed work/i })).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: "dismissed" } });
-    expect(screen.getByRole("button", { name: /dismissed work/i })).toBeInTheDocument();
+    expect(within(activityList()).getByRole("button", { name: /dismissed work/i })).toBeInTheDocument();
   });
 
   it("shows an interrupted inactive work item as inactive", () => {
@@ -716,7 +716,7 @@ describe("ActivityView", () => {
         {...noop}
       />,
     );
-    expect(screen.getByRole("button", { name: /dismiss this/i })).toBeInTheDocument();
+    expect(within(activityList()).getByRole("button", { name: /dismiss this/i })).toBeInTheDocument();
     rerender(
       <ActivityView
         sessions={[session({
@@ -743,7 +743,7 @@ describe("ActivityView", () => {
         socketSubscribe={subscribe}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /finished task/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /finished task/i }));
     expect(screen.getByText(/implemented the migration/i)).toBeInTheDocument();
     const inspector = screen.getByRole("complementary", { name: /session details/i });
     fireEvent.click(within(inspector).getByRole("button", { name: /mark reviewed/i }));
@@ -1247,7 +1247,7 @@ describe("ActivityView", () => {
       render(<ActivityView sessions={[session({ sessionKey: "configure-run", workItemId: "configure-work",
         canonicalWorkItem: true, status: "inactive", taskName: "Configure task" })]}
         nodes={[]} {...noop} socketSend={vi.fn()} onPromptWorkItem={onPromptWorkItem} />);
-      fireEvent.click(screen.getByRole("button", { name: /configure task/i }));
+      fireEvent.click(within(activityList()).getByRole("button", { name: /configure task/i }));
       const composer = screen.getByRole("textbox", { name: /reply or steer/i });
       fireEvent.change(composer, { target: { value: "@iteration-config" } });
       fireEvent.keyDown(composer, { key: "Tab" });
@@ -1287,7 +1287,7 @@ describe("ActivityView", () => {
         nodes={[]} {...noop} socketSend={socketSend} onPromptWorkItem={onPromptWorkItem}
         projectSettings={{ dashboardLeaderActions: [{ id: "review-iteration", name: "Review iteration",
           icon: "microscope", prompt: "Review the next iteration.", skillIds: ["iteration-review", "missing-skill"] }] }} />);
-      fireEvent.click(screen.getByRole("button", { name: /iteration task/i }));
+      fireEvent.click(within(activityList()).getByRole("button", { name: /iteration task/i }));
       const composer = screen.getByRole("textbox", { name: /reply or steer/i });
       fireEvent.change(composer, { target: { value: "/review iteration" } });
       expect(screen.getByRole("listbox", { name: "Leader context shortcuts" })).toBeInTheDocument();
@@ -1344,7 +1344,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /existing agent/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /existing agent/i }));
     fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), {
       target: { value: "Start another iteration." },
     });
@@ -1371,7 +1371,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /existing agent/i })).toHaveAttribute(
+    expect(within(activityList()).getByRole("button", { name: /existing agent/i })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1393,7 +1393,7 @@ describe("ActivityView", () => {
         onPromptWorkItem={onPromptWorkItem}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /completed/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /completed/i }));
     fireEvent.change(screen.getByRole("textbox", { name: /reply or steer/i }), {
       target: { value: "Start the next iteration." },
     });
@@ -1416,7 +1416,7 @@ describe("ActivityView", () => {
       onPromptWorkItem, onClearPromptFailure,
     };
     const { rerender } = render(<ActivityView {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: /completed/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /completed/i }));
     const composer = screen.getByRole("textbox", { name: /reply or steer/i });
     fireEvent.change(composer, { target: { value: "Do not lose this." } });
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
@@ -1441,7 +1441,7 @@ describe("ActivityView", () => {
     render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "Attachments",
       ...(canonical ? { workItemId: "work-1", canonicalWorkItem: true } : {}) })]}
       nodes={[]} {...noop} socketSend={socketSend} />);
-    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /attachments/i }));
     const picker = screen.getByLabelText("Image or text attachments");
     const openPicker = vi.spyOn(picker, "click");
     fireEvent.click(screen.getByRole("button", { name: "Attach images or text files" }));
@@ -1467,7 +1467,7 @@ describe("ActivityView", () => {
       canonicalWorkItem: true, taskName: "Attachments" })], nodes: [], ...noop,
       socketSend: vi.fn(), onPromptWorkItem };
     const { rerender } = render(<ActivityView {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: /attachments/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /attachments/i }));
     fireEvent.paste(screen.getByRole("textbox", { name: /reply or steer/i }), { clipboardData: {
       files: [new File(["Acceptance criteria"], "notes.md", { type: "text/markdown" })], getData: () => "",
     } });
@@ -1490,7 +1490,7 @@ describe("ActivityView", () => {
     const socketSend = vi.fn();
     render(<ActivityView sessions={[session({ sessionKey: "run-1", taskName: "First leader" }),
       session({ sessionKey: "run-2", taskName: "Second leader" })]} nodes={[]} {...noop} socketSend={socketSend} />);
-    fireEvent.click(screen.getByRole("button", { name: /first leader/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /first leader/i }));
     fireEvent.change(screen.getByLabelText("Image or text attachments"), {
       target: { files: [new File(["binary"], "archive.zip", { type: "application/zip" })] },
     });
@@ -1903,7 +1903,7 @@ describe("ActivityView", () => {
     expect(screen.queryByRole("region", { name: /recent agent work/i })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^clear filter$/i }));
-    expect(screen.getByRole("button", { name: /quiet agent/i })).toBeInTheDocument();
+    expect(within(activityList()).getByRole("button", { name: /quiet agent/i })).toBeInTheDocument();
     expect(onAttachToCanvas).not.toHaveBeenCalled();
   });
 
@@ -1927,7 +1927,7 @@ describe("ActivityView", () => {
     );
 
     fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: visibility.toLowerCase() } });
-    expect(screen.getByRole("button", { name: new RegExp(activityName, "i") }))
+    expect(within(activityList()).getByRole("button", { name: new RegExp(activityName, "i") }))
       .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
     expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
@@ -1935,7 +1935,7 @@ describe("ActivityView", () => {
     fireEvent.click(screen.getByRole("button", { name: /^clear filter$/i }));
 
     expect(screen.getByRole("combobox", { name: "Activity visibility" })).toHaveValue(visibility.toLowerCase());
-    expect(screen.getByRole("button", { name: new RegExp(activityName, "i") }))
+    expect(within(activityList()).getByRole("button", { name: new RegExp(activityName, "i") }))
       .toBeInTheDocument();
   });
 
@@ -1953,7 +1953,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    const sections = screen.getAllByRole("region");
+    const sections = within(activityList()).getAllByRole("region");
     expect(sections.map((s) => s.getAttribute("aria-label"))).toEqual([
       "Active",
       "Idle",
@@ -2134,7 +2134,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    expect(screen.getAllByRole("region").map((s) => s.getAttribute("aria-label"))).toEqual([
+    expect(within(activityList()).getAllByRole("region").map((s) => s.getAttribute("aria-label"))).toEqual([
       "Needs you",
       "Active",
       "Idle",
@@ -2266,7 +2266,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /review the release/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /review the release/i }));
     const inspector = screen.getByRole("complementary", { name: /session details/i });
     const conversation = within(inspector).getByRole("main", { name: /^conversation$/i });
     const tabs = within(inspector).getByRole("tablist", { name: /leader context views/i });
@@ -2594,7 +2594,7 @@ describe("ActivityView", () => {
         onUpdateNodeData={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /idle one/i }));
+    fireEvent.click(within(activityList()).getByRole("button", { name: /idle one/i }));
     expect(screen.getByRole("button", { name: /^stop$/i })).toBeDisabled();
 
     rerender(
