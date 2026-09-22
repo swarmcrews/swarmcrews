@@ -45,6 +45,11 @@ export function matchSystemModel(input: {
 }
 
 export function globMatches(glob: string, file: string): boolean {
+  return compileGlobMatcher(glob)(file);
+}
+
+/** Compile once when scanning a file inventory; no process-wide cache of user patterns. */
+export function compileGlobMatcher(glob: string): (file: string) => boolean {
   const pattern = glob.replaceAll("\\", "/").replace(/^\.\//, "");
   let source = "";
   for (let i = 0; i < pattern.length; i++) {
@@ -57,5 +62,6 @@ export function globMatches(glob: string, file: string): boolean {
     else if (char === "?") source += "[^/]";
     else source += char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   }
-  return new RegExp(`^${source}$`).test(file.replaceAll("\\", "/").replace(/^\.\//, ""));
+  const regex = new RegExp(`^${source}$`);
+  return (file) => regex.test(file.replaceAll("\\", "/").replace(/^\.\//, ""));
 }

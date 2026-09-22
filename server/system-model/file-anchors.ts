@@ -1,5 +1,5 @@
 import type { LoadedSystemModel, ModelValidationError } from "./types.ts";
-import { globMatches } from "./match.ts";
+import { compileGlobMatcher } from "./match.ts";
 
 /** Validate authored path hints against an existing-file inventory, including new worktree files. */
 export function validateFileAnchors(model: LoadedSystemModel, files: string[]): ModelValidationError[] {
@@ -9,7 +9,7 @@ export function validateFileAnchors(model: LoadedSystemModel, files: string[]): 
   const check = (owner: string, field: string, anchors: string[]) => {
     for (const anchor of new Set(anchors)) {
       if (!matches.has(anchor)) matches.set(anchor, existing.has(anchor)
-        || (/[*?]/.test(anchor) && files.some((file) => globMatches(anchor, file))));
+        || (/[*?]/.test(anchor) && files.some(compileGlobMatcher(anchor))));
       if (!matches.get(anchor)) errors.push({ file: owner, path: field,
         message: `File anchor matches no existing file: ${anchor}`, severity: "warning" });
     }

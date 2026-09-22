@@ -1,6 +1,6 @@
 import type { Constraint, SystemModelObject } from "../../shared/system-model/index.ts";
 import type { LoadedSystemModel, ModelValidationError } from "./types.ts";
-import { globMatches } from "./match.ts";
+import { compileGlobMatcher } from "./match.ts";
 import { validateFileAnchors } from "./file-anchors.ts";
 
 export const OVERBREADTH_THRESHOLD = 0.4;
@@ -13,7 +13,8 @@ export function computeOverbreadth(model: LoadedSystemModel, trackedFiles: strin
       .map((constraint) => ({ objectId: constraint.id, kind: "constraint" as const, globs: constraint.appliesTo.files })),
   ];
   return entries.flatMap((entry) => {
-    const matched = trackedFiles.filter((file) => entry.globs.some((glob) => globMatches(glob, file))).length;
+    const matchers = entry.globs.map(compileGlobMatcher);
+    const matched = trackedFiles.filter((file) => matchers.some((matches) => matches(file))).length;
     const coverage = matched / trackedFiles.length;
     return coverage > OVERBREADTH_THRESHOLD ? [{ objectId: entry.objectId, kind: entry.kind, coverage }] : [];
   });

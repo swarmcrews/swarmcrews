@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { discoverRepositoryDirectories } from "./repository-directory-discovery.ts";
 
+// fs.promises.realpath uses native canonicalization, including Windows 8.3
+// temp-directory aliases. Expected paths must use the same native semantics.
 let root: string;
 let outside: string;
 
@@ -28,7 +30,7 @@ describe("discoverRepositoryDirectories", () => {
     vi.spyOn(os, "homedir").mockReturnValue(home);
     const opendir = vi.spyOn(fs.promises, "opendir");
     const result = await discoverRepositoryDirectories({ path: path.dirname(home) });
-    expect(result?.entries).toEqual([{ name: "alex", path: fs.realpathSync(home) }]);
+    expect(result?.entries).toEqual([{ name: "alex", path: fs.realpathSync.native(home) }]);
     expect(result?.directory).toBeNull();
     expect(opendir).not.toHaveBeenCalled();
   });
@@ -39,10 +41,10 @@ describe("discoverRepositoryDirectories", () => {
     fs.mkdirSync(path.join(root, "Résumé project"));
     vi.stubEnv("SWARMCREWS_BROWSE_ROOTS", JSON.stringify([alias]));
     const result = await discoverRepositoryDirectories({ path: alias, mode: "browse" });
-    expect(result?.directory).toBe(fs.realpathSync(root));
-    expect(result?.entries[0]?.path).toBe(path.join(fs.realpathSync(root), "Résumé project"));
+    expect(result?.directory).toBe(fs.realpathSync.native(root));
+    expect(result?.entries[0]?.path).toBe(path.join(fs.realpathSync.native(root), "Résumé project"));
     expect(await discoverRepositoryDirectories({ path: result!.entries[0]!.path, mode: "browse" }))
-      .toMatchObject({ parent: fs.realpathSync(root) });
+      .toMatchObject({ parent: fs.realpathSync.native(root) });
   });
 
   it.each(["browse", "complete"] as const)("suggests allowed roots from an ancestor in %s mode without listing it", async (mode) => {
@@ -50,7 +52,7 @@ describe("discoverRepositoryDirectories", () => {
     const opendir = vi.spyOn(fs.promises, "opendir");
     const result = await discoverRepositoryDirectories({ path: ancestor, mode });
     expect(result).toMatchObject({ directory: null, parent: null, breadcrumbs: [], truncated: false });
-    expect(result?.entries).toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
+    expect(result?.entries).toEqual([{ name: path.basename(root), path: fs.realpathSync.native(root) }]);
     expect(opendir).not.toHaveBeenCalled();
   });
 
@@ -61,7 +63,7 @@ describe("discoverRepositoryDirectories", () => {
     const opendir = vi.spyOn(fs.promises, "opendir");
     for (const input of [path.join(outside, "ho"), path.join(outside, "home", "al"), `${outside}${path.sep}`]) {
       const result = await discoverRepositoryDirectories({ path: input });
-      expect(result?.entries).toEqual([{ name: "projects", path: fs.realpathSync(ancestor) }]);
+      expect(result?.entries).toEqual([{ name: "projects", path: fs.realpathSync.native(ancestor) }]);
     }
     expect(opendir).not.toHaveBeenCalled();
     expect(await discoverRepositoryDirectories({ path: path.join(outside, "ho"), mode: "browse" })).toBeNull();
@@ -73,7 +75,7 @@ describe("discoverRepositoryDirectories", () => {
     fs.symlinkSync(root, alias, "junction");
     vi.stubEnv("SWARMCREWS_BROWSE_ROOTS", JSON.stringify([alias]));
     expect((await discoverRepositoryDirectories({ path: path.join(outside, "ali") }))?.entries)
-      .toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
+      .toEqual([{ name: path.basename(root), path: fs.realpathSync.native(root) }]);
   });
 
   it("caps results and can narrow a truncated listing", async () => {
@@ -82,7 +84,7 @@ describe("discoverRepositoryDirectories", () => {
     expect(all?.entries).toHaveLength(100);
     expect(all?.truncated).toBe(true);
     const narrowed = await discoverRepositoryDirectories({ path: path.join(root, "repo-104"), mode: "complete" });
-    expect(narrowed?.entries).toEqual([{ name: "repo-104", path: path.join(fs.realpathSync(root), "repo-104") }]);
+    expect(narrowed?.entries).toEqual([{ name: "repo-104", path: path.join(fs.realpathSync.native(root), "repo-104") }]);
   });
 
   it("completes the folder itself until a separator requests its children", async () => {
@@ -97,7 +99,7 @@ describe("discoverRepositoryDirectories", () => {
     fs.symlinkSync(outside, path.join(root, "escape"), "junction");
     const stat = vi.spyOn(fs.promises, "stat");
     await discoverRepositoryDirectories({ path: path.join(root, "escape"), mode: "browse" });
-    expect(stat.mock.calls.map(([p]) => p)).not.toContain(fs.realpathSync(outside));
+    expect(stat.mock.calls.map(([p]) => p)).not.toContain(fs.realpathSync.native(outside));
   });
 
   it("only returns configured directories with shallow prefix completion", async () => {
@@ -105,9 +107,9 @@ describe("discoverRepositoryDirectories", () => {
     fs.mkdirSync(path.join(root, "Alpine"));
     fs.writeFileSync(path.join(root, "alphanumeric-file"), "not a directory");
     const result = await discoverRepositoryDirectories({ path: path.join(root, "al"), mode: "complete" });
-    expect(result).toMatchObject({ directory: fs.realpathSync(root), parent: null, truncated: false });
+    expect(result).toMatchObject({ directory: fs.realpathSync.native(root), parent: null, truncated: false });
     expect(result?.entries.map((entry) => entry.name)).toEqual(["alpha", "Alpine"]);
-    expect(result?.breadcrumbs).toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
+    expect(result?.breadcrumbs).toEqual([{ name: path.basename(root), path: fs.realpathSync.native(root) }]);
     expect((await discoverRepositoryDirectories({ path: path.join(root, "al") }))?.entries)
       .toEqual(result?.entries);
   });
@@ -115,7 +117,7 @@ describe("discoverRepositoryDirectories", () => {
   it("returns configured roots without probing a path for an empty request", async () => {
     const result = await discoverRepositoryDirectories({ mode: "browse" });
     expect(result).toMatchObject({ directory: null, parent: null, entries: [] });
-    expect(result?.roots).toEqual([{ name: path.basename(root), path: fs.realpathSync(root) }]);
+    expect(result?.roots).toEqual([{ name: path.basename(root), path: fs.realpathSync.native(root) }]);
   });
 
   it("rejects traversal and symlink escapes without exposing outside entries", async () => {

@@ -1,4 +1,4 @@
-import { globMatches } from "./match.ts";
+import { compileGlobMatcher, globMatches } from "./match.ts";
 import { describe, expect, it } from "vitest";
 import { matchSystemModel } from "./match.ts";
 import { loadSystemModel } from "./load.ts";
@@ -95,6 +95,24 @@ describe("matchSystemModel", () => {
 
 
 describe("policy glob semantics", () => {
+  it("reuses a compiled matcher across mixed paths without retaining match state", () => {
+    const matches = compileGlobMatcher("./server\\**\\*.ts");
+    const files = ["server/a.ts", "src/a.ts", "./server\\nested\\a.ts", "server/a.ts"];
+    expect(files.map(matches)).toEqual([true, false, true, true]);
+  });
+
+  it.each([
+    ["./server\\**\\*.ts", "./server\\commands\\remove.ts", true],
+    ["server/file?.ts", "server/file1.ts", true],
+    ["server/file?.ts", "server/file12.ts", false],
+    ["server/[literal](file)+$.ts", "server/[literal](file)+$.ts", true],
+    ["server/[literal](file)+$.ts", "server/lfile.ts", false],
+    ["server/**", "server/nested/deep/file.ts", true],
+    ["server/*.ts", "prefix/server/file.ts", false],
+    ["server/*.ts", "server/file.ts.bak", false],
+  ])("matches %s against %s as %s", (glob, file, expected) => {
+    expect(globMatches(glob, file)).toBe(expected);
+  });
   it.each(["server/a.ts", "server/commands/remove.ts"])("matches %s under server/**/*.ts", file => {
     expect(globMatches("server/**/*.ts", file)).toBe(true);
   });

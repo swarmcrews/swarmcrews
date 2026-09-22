@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountProjectPathRoutes } from "../../server/routes/projects/paths.ts";
 import { createExpressFetch } from "../harness/in-process-http.ts";
 
+// fs.promises.realpath uses native canonicalization, including Windows 8.3
+// temp-directory aliases. Expected paths must use the same native semantics.
 let root: string;
 let fetch: typeof globalThis.fetch;
 const baseUrl = "http://localhost";
@@ -37,9 +39,9 @@ describe("POST /api/projects/path-suggestions", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(await response.json()).toMatchObject({
       platform: process.platform === "win32" ? "win32" : "posix",
-      roots: [{ path: fs.realpathSync(root) }],
-      directory: fs.realpathSync(root),
-      entries: [{ name: "repository", path: path.join(fs.realpathSync(root), "repository") }],
+      roots: [{ path: fs.realpathSync.native(root) }],
+      directory: fs.realpathSync.native(root),
+      entries: [{ name: "repository", path: path.join(fs.realpathSync.native(root), "repository") }],
       truncated: false,
     });
   });
@@ -56,7 +58,7 @@ describe("POST /api/projects/path-suggestions", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       directory: null,
-      entries: [{ path: fs.realpathSync(root) }],
+      entries: [{ path: fs.realpathSync.native(root) }],
     });
   });
 

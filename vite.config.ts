@@ -9,7 +9,9 @@ import { BROWSER_SECURITY_HEADERS } from './shared/browser-security-headers.ts'
 // socket — which is what gives the mobile PWA the secure context Web Push needs.
 const backendPort = process.env["PORT"] ?? "3141"
 const apiProxy = {
-  "/api": `http://localhost:${backendPort}`,
+  // String shorthand enables changeOrigin, breaking the API's Host/Origin
+  // equality checks for loopback IPs and Tailscale hosts. Preserve browser Host.
+  "/api": { target: `http://localhost:${backendPort}`, changeOrigin: false },
   "/ws": { target: `ws://localhost:${backendPort}`, ws: true },
 }
 
