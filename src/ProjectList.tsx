@@ -1,3 +1,5 @@
+import { CrewIcon } from "./components/CrewIcon.tsx";
+import { LeaderStatusIcon } from "./nodes/leader/LeaderStatusIcon.tsx";
 import { Brand } from "./components/Brand.tsx";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
@@ -77,8 +79,8 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
     }
   }, []);
 
-  const runningSessionsByProject = useMemo(
-    () => new Map(activity.map((summary) => [summary.projectId, summary.activeSessions])),
+  const activityByProject = useMemo(
+    () => new Map(activity.map((summary) => [summary.projectId, summary])),
     [activity],
   );
 
@@ -310,10 +312,13 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             ) : (
               <div className="project-list-recents">
                 {projects.map((p) => {
-                  const countKnown = runningSessionsByProject.has(p.id);
-                  const activeSessions = runningSessionsByProject.get(p.id) ?? 0;
-                  const hasActiveSessions = activeSessions > 0;
-                  const activeLabel = countKnown ? `${activeSessions} active ${activeSessions === 1 ? "session" : "sessions"}` : "Activity unavailable";
+                  const summary = activityByProject.get(p.id);
+                  const countKnown = summary !== undefined;
+                  const activeLeaders = summary?.activeLeaders ?? 0;
+                  const activeCrew = summary?.activeCrew ?? 0;
+                  const hasActiveSessions = activeLeaders > 0 || activeCrew > 0;
+                  const leaderLabel = `${activeLeaders} active leader${activeLeaders === 1 ? "" : "s"}`;
+                  const activeLabel = `${leaderLabel} and ${activeCrew} crew`;
 
                   return (
                     <div
@@ -332,7 +337,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                         aria-label={!countKnown ? `${p.name} activity unavailable` : hasActiveSessions ? `${p.name} has ${activeLabel}` : `${p.name} is sleeping with no active sessions`}
                       >
                         {hasActiveSessions ? (
-                          <img src="/icons/minion.svg" alt="" aria-hidden="true" />
+                          activeLeaders > 0 ? <LeaderStatusIcon size={22} active decorative /> : <CrewIcon size={18} aria-hidden="true" />
                         ) : (
                           <span className="project-list-recent__zzz" aria-hidden="true">{countKnown ? "ZZZ" : "…"}</span>
                         )}
@@ -340,7 +345,16 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                       <span className="project-list-recent__details">
                         <strong>{p.name}</strong>
                         <span className={`project-list-recent__session-count ${hasActiveSessions ? "project-list-recent__session-count--active" : ""}`}>
-                          {activeLabel}
+                          {countKnown ? <>
+                            <span className="project-list-recent__metric">
+                              <LeaderStatusIcon size={12} active={activeLeaders > 0} decorative />
+                              {leaderLabel}
+                            </span>
+                            <span className="project-list-recent__metric" title="Minions currently starting or executing">
+                              <CrewIcon size={12} aria-hidden="true" />
+                              {activeCrew} crew
+                            </span>
+                          </> : "Activity unavailable"}
                         </span>
                         <span className="project-list-recent__path">{p.path}</span>
                         <small>

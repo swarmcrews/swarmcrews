@@ -6,7 +6,7 @@ import { getProjectActivitySummary } from "./api.ts";
 vi.mock("./api.ts", () => ({ getProjectActivitySummary: vi.fn() }));
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.mocked(getProjectActivitySummary).mockReset().mockResolvedValue([{ projectId: "p", activeSessions: 1 }]);
+  vi.mocked(getProjectActivitySummary).mockReset().mockResolvedValue([{ projectId: "p", activeLeaders: 1, activeCrew: 0 }]);
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -15,7 +15,7 @@ describe("badge summary refresh", () => {
     const onSummaryChange = vi.fn();
     const view = render(<ProjectSessionActivity projectIds={["p"]} onSummaryChange={onSummaryChange} />);
     await act(async () => {});
-    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeSessions: 1 }]);
+    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeLeaders: 1, activeCrew: 0 }]);
     const signal = vi.mocked(getProjectActivitySummary).mock.calls[0]![1]!;
     await act(async () => { vi.advanceTimersByTime(5000); });
     expect(getProjectActivitySummary).toHaveBeenCalledTimes(2);
@@ -32,10 +32,10 @@ describe("badge summary refresh", () => {
     const view = render(<ProjectSessionActivity projectIds={["old"]} onSummaryChange={onSummaryChange} />);
     const signal = vi.mocked(getProjectActivitySummary).mock.calls[0]![1]!;
     view.rerender(<ProjectSessionActivity projectIds={["p"]} onSummaryChange={onSummaryChange} />);
-    await act(async () => { resolve([{ projectId: "old", activeSessions: 99 }]); });
+    await act(async () => { resolve([{ projectId: "old", activeLeaders: 99, activeCrew: 0 }]); });
     expect(signal.aborted).toBe(true);
     expect(onSummaryChange).toHaveBeenCalledTimes(1);
-    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeSessions: 1 }]);
+    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeLeaders: 1, activeCrew: 0 }]);
   });
 
   it("pauses while hidden and refreshes on return", async () => {
@@ -54,6 +54,6 @@ describe("badge summary refresh", () => {
     await act(async () => {});
     expect(onSummaryChange).not.toHaveBeenCalled();
     await act(async () => { vi.advanceTimersByTime(5000); });
-    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeSessions: 1 }]);
+    expect(onSummaryChange).toHaveBeenCalledWith([{ projectId: "p", activeLeaders: 1, activeCrew: 0 }]);
   });
 });

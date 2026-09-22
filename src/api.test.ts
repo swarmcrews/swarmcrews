@@ -32,11 +32,11 @@ describe("API client boundary", () => {
     const controller = new AbortController();
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(jsonResponse({ token: "secret" }))
-      .mockResolvedValueOnce(jsonResponse([{ projectId: "p0", activeSessions: 1 }]))
-      .mockResolvedValueOnce(jsonResponse([{ projectId: "p100", activeSessions: 0 }]));
+      .mockResolvedValueOnce(jsonResponse([{ projectId: "p0", activeLeaders: 1, activeCrew: 0 }]))
+      .mockResolvedValueOnce(jsonResponse([{ projectId: "p100", activeLeaders: 0, activeCrew: 0 }]));
     const ids = Array.from({ length: 101 }, (_, i) => `p${i}`);
     expect(await getProjectActivitySummary([...ids, "p0"], controller.signal)).toEqual([
-      { projectId: "p0", activeSessions: 1 }, { projectId: "p100", activeSessions: 0 },
+      { projectId: "p0", activeLeaders: 1, activeCrew: 0 }, { projectId: "p100", activeLeaders: 0, activeCrew: 0 },
     ]);
     const requests = fetchMock.mock.calls.slice(1);
     expect(requests).toHaveLength(2);
@@ -46,6 +46,18 @@ describe("API client boundary", () => {
       expect(options).toMatchObject({ method: "POST", signal: controller.signal,
         headers: { Authorization: "Bearer secret" } });
     }
+  });
+
+  it.each([
+    { projectId: "p", activeSessions: 4 },
+    { projectId: "p", activeLeaders: 2 },
+    { projectId: "p", activeLeaders: 2, activeCrew: -1 },
+    { projectId: "p", activeLeaders: "2", activeCrew: 1 },
+  ])("rejects incomplete or invalid badge payloads instead of inventing zero counts: %j", async (row) => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ token: "secret" }))
+      .mockResolvedValueOnce(jsonResponse([row]));
+    await expect(getProjectActivitySummary(["p"])).rejects.toThrow();
   });
 
   it("coalesces concurrent token bootstrap requests and caches the result", async () => {

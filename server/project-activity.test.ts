@@ -11,9 +11,9 @@ afterEach(() => { mocks.db?.close(); mocks.db = null; vi.clearAllMocks(); });
 
 function host(key: string, status: string, role = "leader", cwd = "/alpha", workItemId: string | null = null): [string, SessionHost] {
   return [key, {
-    status, role, cwd, workItemId, worktree: null,
+    status, role, cwd, workItemId, worktree: null, runKey: key, parentRunKey: null,
     get usageTotals() { throw new Error("badge read usage"); },
-    get taskState() { throw new Error("badge read tasks"); },
+    taskState: null,
     get eventBuffer() { throw new Error("badge read history"); },
     get renderState() { throw new Error("badge read dashboard"); },
     get harnessName() { throw new Error("badge read harness"); },
@@ -21,7 +21,7 @@ function host(key: string, status: string, role = "leader", cwd = "/alpha", work
 }
 
 describe("project activity summaries", () => {
-  it("counts only active non-minions in requested workspaces, without reading detail", () => {
+  it("counts active leaders and executing crew in requested workspaces, without reading detail", () => {
     mocks.lookup.mockImplementation((path: string) => ({ id: path.slice(1) }));
     const isolated = host("isolated", "running", "leader", "/central/worktrees/run");
     isolated[1].worktree = { projectPath: "/alpha" } as SessionHost["worktree"];
@@ -30,13 +30,13 @@ describe("project activity summaries", () => {
       host("child", "running", "minion"), host("other", "running", "leader", "/beta"),
       host("stopped", "stopped"), host("complete", "completed"),
     ], ["alpha", "empty", "alpha"])).toEqual([
-      { projectId: "alpha", activeSessions: 4 }, { projectId: "empty", activeSessions: 0 },
+      { projectId: "alpha", activeLeaders: 4, activeCrew: 1 }, { projectId: "empty", activeLeaders: 0, activeCrew: 0 },
     ]);
   });
 
   it("skips historical hosts before workspace lookup and does no work for empty scope", () => {
     expect(projectActivitySummary([host("old", "stopped")], ["alpha"]))
-      .toEqual([{ projectId: "alpha", activeSessions: 0 }]);
+      .toEqual([{ projectId: "alpha", activeLeaders: 0, activeCrew: 0 }]);
     expect(projectActivitySummary([host("running", "running")], [])).toEqual([]);
     expect(mocks.lookup).not.toHaveBeenCalled();
   });
@@ -53,10 +53,44 @@ describe("project activity summaries", () => {
     const entries = [host("old", "running", "leader", "/alpha", "archived"),
       host("new", "waiting", "leader", "/alpha", "open"), host("legacy", "running")];
     expect(withoutArchivedWork(entries, mocks.db).map(([key]) => key)).toEqual(["new", "legacy"]);
-    expect(projectActivitySummary(entries, ["alpha"])).toEqual([{ projectId: "alpha", activeSessions: 2 }]);
+    expect(projectActivitySummary(entries, ["alpha"])).toEqual([{ projectId: "alpha", activeLeaders: 2, activeCrew: 0 }]);
     expect(statements.every((sql) => sql.startsWith("SELECT id FROM work_items"))).toBe(true);
     mocks.db.prepare("UPDATE work_items SET resolution = 'open' WHERE id = 'archived'").run();
-    expect(projectActivitySummary(entries, ["alpha"])).toEqual([{ projectId: "alpha", activeSessions: 3 }]);
+    expect(projectActivitySummary(entries, ["alpha"])).toEqual([{ projectId: "alpha", activeLeaders: 3, activeCrew: 0 }]);
+  });
+
+  it("projects idle leaders' rosters and graph children without reading session details", () => {
+    mocks.lookup.mockImplementation((path: string) => ({ id: path.slice(1) }));
+    const leader = host("leader", "idle");
+    leader[1].taskState = { tasks: new Map([
+      ["live", { status: "running", minionSessionKey: "live" }],
+      ["launch", { status: "starting", minionSessionKey: null }],
+      ["done", { status: "running", minionSessionKey: "done" }],
+      ["planned", { status: "planned", minionSessionKey: null }],
+      ["blocked", { status: "blocked", minionSessionKey: null }],
+    ]) } as SessionHost["taskState"];
+    const child = host("graph", "running", "minion", "/central");
+    child[1].parentRunKey = "leader";
+    expect(projectActivitySummary([
+      leader, child, host("live", "running", "minion"), host("done", "completed", "minion"),
+      host("waiting", "waiting", "minion"), host("default", "running", "default"),
+      host("starting", "starting"),
+    ], ["alpha", "central"])).toEqual([
+      { projectId: "alpha", activeLeaders: 1, activeCrew: 3 },
+      { projectId: "central", activeLeaders: 0, activeCrew: 0 },
+    ]);
+  });
+
+  it("excludes archived leaders and their children from both counts", () => {
+    mocks.db = new Database(":memory:");
+    mocks.db.exec("CREATE TABLE work_items (id TEXT PRIMARY KEY, resolution TEXT)");
+    mocks.db.exec("INSERT INTO work_items VALUES ('archived', 'archived')");
+    mocks.lookup.mockReturnValue({ id: "alpha" });
+    const child = host("child", "running", "minion", "/alpha", "archived");
+    child[1].parentRunKey = "leader";
+    expect(projectActivitySummary([
+      host("leader", "running", "leader", "/alpha", "archived"), child,
+    ], ["alpha"])).toEqual([{ projectId: "alpha", activeLeaders: 0, activeCrew: 0 }]);
   });
 
   it("bounds membership queries and preserves hosts with unknown work-item IDs", () => {

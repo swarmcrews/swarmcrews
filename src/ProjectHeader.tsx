@@ -1,3 +1,4 @@
+import { ACTIVE_LEADER_LABELS, projectAgentActivity } from "../shared/project-agent-activity.ts";
 import { Brand } from "./components/Brand.tsx";
 import { useState, useRef, useEffect, type ReactNode } from "react";
 import { Activity, Check, ChevronDown, Folder, FolderKanban, LayoutGrid, Pencil } from "lucide-react";
@@ -13,15 +14,6 @@ import "./project-header.css";
 
 export type ActiveView = "activity" | "canvas";
 
-const ACTIVE_SESSION_LABELS: Record<string, string> = {
-  running: "Working",
-  creating: "Starting",
-  starting: "Starting",
-  waiting: "Waiting",
-};
-
-const EXECUTING_MINION_STATUSES = new Set(["creating", "starting", "running"]);
-
 function ProjectAgentPreview({ project, sessions }: {
   project: ProjectSummary;
   sessions: SessionInfo[];
@@ -31,27 +23,8 @@ function ProjectAgentPreview({ project, sessions }: {
     session.projectId
       ? session.projectId === workspaceId
       : sessionBelongsToProject(session, project.sourceRoot ?? project.path, workspaceId);
-  const leaders = sessions.filter((session) => session.role === "leader" && belongsToProject(session));
-  const active = leaders.filter((session) => Object.hasOwn(ACTIVE_SESSION_LABELS, session.status));
-  const leaderKeys = new Set(leaders.flatMap((leader) => [leader.sessionKey, leader.runKey ?? leader.sessionKey]));
-  const sessionsByKey = new Map(sessions.map((session) => [session.sessionKey, session]));
-  const crew = new Set<string>();
-  for (const leader of leaders) {
-    for (const minion of leader.activeMinions ?? []) {
-      const live = minion.sessionKey ? sessionsByKey.get(minion.sessionKey) : undefined;
-      if (EXECUTING_MINION_STATUSES.has(live?.status ?? minion.status)) {
-        crew.add(minion.sessionKey ?? `${leader.sessionKey}:${minion.taskId}`);
-      }
-    }
-  }
-  // Graph child runs can be present before a leader's task roster is updated.
-  for (const session of sessions) {
-    if (session.role === "minion" && EXECUTING_MINION_STATUSES.has(session.status) &&
-      (session.parentRunKey ? leaderKeys.has(session.parentRunKey) : belongsToProject(session))) {
-      crew.add(session.sessionKey);
-    }
-  }
-  if (active.length === 0 && crew.size === 0) return null;
+  const { active, activeCrew } = projectAgentActivity(sessions, belongsToProject);
+  if (active.length === 0 && activeCrew === 0) return null;
 
   const leaderLabel = `${active.length} active leader${active.length === 1 ? "" : "s"}`;
 
@@ -64,15 +37,15 @@ function ProjectAgentPreview({ project, sessions }: {
         </span>
         <span className="project-switcher__metric" title="Minions currently starting or executing">
           <CrewIcon size={12} aria-hidden="true" />
-          {crew.size} crew
+          {activeCrew} crew
         </span>
       </span>
       {active.slice(0, 3).map((session) => (
         <span className="project-switcher__minion" key={session.sessionKey}
-          title={`${sessionDisplayTitle(session)} · ${ACTIVE_SESSION_LABELS[session.status]}`}>
+          title={`${sessionDisplayTitle(session)} · ${ACTIVE_LEADER_LABELS[session.status]}`}>
           <span className="project-switcher__minion-dot" data-status={session.status} aria-hidden="true" />
           <span className="project-switcher__minion-name">{sessionDisplayTitle(session)}</span>
-          <span className="project-switcher__minion-status">{ACTIVE_SESSION_LABELS[session.status]}</span>
+          <span className="project-switcher__minion-status">{ACTIVE_LEADER_LABELS[session.status]}</span>
         </span>
       ))}
       {active.length > 3 ? (

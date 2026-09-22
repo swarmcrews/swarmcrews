@@ -3,25 +3,38 @@ import { createWorkspaceSourceLookup } from "./workspace-registry.ts";
 import { persistenceDb } from "./session-persist.ts";
 import { withoutArchivedWork } from "./session-list-visibility.ts";
 import type { ProjectActivitySummary } from "../shared/project-activity.ts";
+import { ACTIVE_LEADER_LABELS, projectAgentActivity } from "../shared/project-agent-activity.ts";
 
-/** Count live leaders directly; no session detail or transcript projection. */
+/** Read only identity, status and task roster fields, never transcript/detail projections. */
 export function projectActivitySummary(
   entries: Iterable<[string, SessionHost]>, projectIds: string[],
 ): ProjectActivitySummary[] {
-  const counts = new Map(projectIds.map((id) => [id, 0]));
-  if (!counts.size) return [];
-  const active = Array.from(entries).filter(([, host]) => host.role !== "minion"
-    && ["running", "creating", "waiting"].includes(host.status));
-  if (active.length) {
-    const lookup = createWorkspaceSourceLookup();
-    const scoped = active.filter(([, host]) => {
-      const project = lookup(host.worktree?.projectPath ?? host.cwd);
-      return project !== null && counts.has(project.id);
-    });
-    for (const [, host] of withoutArchivedWork(scoped, persistenceDb())) {
-      const project = lookup(host.worktree?.projectPath ?? host.cwd);
-      if (project) counts.set(project.id, (counts.get(project.id) ?? 0) + 1);
-    }
-  }
-  return Array.from(counts, ([projectId, activeSessions]) => ({ projectId, activeSessions }));
+  const ids = [...new Set(projectIds)];
+  if (!ids.length) return [];
+  const visible = withoutArchivedWork(Array.from(entries), persistenceDb());
+  const parentKeys = new Set(visible.flatMap(([, host]) =>
+    host.role === "minion" && host.parentRunKey ? [host.parentRunKey] : []));
+  const lookup = createWorkspaceSourceLookup();
+  const sessions = visible.map(([sessionKey, host]) => {
+    const activeMinions = host.role === "leader" && host.taskState
+      ? Array.from(host.taskState.tasks, ([taskId, task]) => ({
+        taskId, status: task.status, sessionKey: task.minionSessionKey,
+      })).filter((task) => ["planned", "starting", "running", "blocked"].includes(task.status))
+      : [];
+    // Retain terminal child statuses to override stale running roster entries.
+    // Idle leaders still own executing roster tasks and graph children.
+    const needsProject = host.role === "leader"
+      ? Object.hasOwn(ACTIVE_LEADER_LABELS, host.status) || activeMinions.length > 0
+        || parentKeys.has(host.runKey) || parentKeys.has(sessionKey)
+      : host.role === "minion" && ["creating", "starting", "running"].includes(host.status);
+    return {
+      sessionKey, runKey: host.runKey, parentRunKey: host.parentRunKey,
+      role: host.role, status: host.status, activeMinions,
+      projectId: needsProject ? lookup(host.worktree?.projectPath ?? host.cwd)?.id : undefined,
+    };
+  });
+  return ids.map((projectId) => {
+    const { active, activeCrew } = projectAgentActivity(sessions, (session) => session.projectId === projectId);
+    return { projectId, activeLeaders: active.length, activeCrew };
+  });
 }

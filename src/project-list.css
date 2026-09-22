@@ -356,6 +356,8 @@
 }
 
 .project-list-recent__activity--active {
+  color: var(--bg-primary);
+  --leader-icon-color: var(--bg-primary);
   background: linear-gradient(
     135deg,
     var(--status-running),
@@ -364,12 +366,6 @@
   border-color: color-mix(in srgb, var(--status-running) 52%, var(--border-default));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-running) 10%, transparent);
   animation: project-list-session-pulse 1.5s ease-in-out infinite;
-}
-
-.project-list-recent__activity--active img {
-  display: block;
-  width: 18px;
-  height: 18px;
 }
 
 .project-list-recent__activity--sleeping {
@@ -406,6 +402,9 @@
 }
 
 .project-list-recent__session-count {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   width: fit-content;
   color: var(--text-dim);
   font: 600 12px/1.4 var(--font-mono);
@@ -577,4 +576,11 @@
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+.project-list-recent__metric {
+  --leader-icon-color: currentColor;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }

@@ -63,7 +63,7 @@ const project = {
 describe("ProjectList journeys", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeSessions: 0 }]);
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeLeaders: 0, activeCrew: 0 }]);
     vi.mocked(listProjects).mockResolvedValue([project]);
     vi.mocked(getHarnessReadiness).mockResolvedValue(ready);
     vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({ platform: "posix", separator: "/", roots: [], directory: null, parent: null, breadcrumbs: [], entries: [], truncated: false });
@@ -123,7 +123,7 @@ describe("ProjectList journeys", () => {
     expect(await screen.findByRole("img", { name: "Alpha is sleeping with no active sessions" })).toHaveClass(
       "project-list-recent__activity--sleeping",
     );
-    expect(screen.getByText("0 active sessions")).toBeInTheDocument();
+    expect(screen.getByText("0 active leaders")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tutorial" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
   });
@@ -138,13 +138,35 @@ describe("ProjectList journeys", () => {
   });
 
   it("renders the scoped active count returned by the server", async () => {
-    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeSessions: 3 }]);
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeLeaders: 3, activeCrew: 2 }]);
     render(<ProjectList onOpenProject={vi.fn()} />);
 
-    const activity = await screen.findByRole("img", { name: "Alpha has 3 active sessions" });
+    const activity = await screen.findByRole("img", { name: "Alpha has 3 active leaders and 2 crew" });
     expect(activity).toHaveClass("project-list-recent__activity--active");
-    expect(activity.querySelector('img[src="/icons/minion.svg"]')).toBeInTheDocument();
-    expect(screen.getByText("3 active sessions")).toHaveClass("project-list-recent__session-count--active");
+    expect(screen.getByText('2 crew').querySelector('.crew-icon')).toBeInTheDocument();
+    expect(screen.getByText("3 active leaders")).toBeVisible();
+  });
+
+  it("keeps crew-only projects active", async () => {
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeLeaders: 0, activeCrew: 1 }]);
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(await screen.findByRole("img", { name: "Alpha has 0 active leaders and 1 crew" }))
+      .toHaveClass("project-list-recent__activity--active");
+    expect(screen.getByText("1 crew")).toBeVisible();
+  });
+
+  it("uses a singular leader label", async () => {
+    vi.mocked(getProjectActivitySummary).mockResolvedValue([{ projectId: "p1", activeLeaders: 1, activeCrew: 0 }]);
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(await screen.findByText("1 active leader")).toBeVisible();
+    expect(screen.getByText("0 crew")).toBeVisible();
+  });
+
+  it("does not present unavailable activity as zero", async () => {
+    vi.mocked(getProjectActivitySummary).mockRejectedValue(new Error("offline"));
+    render(<ProjectList onOpenProject={vi.fn()} />);
+    expect(await screen.findByText("Activity unavailable")).toBeVisible();
+    expect(screen.queryByText("0 active leaders")).not.toBeInTheDocument();
   });
 
   it("opens a recent project without issuing a second server request", async () => {

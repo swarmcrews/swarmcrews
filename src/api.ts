@@ -5,7 +5,7 @@ import type { LeaderPreset } from "./leader-preset.ts";
 import type { SandboxPolicy } from "../shared/workspace-contracts.ts";
 import type { ContextActionConfig } from "../shared/context-actions.ts";
 import type { RepositoryPathRequest, RepositoryPathSuggestions } from "../shared/repository-paths.ts";
-import { PROJECT_ACTIVITY_BATCH_SIZE, type ProjectActivitySummary } from "../shared/project-activity.ts";
+import { PROJECT_ACTIVITY_BATCH_SIZE, projectActivityResponseSchema, type ProjectActivitySummary } from "../shared/project-activity.ts";
 
 const BASE = "/api";
 
@@ -194,10 +194,13 @@ export async function getProjectActivitySummary(projectIds: string[], signal?: A
   const ids = [...new Set(projectIds)];
   const summary: ProjectActivitySummary[] = [];
   for (let offset = 0; offset < ids.length; offset += PROJECT_ACTIVITY_BATCH_SIZE) {
-    summary.push(...await apiFetch<ProjectActivitySummary[]>("/projects/activity-summary", {
+    const response = await apiFetch<unknown>("/projects/activity-summary", {
       method: "POST", ...(signal ? { signal } : {}),
       body: JSON.stringify({ projectIds: ids.slice(offset, offset + PROJECT_ACTIVITY_BATCH_SIZE) }),
-    }));
+    });
+    // A still-running older backend may not expose both counters yet. Treat
+    // incomplete payloads as unavailable, never as a known zero on the page.
+    summary.push(...projectActivityResponseSchema.parse(response));
   }
   return summary;
 }
