@@ -2,7 +2,6 @@
 import { describe, expect, it } from "vitest";
 import {
   CODEX_MODEL_POLICY,
-  CODEX_STATIC_MODELS,
   resolveCodexModel,
 } from "./models.ts";
 import {
@@ -91,36 +90,7 @@ describe("resolveCodexModel", () => {
   });
 });
 
-describe("CODEX_STATIC_MODELS", () => {
-  it("contains entries where every id is a non-empty string", () => {
-    for (const entry of CODEX_STATIC_MODELS) {
-      expect(typeof entry.id).toBe("string");
-      expect(entry.id.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("contains entries where every label is a non-empty string", () => {
-    for (const entry of CODEX_STATIC_MODELS) {
-      expect(typeof entry.label).toBe("string");
-      expect(entry.label.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("exposes Astra followed by the current GPT-5.6 tier options", () => {
-    const ids = CODEX_STATIC_MODELS.map((m) => m.id);
-    expect(ids).toEqual([
-      "gpt-6-astra",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-    ]);
-    // Legacy / bare generation IDs are not exposed as selectable options.
-    expect(ids).not.toContain("gpt-5");
-    expect(ids).not.toContain("gpt-5.6");
-    expect(ids).not.toContain("gpt-5.5");
-    expect(ids).not.toContain("gpt-5.3-codex-spark");
-  });
-
+describe("CODEX_MODEL_POLICY", () => {
   it("prefers Astra for leaders and reasoning minions without displacing lower-cost tiers", () => {
     expect(CODEX_MODEL_POLICY.leader[0]).toBe("gpt-6-astra");
     expect(CODEX_MODEL_POLICY.minion.reasoning[0]).toBe("gpt-6-astra");

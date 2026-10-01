@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { seedNativeModelCatalogs, clearNativeModelCatalogs } from "../tests/support/native-model-catalogs.ts";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSettings } from "./project-store.ts";
 import "./harness/register-production.ts";
 import { launchSession, SessionLaunchError } from "./session-launch.ts";
@@ -264,3 +265,6 @@ describe("launchSession", () => {
     expect(reservations.size).toBe(0);
   });
 });
+
+beforeEach(seedNativeModelCatalogs);
+afterEach(clearNativeModelCatalogs);

@@ -34,7 +34,7 @@ import {
   mapPermission,
   mapReasoningEffort,
 } from "./options.ts";
-import { CODEX_STATIC_MODELS, resolveCodexModel } from "./models.ts";
+import { getCodexModels, resolveCodexModel } from "./models.ts";
 import {
   buildCodexInput,
   writeCodexAttachments,
@@ -85,7 +85,7 @@ class CodexHarness implements AgentHarness {
 
   staticInfo(): HarnessStaticInfo {
     return {
-      models: CODEX_STATIC_MODELS,
+      models: getCodexModels(),
       commands: [],
       agents: [],
       account: { provider: "openai" },

@@ -1,3 +1,5 @@
+import { discoverCodexModels } from "./native-models.ts";
+import { getCodexModels, setCodexModels } from "./models.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -150,17 +152,24 @@ function resolveBundledCodexExecutable(): string | null {
 
 export async function checkCodexReadiness(
   context: HarnessReadinessContext,
-  deps: { resolve?: () => CodexRuntime | null; run?: ProcessRunner } = {},
+  deps: { resolve?: () => CodexRuntime | null; run?: ProcessRunner; discover?: typeof discoverCodexModels } = {},
 ): Promise<HarnessReadinessProbe> {
+  setCodexModels([]);
   const runtime = (deps.resolve ?? resolveCodexRuntime)();
   const source = runtime?.source ?? (process.env["CODEX_PATH"] ? "env_override" : "sdk_bundled");
   if (!runtime) return { state: "runtime_missing", runtime: { available: false, source }, auth: { authenticated: false, source: "unknown" } };
   const result = await (deps.run ?? runProcess)(runtime.executable, ["login", "status"], { env: runtime.env, signal: context.signal });
   const ready = result.code === 0;
   const apiKey = Boolean(runtime.env["CODEX_API_KEY"] || runtime.env["OPENAI_API_KEY"]);
-  return {
-    state: ready ? "ready" : "unauthenticated",
-    runtime: { available: true, source },
-    auth: { authenticated: ready, source: apiKey ? "api_key" : ready ? "cli_login" : "unknown" },
-  };
+  const auth = { authenticated: ready, source: apiKey ? "api_key" as const : ready ? "cli_login" as const : "unknown" as const };
+  if (!ready) return { state: "unauthenticated", runtime: { available: true, source }, auth };
+  try {
+    const models = await (deps.discover ?? discoverCodexModels)(runtime, context.signal);
+    context.signal.throwIfAborted();
+    setCodexModels(models);
+    return { state: getCodexModels().length ? "ready" : "probe_failed", runtime: { available: true, source }, auth };
+  } catch {
+    setCodexModels([]);
+    return { state: context.signal.aborted ? "probe_timeout" : "probe_failed", runtime: { available: true, source }, auth };
+  }
 }

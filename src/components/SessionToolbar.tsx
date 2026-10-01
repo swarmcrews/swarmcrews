@@ -624,6 +624,7 @@ export function ModelSelectionMenu({
                 return (
                   <button
                     key={`${activeGroup.harness}:${option.id}`}
+                    title={option.label}
                     onClick={() => {
                       onModelChange(option.id);
                       if (!expanded) onSelectComplete();

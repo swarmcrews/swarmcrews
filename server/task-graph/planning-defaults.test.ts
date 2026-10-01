@@ -1,3 +1,4 @@
+import { seedNativeModelCatalogs, clearNativeModelCatalogs } from "../../tests/support/native-model-catalogs.ts";
 import "./test-helpers.ts";
 import "../harness/register-production.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,3 +132,6 @@ describe("Task Graph Minion defaults", () => {
     ] }))).not.toThrow();
   });
 });
+
+beforeEach(seedNativeModelCatalogs);
+afterEach(clearNativeModelCatalogs);

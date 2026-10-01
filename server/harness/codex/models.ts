@@ -1,3 +1,29 @@
+import type { HarnessModelInfo } from "../../../shared/harness-model.ts";
+import { modelVersionLabel } from "../model-label.ts";
+
+let availableModels: HarnessModelInfo[] = [];
+let nativeDefault: string | undefined;
+
+export function setCodexModels(models: readonly unknown[]): void {
+  const seen = new Set<string>();
+  nativeDefault = undefined;
+  availableModels = models.flatMap(raw => {
+    if (!raw || typeof raw !== "object") return [];
+    const model = raw as Record<string, unknown>;
+    // `id` is a picker row identifier; `model` is the value accepted at launch.
+    if (model.hidden === true || typeof model.model !== "string" || !model.model.trim() || seen.has(model.model)) return [];
+    const id = model.model;
+    seen.add(id);
+    if (model.isDefault === true) nativeDefault = id;
+    return [{ id, label: modelVersionLabel(id, typeof model.displayName === "string" ? model.displayName : undefined),
+      source: "dynamic" as const,
+      ...(typeof model.description === "string" && model.description ? { description: model.description } : {}),
+    }];
+  });
+}
+
+export function getCodexModels(): ReadonlyArray<HarnessModelInfo> { return availableModels; }
+
 /**
  * Codex model alias resolution.
  *
@@ -6,7 +32,7 @@
  */
 
 /**
- * Codex model entries exposed in the UI.
+ * Role-routing preferences and offline alias resolution, not a picker catalog.
  *
  * GPT-6 Astra is the flagship for the hardest end-to-end work. GPT-5.6
  * remains a three-tier model family whose tier names describe the durable
@@ -25,13 +51,6 @@ export const CODEX_LUNA_MODEL_ID = "gpt-5.6-luna";
 
 /** The current flagship is the default when a caller asks for Codex. */
 export const CODEX_DEFAULT_MODEL_ID = CODEX_ASTRA_MODEL_ID;
-
-export const CODEX_STATIC_MODELS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: CODEX_ASTRA_MODEL_ID, label: "GPT-6 Astra" },
-  { id: CODEX_SOL_MODEL_ID, label: "GPT-5.6 Sol" },
-  { id: CODEX_TERRA_MODEL_ID, label: "GPT-5.6 Terra" },
-  { id: CODEX_LUNA_MODEL_ID, label: "GPT-5.6 Luna" },
-];
 
 export const CODEX_MODEL_POLICY = {
   leader: [
@@ -98,5 +117,8 @@ const CODEX_MODEL_ALIAS_MAP: Record<string, string> = {
  */
 export function resolveCodexModel(alias: string | null | undefined): string | null {
   if (!alias) return null;
+  const advertised = availableModels.find(model => model.id.toLowerCase() === alias.toLowerCase());
+  if (advertised) return advertised.id;
+  if (nativeDefault && ["codex", "default", "codex-default"].includes(alias.toLowerCase())) return nativeDefault;
   return CODEX_MODEL_ALIAS_MAP[alias.toLowerCase()] ?? alias;
 }

@@ -1,3 +1,4 @@
+import { setCodexModels } from "./models.ts";
 import { dispatchMethod } from "../../mcp-bridge/dispatch.ts";
 
 import {
@@ -608,11 +609,14 @@ describe("CodexHarness MCP bridge", () => {
 
 describe("CodexHarness static info", () => {
   it("reports openai provider and codex models", () => {
+    expect(codexHarness.staticInfo().models).toEqual([]);
+    setCodexModels([{ model: "new-model", displayName: "New model" }]);
     const info = codexHarness.staticInfo();
     expect(info.account).toMatchObject({ provider: "openai" });
     expect(info.models.length).toBeGreaterThan(0);
     expect(info.models[0]).toHaveProperty("id");
-    expect(info.models[0]).toHaveProperty("label");
+    expect(info.models).toEqual([{ id: "new-model", label: "New model (new-model)", source: "dynamic" }]);
+    setCodexModels([]);
   });
 
   it("declares the expected capabilities", () => {

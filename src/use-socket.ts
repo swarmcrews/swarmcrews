@@ -39,7 +39,7 @@ export type ServerMessage =
   | { type: "work_item_created"; workItem: WorkItemSnapshot; timestamp: number }
   | { type: "work_item_run_created" | "work_item_run_sealed"; workItemId: string; run: WorkItemRunSnapshot; timestamp: number }
   | { type: "session_list"; sessions: SessionInfo[] }
-  | { type: "harness_list"; harnesses: HarnessListEntry[] }
+  | { type: "harness_list"; catalogMode?: "snapshot" | "patch"; harnesses: HarnessListEntry[] }
   | { type: "session_created"; sessionKey: string }
   | { type: "session_launch_resolved"; sessionKey: string; requested: { harness?: string; model?: string; permissionMode?: string }; effective: { harness: string; model: string; permissionMode: string }; reasons: Array<"harness_not_ready" | "model_incompatible" | "permission_unsupported">; transient: true }
   | { type: "session_status"; sessionKey: string; status: string; sessionId?: string }

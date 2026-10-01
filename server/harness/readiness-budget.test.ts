@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearHarnessReadinessCache, getHarnessReadiness } from "./readiness.ts";
+import { clearHarnessReadinessCache, getHarnessReadiness, watchHarnessReadiness } from "./readiness.ts";
 import { checkPiReadiness } from "./pi/runtime.ts";
 import { getPiModels } from "./pi/models.ts";
 import type { HarnessReadinessContext, HarnessReadinessProbe } from "./readiness-types.ts";
@@ -52,7 +52,55 @@ describe("readiness budgets and cache", () => {
     expect(run).toHaveBeenCalledTimes(3);
   });
 
-  it.each([{ name: "pi", budget: 30_000 }, { name: "claude", budget: 5_000 }])(
+  it("delivers fast results while a slow probe remains pending, sharing the same authoritative probe", async () => {
+    let finishSlow!: (value: HarnessReadinessProbe) => void;
+    const ready: HarnessReadinessProbe = { state: "ready", runtime: { available: true, source: "path" }, auth: { authenticated: true, source: "cli_login" } };
+    const slow = vi.fn(() => new Promise<HarnessReadinessProbe>(resolve => { finishSlow = resolve; }));
+    const fast = vi.fn(async () => ready);
+    mocks.harnesses = [{ name: "claude", checkReadiness: fast }, { name: "pi", checkReadiness: slow }];
+    const updates: string[] = [];
+    const first = watchHarnessReadiness(item => updates.push(item.name));
+    const second = watchHarnessReadiness(item => updates.push(`second:${item.name}`));
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(updates).toContain("claude");
+    expect(updates).not.toContain("pi");
+    expect(fast).toHaveBeenCalledTimes(1);
+    expect(slow).toHaveBeenCalledTimes(1);
+    finishSlow(ready);
+    await first.done;
+    await second.done;
+    expect(updates).toEqual(["claude", "second:claude", "pi", "second:pi"]);
+    first.stop(); second.stop();
+  });
+
+  it("does not authorize an old ready snapshot while a failing refresh is in flight", async () => {
+    let finish!: (value: HarnessReadinessProbe) => void;
+    const ready: HarnessReadinessProbe = { state: "ready", runtime: { available: true, source: "path" }, auth: { authenticated: true, source: "cli_login" } };
+    mocks.harnesses = [{ name: "pi", checkReadiness: vi.fn().mockResolvedValueOnce(ready).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })) }];
+    expect((await getHarnessReadiness()).ready).toBe(true);
+    const refresh = getHarnessReadiness({ fresh: true });
+    const launchCheck = getHarnessReadiness();
+    finish({ state: "probe_failed", runtime: { available: false, source: "path" }, auth: { authenticated: false, source: "unknown" } });
+    expect((await refresh).ready).toBe(false);
+    expect((await launchCheck).ready).toBe(false);
+  });
+
+  it("fences stale generations after cache clear", async () => {
+    let finish!: (value: HarnessReadinessProbe) => void;
+    mocks.harnesses = [{ name: "pi", checkReadiness: () => new Promise(resolve => { finish = resolve; }) }];
+    const updates: string[] = [];
+    const pending = watchHarnessReadiness(item => updates.push(item.name));
+    clearHarnessReadinessCache();
+    finish({ state: "ready", runtime: { available: true, source: "path" }, auth: { authenticated: true, source: "cli_login" } });
+    await pending.done;
+    const next = getHarnessReadiness();
+    finish({ state: "ready", runtime: { available: true, source: "path" }, auth: { authenticated: true, source: "cli_login" } });
+    await next;
+    expect(updates).toEqual([]);
+    pending.stop();
+  });
+
+  it.each([{ name: "pi", budget: 30_000 }, { name: "claude", budget: 15_000 }, { name: "codex", budget: 15_000 }, { name: "copilot", budget: 5_000 }])(
     "bounds a stuck $name probe at $budget ms", async ({ name, budget }) => {
       let signal: AbortSignal | undefined;
       mocks.harnesses = [{ name, checkReadiness: context => {

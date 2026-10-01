@@ -39,7 +39,7 @@ import type {
 } from "../types.ts";
 import { isClaudeToolUseDiagnostic, sdkToNormalized } from "./translate.ts";
 import { wrapTools } from "./tools.ts";
-import { resolveModelAlias, supportsAdaptiveThinking } from "./models.ts";
+import { getClaudeModels, resolveModelAlias, supportsAdaptiveThinking } from "./models.ts";
 import { buildClaudePrompt } from "./prompt.ts";
 import { checkClaudeReadiness, resolveClaudeRuntime } from "./runtime.ts";
 import { createClaudeMutationHooks } from "./mutation-hooks.ts";
@@ -85,20 +85,6 @@ const CLAUDE_BUILT_IN_TOOLS = [
   "WebFetch",
   "WebSearch",
 ] as const;
-
-/**
- * Static model list for staticInfo(). Derived from MODEL_ALIAS_MAP in
- * models.ts — update both when new model IDs are released.
- */
-const CLAUDE_STATIC_MODELS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: "claude-opus-5", label: "Opus 5" },
-  { id: "claude-fable-5-1", label: "Fable 5.1" },
-  { id: "claude-fable-5", label: "Fable 5" },
-  { id: "claude-opus-4-8", label: "Opus 4.8" },
-  { id: "claude-opus-4-7", label: "Opus 4.7" },
-  { id: "claude-sonnet-5", label: "Sonnet 5" },
-  { id: "claude-haiku-4-5", label: "Haiku" },
-];
 
 /**
  * The Claude SDK `query()` return value is an AsyncIterable<SDKMessage> and
@@ -156,7 +142,7 @@ class ClaudeHarness implements AgentHarness {
   /** Static introspection — safe to call before, during, and after start(). */
   staticInfo(): HarnessStaticInfo {
     return {
-      models: CLAUDE_STATIC_MODELS,
+      models: getClaudeModels(),
       commands: [],
       agents: [],
       account: { provider: "claude" },

@@ -197,22 +197,13 @@ describe("ClaudeHarness.start()", () => {
     });
     persistence.closePersistDb();
   });
-  it.each([["claude-fable-5-1", "Fable 5.1"], ["claude-fable-5", "Fable 5"]])("exposes %s in static model metadata", async (id, label) => {
+  it("exposes only the dynamically discovered model catalog", async () => {
     const harness = await importHarness();
-
-    expect(harness.staticInfo().models).toContainEqual({
-      id,
-      label,
-    });
-  });
-
-  it("exposes Opus 5 in static model metadata", async () => {
-    const harness = await importHarness();
-
-    expect(harness.staticInfo().models).toContainEqual({
-      id: "claude-opus-5",
-      label: "Opus 5",
-    });
+    const { setClaudeModels } = await import("./models.ts");
+    expect(harness.staticInfo().models).toEqual([]);
+    setClaudeModels([{ value: "new-model", displayName: "New model", description: "" }]);
+    expect(harness.staticInfo().models).toEqual([{ id: "new-model", label: "New model (new-model)", source: "dynamic" }]);
+    setClaudeModels([]);
   });
 
   it("passes the expected session options to query()", async () => {

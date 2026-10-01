@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { seedNativeModelCatalogs, clearNativeModelCatalogs } from "../tests/support/native-model-catalogs.ts";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./harness/register-production.ts";
 import { resolveNewProjectDefaults } from "./project-defaults.ts";
 import type { HarnessReadinessSnapshot } from "./harness/readiness-types.ts";
@@ -61,3 +62,6 @@ describe("resolveNewProjectDefaults", () => {
 
   it("returns null when neither harness is ready", () => expect(resolveNewProjectDefaults(snapshot([]))).toBeNull());
 });
+
+beforeEach(seedNativeModelCatalogs);
+afterEach(clearNativeModelCatalogs);

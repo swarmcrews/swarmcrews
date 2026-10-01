@@ -16,7 +16,9 @@ import {
   type ReactNode,
 } from "react";
 import type { HarnessInfo } from "./harness-list.ts";
+import { mergeHarnessCatalog, sameCatalog } from "./harness-catalog.ts";
 import type { HarnessListEntry } from "./use-socket.ts";
+import type { HarnessCatalogMessage } from "../shared/harness-catalog.ts";
 
 interface HarnessListValue {
   harnesses: ReadonlyArray<HarnessInfo>;
@@ -59,17 +61,22 @@ export function HarnessListProvider({
 
   useEffect(() => {
     if (!connected) return;
-    send({ type: "list_harnesses" });
-  }, [connected, send]);
-
-  useEffect(() => {
-    return subscribe((msg) => {
-      const m = msg as { type?: string; harnesses?: HarnessListEntry[] };
+    // A local/synchronous transport can answer send immediately. Install the
+    // listener first and tie its lifetime to this connection generation.
+    const unsubscribe = subscribe((msg) => {
+      const m = msg as Partial<HarnessCatalogMessage<HarnessListEntry>>;
       if (m.type !== "harness_list" || !Array.isArray(m.harnesses)) return;
-      setHarnesses(m.harnesses.map(toHarnessInfo));
+      const incoming = m.harnesses.map(toHarnessInfo);
+      const replace = m.catalogMode !== "patch";
+      setHarnesses(previous => {
+        const next = mergeHarnessCatalog(previous, incoming, replace);
+        return sameCatalog(previous, next) ? previous : next;
+      });
       setLoaded(true);
     });
-  }, [subscribe]);
+    send({ type: "list_harnesses" });
+    return unsubscribe;
+  }, [connected, send, subscribe]);
 
   const value = useMemo<HarnessListValue>(
     () => ({ harnesses, loaded }),

@@ -140,6 +140,21 @@ function renderWithHarnesses(
 // ── Tests ──────────────────────────────────────────────────────
 
 describe("SessionToolbar — model selection picker", () => {
+  it.each([
+    [CLAUDE_ENTRY, "claude-sonnet-5", "Sonnet (claude-sonnet-5)"],
+    [CODEX_ENTRY, "gpt-6-astra", "GPT-6-Astra (gpt-6-astra)"],
+  ])("shows the discovered model version for $name without changing the launch ID", (entry, id, label) => {
+    const props = renderWithHarnesses([
+      { ...entry, models: [{ id, label, source: "dynamic" }] },
+    ], { harness: entry.name, model: id });
+    expect(screen.getByTitle("Model selection")).toHaveTextContent(label);
+    fireEvent.click(screen.getByTitle("Model selection"));
+    const option = screen.getByRole("button", { name: (name) => name.startsWith(label) });
+    expect(option).toHaveAttribute("title", label);
+    fireEvent.click(option);
+    expect(props.onModelChange).toHaveBeenCalledWith(id);
+  });
+
   it("reserves model menu scrolling for the list rather than the canvas", () => {
     renderWithHarnesses([CLAUDE_ENTRY]);
     fireEvent.click(screen.getByTitle("Model selection"));

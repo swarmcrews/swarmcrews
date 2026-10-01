@@ -50,7 +50,7 @@ export function resolveLaunchModel(input: {
     ? modelPolicy(input.effectiveHarness)?.leader
     : modelPolicy(input.effectiveHarness)?.minion[input.executorClass ?? "standard"];
   const fallback =
-    chain?.find((id) => advertised.has(id)) ??
+    chain?.map((id) => harness.resolveModel(id)).find((id): id is string => id !== null && advertised.has(id)) ??
     harness.staticInfo().models.find((model) => advertised.has(model.id))?.id;
   if (!fallback) return null;
   if (!input.requestedModel || input.requestedHarness !== input.effectiveHarness) {

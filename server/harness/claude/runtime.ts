@@ -1,3 +1,5 @@
+import { discoverClaudeModels } from "./native-models.ts";
+import { getClaudeModels, setClaudeModels } from "./models.ts";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createRequire } from "node:module";
@@ -43,8 +45,9 @@ function parsedLoggedIn(stdout: string): { loggedIn: boolean; source: "oauth" | 
 
 export async function checkClaudeReadiness(
   context: HarnessReadinessContext,
-  deps: { resolve?: () => ClaudeRuntime | null; run?: ProcessRunner } = {},
+  deps: { resolve?: () => ClaudeRuntime | null; run?: ProcessRunner; discover?: typeof discoverClaudeModels } = {},
 ): Promise<HarnessReadinessProbe> {
+  setClaudeModels([]);
   const runtime = (deps.resolve ?? resolveClaudeRuntime)();
   const source = runtime?.source ?? (process.env["CLAUDE_CODE_PATH"] ? "env_override" : "sdk_bundled");
   if (!runtime) return { state: "runtime_missing", runtime: { available: false, source }, auth: { authenticated: false, source: "unknown" } };
@@ -52,9 +55,15 @@ export async function checkClaudeReadiness(
   if (result.code !== 0) return { state: "unauthenticated", runtime: { available: true, source }, auth: { authenticated: false, source: "unknown" } };
   const auth = parsedLoggedIn(result.stdout);
   if (!auth) return { state: "probe_failed", runtime: { available: true, source }, auth: { authenticated: false, source: "unknown" } };
-  return {
-    state: auth.loggedIn ? "ready" : "unauthenticated",
-    runtime: { available: true, source },
-    auth: { authenticated: auth.loggedIn, source: auth.source },
-  };
+  const probeAuth = { authenticated: auth.loggedIn, source: auth.source };
+  if (!auth.loggedIn) return { state: "unauthenticated", runtime: { available: true, source }, auth: probeAuth };
+  try {
+    const models = await (deps.discover ?? discoverClaudeModels)(runtime, context.signal);
+    context.signal.throwIfAborted();
+    setClaudeModels(models);
+    return { state: getClaudeModels().length ? "ready" : "probe_failed", runtime: { available: true, source }, auth: probeAuth };
+  } catch {
+    setClaudeModels([]);
+    return { state: context.signal.aborted ? "probe_timeout" : "probe_failed", runtime: { available: true, source }, auth: probeAuth };
+  }
 }

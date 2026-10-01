@@ -1,4 +1,5 @@
 import { getHarness, productionHarnesses } from "./index.ts";
+import { ReadinessProgress } from "./readiness-progress.ts";
 import type {
   HarnessReadiness,
   HarnessReadinessProbe,
@@ -11,9 +12,12 @@ const PROBE_TIMEOUT_MS = 5_000;
 // Pi may be an npm wrapper. Allow two bounded CLI startups (20s catalog,
 // 8s optional metadata) without treating wrapper latency as an auth failure.
 const PI_PROBE_TIMEOUT_MS = 30_000;
+// Authentication plus a bounded, initialization-only catalog connection.
+const NATIVE_CATALOG_PROBE_TIMEOUT_MS = 15_000;
 
 let cached: HarnessReadinessSnapshot | null = null;
 let inFlight: Promise<HarnessReadinessSnapshot> | null = null;
+const progress = new ReadinessProgress();
 
 const REMEDIATION: Record<string, Partial<Record<HarnessReadinessState, HarnessReadiness["remediation"]>>> = {
   copilot: {
@@ -25,14 +29,14 @@ const REMEDIATION: Record<string, Partial<Record<HarnessReadinessState, HarnessR
   claude: {
     runtime_missing: { label: "Install the Claude Agent SDK runtime" },
     unauthenticated: { label: "Sign in to Claude", command: "claude auth login" },
-    probe_timeout: { label: "Retry the Claude authentication check" },
-    probe_failed: { label: "Retry Claude sign-in", command: "claude auth login" },
+    probe_timeout: { label: "Retry the Claude model check" },
+    probe_failed: { label: "Check Claude CLI model discovery", command: "claude --version" },
   },
   codex: {
     runtime_missing: { label: "Install the Codex CLI or SDK runtime" },
     unauthenticated: { label: "Sign in to Codex", command: "codex login" },
-    probe_timeout: { label: "Retry the Codex authentication check" },
-    probe_failed: { label: "Retry Codex sign-in", command: "codex login" },
+    probe_timeout: { label: "Retry the Codex model check" },
+    probe_failed: { label: "Check Codex CLI model discovery", command: "codex --version" },
   },
   opencode: {
     runtime_missing: { label: "Install OpenCode or set OPENCODE_PATH" },
@@ -66,7 +70,7 @@ async function probeHarness(name: string, check: (context: { signal: AbortSignal
     const error = new Error("Readiness probe timed out");
     error.name = "AbortError";
     rejectTimeout?.(error);
-  }, name === "pi" ? PI_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
+  }, name === "pi" ? PI_PROBE_TIMEOUT_MS : name === "claude" || name === "codex" ? NATIVE_CATALOG_PROBE_TIMEOUT_MS : PROBE_TIMEOUT_MS);
   timer.unref?.();
   let probe: HarnessReadinessProbe;
   try {
@@ -104,7 +108,7 @@ async function probeHarness(name: string, check: (context: { signal: AbortSignal
   };
 }
 
-async function collect(): Promise<HarnessReadinessSnapshot> {
+async function collect(generation: number): Promise<HarnessReadinessSnapshot> {
   const testHarness = (() => {
     if ((process.env["SWARMCREWS_TEST_HARNESS"] ?? process.env["MINIONS_TEST_HARNESS"]) !== "echo") return [];
     try {
@@ -116,7 +120,10 @@ async function collect(): Promise<HarnessReadinessSnapshot> {
   })();
   const harnesses = await Promise.all(
     [...productionHarnesses(), ...testHarness].map((harness) =>
-      probeHarness(harness.name, (context) => harness.checkReadiness(context)),
+      probeHarness(harness.name, (context) => harness.checkReadiness(context)).then(item => {
+        progress.publish(generation, item);
+        return item;
+      }),
     ),
   );
   const checkedAtMs = Date.now();
@@ -136,14 +143,31 @@ export async function getHarnessReadiness(opts: { fresh?: boolean } = {}): Promi
   // an old ready snapshot against a catalog that is being rebuilt.
   if (inFlight) return inFlight;
   if (!opts.fresh && cached && Date.parse(cached.expiresAt) > Date.now()) return cached;
-  inFlight = collect().then((snapshot) => {
-    cached = snapshot;
+  const generation = progress.reset();
+  const request = collect(generation).then((snapshot) => {
+    if (progress.isCurrent(generation)) cached = snapshot;
     return snapshot;
-  }).finally(() => { inFlight = null; });
+  });
+  inFlight = request;
+  const finish = () => { if (inFlight === request) inFlight = null; };
+  void request.then(finish, finish);
   return inFlight;
 }
 
+export function watchHarnessReadiness(onResult: (item: HarnessReadiness) => void): {
+  current: HarnessReadiness[]; done: Promise<HarnessReadinessSnapshot>; stop: () => void;
+} {
+  // Probe results settle in a microtask, so register synchronously after
+  // selecting a generation (resetting it must not discard this listener).
+  const done = getHarnessReadiness();
+  const stop = progress.subscribe(onResult);
+  const current = inFlight ? progress.current() : cached?.harnesses ?? [];
+  void done.then(stop, stop);
+  return { current, done, stop };
+}
+
 export function clearHarnessReadinessCache(): void {
+  progress.reset();
   cached = null;
   inFlight = null;
 }

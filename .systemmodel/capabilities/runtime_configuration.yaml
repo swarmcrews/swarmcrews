@@ -24,7 +24,7 @@ entry_points:
     tests: [ src/mobile/SettingsScreen.test.tsx, src/mobile/LaunchScreen.test.tsx, src/mobile/launch-models.test.ts ]
     flows: [ flow.configure_runtime, flow.launch_leader ]
   - surface: surface.ws_api
-    summary: Validate requested sandbox axes, report harness enforcement support, and apply supported runtime mutations.
+    summary: Reveal cached model choices immediately and refresh catalogs per harness; validate launches against authoritative readiness independently of the display cache, report sandbox enforcement and apply supported runtime mutations.
     files: [ shared/workspace-contracts.ts, server/harness/sandbox-policy.ts, server/commands/list-harnesses.ts, server/commands/set-model.ts, server/commands/set-permission-mode.ts ]
     tests: [ shared/workspace-contracts.test.ts, server/harness/sandbox-policy.test.ts, server/commands/list-harnesses.test.ts, server/commands/set-model.test.ts, server/commands/set-permission-mode.test.ts ]
     flows: [ flow.configure_runtime ]

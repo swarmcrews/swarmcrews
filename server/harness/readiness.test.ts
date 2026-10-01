@@ -9,7 +9,7 @@ const context = () => ({ signal: new AbortController().signal });
 
 describe("harness readiness probes", () => {
   it("accepts only parsed Claude logged-in output", async () => {
-    const ready = await checkClaudeReadiness(context(), { resolve: () => ({ executable: "/fixture/claude", source: "env_override" }), run: async () => ({ code: 0, stdout: '{"loggedIn":true,"authMethod":"oauth"}' }) });
+    const ready = await checkClaudeReadiness(context(), { resolve: () => ({ executable: "/fixture/claude", source: "env_override" }), run: async () => ({ code: 0, stdout: '{"loggedIn":true,"authMethod":"oauth"}' }), discover: async () => [{ value: "fixture-model", displayName: "Fixture", description: "" }] });
     expect(ready).toMatchObject({ state: "ready", auth: { authenticated: true, source: "oauth" } });
     const malformed = await checkClaudeReadiness(context(), { resolve: () => ({ executable: "/fixture/claude", source: "env_override" }), run: async () => ({ code: 0, stdout: "token=secret" }) });
     expect(malformed.state).toBe("probe_failed");

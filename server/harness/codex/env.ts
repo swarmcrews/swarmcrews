@@ -17,7 +17,7 @@ export function buildCodexEnv(
 ): Record<string, string> {
   const fallbackHome = codexHomeFallback();
 
-  const env = allowedProcessEnv();
+  const env = allowedCodexEnv(process.env);
   Object.assign(env, bridgeEnv);
   if (!env["CODEX_HOME"] && fallbackHome !== null) {
     env["CODEX_HOME"] = fallbackHome;
@@ -72,9 +72,9 @@ const EXACT_ENV_ALLOWLIST = new Set([
   "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_VERSION",
 ]);
 
-function allowedProcessEnv(): Record<string, string> {
+export function allowedCodexEnv(source: NodeJS.ProcessEnv): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(source)) {
     if (
       value !== undefined &&
       (EXACT_ENV_ALLOWLIST.has(key) || key === "TZ" || key.startsWith("LC_") || key.startsWith("XDG_"))
