@@ -11,14 +11,15 @@ export interface DurableWaitRecoveryRow {
 }
 
 function durableWaitKind(row:DurableWaitRecoveryRow):"decision"|"other"|null {
-  if (row.review_state==="decision_needed") return "decision";
-  if (!row.task_state_json) return null;
-  try {
-    const state=JSON.parse(row.task_state_json) as {pendingWait?:unknown}|null;
-    return state?.pendingWait?"other":null;
-  } catch {
-    return null;
+  // A durable automatic wake is not a halt for user input, even when an
+  // older process left decision attention behind while it was still active.
+  if (row.task_state_json) {
+    try {
+      const state=JSON.parse(row.task_state_json) as {pendingWait?:unknown}|null;
+      if (state?.pendingWait) return "other";
+    } catch { /* Malformed task state is not automatic-wake evidence. */ }
   }
+  return row.review_state==="decision_needed"?"decision":null;
 }
 
 /** Converge clean between-turn recovery with independently persisted wait evidence. */

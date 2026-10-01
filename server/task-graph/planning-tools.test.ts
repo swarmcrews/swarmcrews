@@ -215,7 +215,7 @@ describe("graph planning tools", () => {
     });
 
     expect(markDecisionNeeded).toHaveBeenCalledWith(
-      "The execution plan is ready for review and approval.",
+      "The execution plan is ready for review and approval.", expect.any(Function),
     );
   });
 

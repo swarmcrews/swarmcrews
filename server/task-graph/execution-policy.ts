@@ -21,6 +21,16 @@ function resolveTaskGraphHarness(node:TaskNode,resolveHarness:(name:string)=>Age
     `node ${node.id} references an unregistered harness: ${name}`); }
 }
 
+/** Explicitly unmanaged harnesses (such as Pi) retain their native execution policy.
+ * Ownership remains scheduler coordination, not an OS filesystem boundary. Missing
+ * capabilities or partially supported sandbox policies must still fail closed.
+ */
+function hasUnmanagedNativeFilesystem(harness:AgentHarness):boolean {
+  const {builtInFilesystem,sandboxEnforcement}=harness.capabilities;
+  return builtInFilesystem===true && sandboxEnforcement?.filesystem.length===0
+    && sandboxEnforcement.approval===false;
+}
+
 /** Return only a sandbox whose complete provider-neutral guarantees are declared by the harness. */
 export function sandboxPolicyForTaskGraphNode(
   node:TaskNode,
@@ -29,7 +39,8 @@ export function sandboxPolicyForTaskGraphNode(
   const selected=resolveTaskGraphHarness(node,resolveHarness);
   const writes=node.ownershipRequest.some(scope=>scope.mode==="write");
   if (!selected.capabilities.builtInFilesystem
-    || selected.capabilities.mutationInterception==="complete") return undefined;
+    || selected.capabilities.mutationInterception==="complete"
+    || hasUnmanagedNativeFilesystem(selected)) return undefined;
   const policy=writes?WRITE_GRAPH_SANDBOX:READ_ONLY_GRAPH_SANDBOX;
   const support=selected.capabilities.sandboxEnforcement;
   if (!support?.filesystem.includes(policy.filesystemScope) || !support.approval) {
@@ -63,6 +74,7 @@ export function validateTaskGraphNodePolicy(
   const writes=node.ownershipRequest.some(scope=>scope.mode==="write");
   const sandbox=sandboxPolicyForTaskGraphNode(node,()=>selected);
   if (writes && selected.capabilities.mutationInterception!=="complete"
+    && !hasUnmanagedNativeFilesystem(selected)
     && sandbox?.filesystemScope!=="workspace-write") {
     throw new TaskGraphValidationError(
       `node ${node.id} requires enforced writes unavailable on harness ${selected.name}`,

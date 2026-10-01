@@ -82,6 +82,10 @@ export async function continueWorkItemIntent(
 
 const queuedGuidance = new WeakMap<SessionHost, Array<() => void | Promise<void>>>();
 
+export function hasQueuedWorkItemGuidance(host: SessionHost): boolean {
+  return (queuedGuidance.get(host)?.length ?? 0) > 0;
+}
+
 /** Queue user guidance received while a provider turn is still in flight. */
 export function queueWorkItemGuidance(
   host: SessionHost,

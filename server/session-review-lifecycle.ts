@@ -197,8 +197,6 @@ export function commitReviewLifecycle(
 
 export function reviewLifecycleCallbacks(host: ReviewLifecycleHost, bus: ReviewLifecycleBus) {
   return {
-    markDecisionNeeded: (reason: string) =>
-      commitReviewLifecycle(host, bus, requestDecision(host.reviewLifecycle, reason)),
     markDashboardChanged: () =>
       commitReviewLifecycle(host, bus, incrementDashboardRevision(host.reviewLifecycle)),
   };

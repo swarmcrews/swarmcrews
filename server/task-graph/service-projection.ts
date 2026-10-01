@@ -1,3 +1,4 @@
+import { reconcileGraphDecisionWait } from "./work-item-activity.ts";
 import { taskGraphRunSummarySchema, type TaskGraphRunSummary } from "../../shared/task-graph-view-contracts.ts";
 import type { GraphSnapshot } from "../../shared/task-graph-contracts.ts";
 import { projectTaskGraphSnapshot } from "./view.ts";
@@ -12,6 +13,7 @@ export function publishTaskGraphSnapshot(
   const at=service.now();
   const view=projectTaskGraphSnapshot(snapshot,service.scheduler.inspect(snapshot.run.id,at,
     service.availableDispatchSlots()>0),at);
+  reconcileGraphDecisionWait(service,snapshot,view,at);
   service.options.bus.emitToWorkItem?.(snapshot.run.workItemId,{
     type:"task_graph_snapshot",workItemId:snapshot.run.workItemId,runId:snapshot.run.id,
     revision:snapshot.run.revision,cause,snapshot:view,timestamp:at,
@@ -27,6 +29,7 @@ export function publishTaskGraphChanged(
   const at=service.now();
   const view=projectTaskGraphSnapshot(snapshot,service.scheduler.inspect(snapshot.run.id,at,
     service.availableDispatchSlots()>0),at);
+  reconcileGraphDecisionWait(service,snapshot,view,at);
   const currentEvents=snapshot.events.filter(event=>event.runRevision===snapshot.run.revision);
   const attemptNodes=new Map(snapshot.attempts.map(row=>[String(row["id"]),String(row["node_id"])]));
   const objectNodes=new Map<string,string>(attemptNodes);

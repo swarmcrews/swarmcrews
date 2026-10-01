@@ -210,6 +210,28 @@ describe("TaskGraphService central wiring",() => {
       .toEqual(["stage_output_artifact"]);
   });
 
+  it.each(["read","write"] as const)("dispatches unmanaged Pi %s attempts without switching harnesses",async(mode) => {
+    const db=setup();const {bus}=fakeBus();
+    const children:Array<Record<string,unknown>>=[];
+    const pi={name:"pi",builtInTools:["read","write","edit","bash"],capabilities:{
+      mutationInterception:"observe_only",builtInFilesystem:true,
+      sandboxEnforcement:{filesystem:[],approval:false},
+    }} as unknown as AgentHarness;
+    const service=new TaskGraphService({db,bus,now:(()=>{let at=10;return()=>at++;})(),children:{
+      startChildRun:async(input)=>{children.push(input);return childSnapshot(input.attemptId,input.attemptNumber);},
+    },validateNodePolicy:(node)=>validateTaskGraphNodePolicy(node,()=>pi),resolveHarness:()=>pi});
+    const graph=revision();graph.nodes[0]={...graph.nodes[0]!,allowedHarnesses:["pi"],allowedTools:pi.builtInTools,
+      ownershipRequest:[{scope:"path",mode,normalizedValue:"src"}]};
+    service.createRevision(graph,3);
+    const result=await service.startRun({id:"graph",workItemId:"work",primaryRunKey:"primary",revisionId:"revision",
+      sourceSnapshot:source(),expectedLifecycleRevision:1,at:4});
+    expect(children).toHaveLength(1);
+    expect(children[0]).toMatchObject({harness:"pi",executorClass:"standard",toolAllowlist:pi.builtInTools});
+    expect(children[0]).not.toHaveProperty("sandboxPolicy");
+    expect(result.attempts[0]).toMatchObject({runtime:"running",session_run_key:"child-run"});
+    service.dispose();db.close();
+  });
+
   it("atomically dispatches outbox attempts with the enforced writer sandbox",async() => {
     const db = setup(); const {bus,emitted} = fakeBus();
     const children: Array<Record<string,unknown>> = [];

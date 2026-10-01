@@ -1,3 +1,4 @@
+import { beginSessionDecisionTurn } from "./session-decision-wait.ts";
 import { replaceCanvasAttachments } from "./continuity-attachments.ts";
 import { HistoryBuffer } from "./history-cache.ts";
 import { historyFactsForHost, recordHistoryEvent } from "./session-history-host.ts";
@@ -55,7 +56,7 @@ import { drainQueuedWorkItemGuidance } from "./work-item-continuation.ts";
 import type { ContextCheckpoint } from "./context-checkpoint.ts";
 import type { SandboxResolution } from "../shared/workspace-contracts.ts";
 import { failUninitializedCheckpoint } from "./session-host-checkpoint.ts";
-import { beginRun, commitReviewLifecycle, finishRun, initialSessionReviewLifecycle, type SessionReviewLifecycle } from "./session-review-lifecycle.ts";
+import { commitReviewLifecycle, finishRun, initialSessionReviewLifecycle, type SessionReviewLifecycle } from "./session-review-lifecycle.ts";
 import { serverLogger } from "./logging.ts";
 import { normalizedEventEnvelope, notifyRuntimeTerminal, seedSessionRunLineage,
   sessionHostLogFields } from "./session-host-identity.ts";
@@ -244,10 +245,7 @@ export class SessionHost {
       // Internal continuations supply explicit invocation semantics.
       const invocationKind: SessionInvocationKind = opts.invocationKind ?? "new_run";
       this.providerInvocationGeneration += 1;
-      if (invocationKind === "new_run") {
-        this.runtimeTerminalNotified = false; this.runtimeTerminalInFlight = false;
-        this.reviewLifecycle = beginRun(this.reviewLifecycle);
-      }
+      beginSessionDecisionTurn(this, deps.bus, invocationKind);
       this.eventStream = null;
       this.runControl = null;
       this.lastError = null;

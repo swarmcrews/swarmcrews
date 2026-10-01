@@ -1,4 +1,8 @@
 import "./test-helpers.ts";
+import { SessionHost } from "../session-host.ts";
+import { stageSessionDecision, pendingSessionDecision, hasAutomaticDecisionContinuation } from "../session-decision-wait.ts";
+import type { AgentTypeContext } from "../agents/types.ts";
+import { createTaskGraphPlanningTools } from "./planning-tools.ts";
 import { describe, expect, it, vi } from "vitest";
 import type { Bus } from "../bus.ts";
 import type { WsEnvelope } from "../../shared/ws-envelope.ts";
@@ -85,6 +89,33 @@ function setup() {
 }
 
 describe("TaskGraphPlanningCoordinator", () => {
+  it("rechecks a staged plan approval and suppresses user waits while the graph runs", async () => {
+    const { coordinator, db, transport } = setup();
+    const host = new SessionHost("primary", process.cwd());
+    host.workItemId = "work";
+    const tools = createTaskGraphPlanningTools({ coordinator, workItemId: "work", primaryRunKey: "primary",
+      mode: "plan", leaderSessionKey: "primary",
+      markDecisionNeeded: (reason, isPending) => stageSessionDecision(host, reason, isPending) });
+    await tools.find(tool => tool.name === "submit_graph_plan")!.handler({
+      requestId: "decision-plan", baseProposalRevision: null, plan: semanticPlan(),
+    });
+    expect(pendingSessionDecision(host)).toBe("The execution plan is ready for review and approval.");
+    // Approval can arrive from the UI after the Leader has fully halted.
+    db.prepare("UPDATE work_items SET runtime_state='waiting',wait_kind='decision' WHERE id='work'").run();
+    const plan = coordinator.inspection("work", "primary").plan!;
+    await tools.find(tool => tool.name === "start_graph_plan")!.handler({
+      proposalId: plan.proposalId, expectedProposalRevision: plan.proposalRevision,
+    });
+    expect(pendingSessionDecision(host)).toBeNull();
+    expect(db.prepare("SELECT runtime_state,wait_kind FROM work_items WHERE id='work'").get())
+      .toEqual({ runtime_state: "waiting", wait_kind: "other" });
+    expect(transport.emitted).toContainEqual(expect.objectContaining({
+      type: "work_item_changed", workItem: expect.objectContaining({ waitKind: "other" }),
+    }));
+    stageSessionDecision(host, "Choose a dashboard option");
+    expect(hasAutomaticDecisionContinuation(host, { taskGraphPlanning: coordinator } as AgentTypeContext)).toBe(true);
+  });
+
   it("permits connected inspection only for the current same-project source run", async () => {
     const { db, coordinator } = setup();
     createWorkItem(db, { id: "source", projectId: "project", projectPath: process.cwd(),

@@ -1,3 +1,5 @@
+import { pendingSessionDecision } from "./session-decision-wait.ts";
+import { HARNESS_DRAIN, type DrainableHarnessControl } from "./harness/terminal-provenance.ts";
 import type { AgentType, AgentTypeContext } from "./agents/index.ts";
 import type { NormalizedEvent } from "./harness/types.ts";
 import type { SessionHost } from "./session-host.ts";
@@ -32,6 +34,8 @@ export async function consumeProviderInvocation(input: {
   let continuationOpts: StartSessionOptions | null = null;
   let checkpointInitialized = false;
   let completedNormally = false;
+  let deferredDone: Extract<NormalizedEvent, { kind: "done" }> | null = null;
+  const drain = (host.runControl as DrainableHarnessControl | null)?.[HARNESS_DRAIN];
   try {
     for await (const event of events) {
       if (abortController.signal.aborted) break;
@@ -55,6 +59,10 @@ export async function consumeProviderInvocation(input: {
       }
       if (event.kind === "done" && continuationOpts) {
         recordProviderContinuationBoundary(host, event);
+      } else if (event.kind === "done" && pendingSessionDecision(host)) {
+        // A terminal message can precede provider cleanup. Never publish a
+        // user decision while the stream or mutation process is still live.
+        deferredDone = event;
       } else {
         processNormalizedEvent(host, deps.bus, agentType, agentCtx, event, deps.workItemLifecycle);
       }
@@ -65,6 +73,14 @@ export async function consumeProviderInvocation(input: {
     // An aborted, failed, or incomplete handoff must not restart this run or
     // capture the final answer of an unrelated future invocation.
     if (!completedNormally) discardCheckpointHandoff(host);
+  }
+  if (deferredDone && !abortController.signal.aborted && host.abortController === abortController) {
+    await drain;
+    if (!abortController.signal.aborted && host.abortController === abortController) {
+      host.eventStream = null;
+      host.runControl = null;
+      processNormalizedEvent(host, deps.bus, agentType, agentCtx, deferredDone, deps.workItemLifecycle);
+    }
   }
   return { continuationOpts, checkpointInitialized };
 }

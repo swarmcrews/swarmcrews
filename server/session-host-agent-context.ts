@@ -9,6 +9,7 @@ import type { SessionHost } from "./session-host.ts";
 import type { SessionHostDeps, StartSessionOptions } from "./session-host-types.ts";
 import { injectSessionMessage } from "./session-message.ts";
 import { pauseActiveRunForWait, requestWaitResume } from "./wait-resume.ts";
+import { stageSessionDecision } from "./session-decision-wait.ts";
 import { reviewLifecycleCallbacks } from "./session-review-lifecycle.ts";
 import { sessionHostLogFields } from "./session-host-identity.ts";
 import { serverLogger } from "./logging.ts";
@@ -157,12 +158,7 @@ export function buildAgentContext(
     ctx.mutationCoordination = new RunMutationCoordination(
       getLiveEditCoordinator(host.cwd),host.cwd,host.workItemId,host.runKey,5_000,taskGraphScope);
   }
-  const markDecisionNeeded = ctx.markDecisionNeeded;
-  ctx.markDecisionNeeded = (reason) => {
-    markDecisionNeeded?.(reason);
-    const identity = runtimeIdentity(host);
-    if (identity) deps.workItemLifecycle?.runWaiting({ ...identity, waitKind: "decision", at: Date.now() });
-  };
+  ctx.markDecisionNeeded = (reason, isPending) => stageSessionDecision(host, reason, isPending);
   if (host.taskState) ctx.existingTaskState = host.taskState;
   const graphTools = deps.getTaskGraphTools?.(host.runKey) ?? [];
   if (graphTools.length) ctx.taskGraphToolDefs = graphTools;

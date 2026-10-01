@@ -107,6 +107,21 @@ describe("task graph execution policy",()=>{
     }
   });
 
+  it("accepts explicitly unmanaged native execution without claiming sandbox enforcement",()=>{
+    const unmanaged={...harness,capabilities:{...harness.capabilities,builtInFilesystem:true,
+      sandboxEnforcement:{filesystem:[],approval:false}}} as AgentHarness;
+    for (const mode of ["read","write"] as const) {
+      const task=node({ownershipRequest:[{scope:"path",mode,normalizedValue:"src"}]});
+      expect(()=>validateTaskGraphNodePolicy(task,()=>unmanaged)).not.toThrow();
+      expect(sandboxPolicyForTaskGraphNode(task,()=>unmanaged)).toBeUndefined();
+      expect(()=>validateTaskGraphNodePolicy({...task,allowedTools:["unknown"]},()=>unmanaged))
+        .toThrow("requests tools unavailable");
+    }
+    expect(()=>validateTaskGraphNodePolicy(node({ownershipRequest:[{
+      scope:"symbol",mode:"write",normalizedValue:"run",
+    }]}),()=>unmanaged)).toThrow("unsupported symbol write ownership");
+  });
+
   it("does not claim a provider sandbox for coordinated or filesystem-free harnesses",()=>{
     const complete={...harness,capabilities:{...harness.capabilities,mutationInterception:"complete",
       builtInFilesystem:true}} as AgentHarness;

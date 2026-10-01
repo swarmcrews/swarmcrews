@@ -199,6 +199,18 @@ describe("work-item boot recovery witnesses", () => {
     `).get()).toEqual({ ended_at: null, run_outcome: "none" });
   });
 
+  it("recovers an automatic wait instead of stale decision attention", () => {
+    const db = memoryDb();
+    db.prepare(`UPDATE sessions SET review_state = 'decision_needed', task_state_json = ?
+      WHERE session_key = 'run-1'`).run(JSON.stringify({ pendingWait: { reason: "timer", durationMs: 100 } }));
+    startRunInvocation(db, { runKey: "run-1", providerId: "codex", startedAt: 30 });
+    claimRunInvocationTerminal(db, { runKey: "run-1", providerGeneration: 1,
+      terminalKind: "clean", terminalSource: "provider", terminalAt: 40 });
+    recoverOrphanedWorkItemRuns(db, new Set(), 50);
+    expect(db.prepare(`SELECT runtime_state,wait_kind FROM work_items WHERE id = 'work-1'`).get())
+      .toEqual({ runtime_state: "waiting", wait_kind: "other" });
+  });
+
   it("repairs inherited decision evidence that was left projected as working", () => {
     const db = memoryDb();
     db.prepare(`UPDATE work_items SET runtime_state = 'working' WHERE id = 'work-1'`).run();

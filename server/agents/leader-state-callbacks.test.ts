@@ -57,6 +57,6 @@ describe("createLeaderStateCallbacks", () => {
     });
 
     expect(markDecisionNeeded)
-      .toHaveBeenCalledWith("Dashboard input requested");
+      .toHaveBeenCalledWith("Dashboard input requested", expect.any(Function));
   });
 });

@@ -1,3 +1,4 @@
+import { pendingSessionDecision, hasAutomaticDecisionContinuation } from "./session-decision-wait.ts";
 import { buildConnectionContext } from "./mcp-connections/context.ts";
 import { boundLeaderPrompt } from "./leader-context-budget.ts";
 /** Lifecycle helpers for SessionHost worktrees, harness starts, and events. */
@@ -23,7 +24,7 @@ import { buildFreshThreadPrompt } from "./session-handoff.ts";
 import { captureUsageEvent } from "./session-usage-capture.ts";
 import { captureCheckpointHandoffEvent, recordCompactionUsage, resetCompactionForFreshThread, withCompactionReminder } from "./proactive-compaction.ts";
 import { serverLogger } from "./logging.ts";
-import { commitReviewLifecycle, finishRun } from "./session-review-lifecycle.ts";
+import { beginRun, commitReviewLifecycle, finishRun, requestDecision } from "./session-review-lifecycle.ts";
 import { emitMutationToolObservation } from "./mutation-observability.ts";
 import { normalizedEventEnvelope, notifyRuntimeTerminal, sessionHostLogFields } from "./session-host-identity.ts";
 import type { SessionHostDeps, WorkItemRuntimeLifecycle } from "./session-host-types.ts";
@@ -276,12 +277,19 @@ export function processNormalizedEvent(
       durableTask = task;
       durableLeaderKey = leaderKey;
     });
-    const waitKind = host.reviewLifecycle.reviewState === "decision_needed" ? "decision"
-      : host.taskState?.pendingWait ? "timer"
+    const decision = pendingSessionDecision(host);
+    const waitKind = (host.status as string) === "running" ? "continuation"
+      : host.taskState?.pendingWait || host.waitTimerId !== null ? "timer"
+      : hasAutomaticDecisionContinuation(host, agentCtx) ? "continuation"
       : blocked ? "blocked"
-      : (host.status as string) === "running" ? "continuation" : null;
+      : decision ? "decision" : null;
     const projection = projectHostInvocation(host, event, waitKind ? "continue" : "seal");
     if (projection.action === "continue") {
+      if (waitKind === "decision") {
+        commitReviewLifecycle(host, bus, requestDecision(host.reviewLifecycle, decision!), now);
+      } else if (host.reviewLifecycle.reviewState === "decision_needed") {
+        commitReviewLifecycle(host, bus, beginRun(host.reviewLifecycle), now);
+      }
       if (host.workItemId && waitKind) runtimeLifecycle?.runWaiting({
         workItemId: host.workItemId, runKey: host.runKey, runKind: host.runKind,
         parentRunKey: host.parentRunKey, taskId: host.taskId, waitKind, at: now,

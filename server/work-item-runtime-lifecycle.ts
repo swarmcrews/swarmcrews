@@ -81,11 +81,13 @@ export function createWorkItemRuntimeLifecycle(input: {
       const { item, run } = latest(value);
       if (run.ended_at !== null || value.runKind === "child") return;
       const waitKind = value.waitKind === "file_conflict" ? "file_conflict"
-        : value.waitKind === "decision" || value.waitKind === "blocked" ? "decision" : "other";
+        : value.waitKind === "decision" ? "decision" : "other";
       if (item.runtime_state === "waiting" && item.wait_kind === waitKind) return;
       if (item.runtime_state === "waiting") {
         const rank = { other: 1, file_conflict: 2, decision: 3 } as const;
-        if (rank[waitKind] <= rank[item.wait_kind ?? "other"]) return;
+        // Automatic continuation evidence invalidates a former decision wait;
+        // it must not remain sticky merely because attention ranked higher.
+        if (item.wait_kind !== "decision" && rank[waitKind] <= rank[item.wait_kind ?? "other"]) return;
         const changed = input.db.prepare(`UPDATE work_items SET wait_kind = ?, lifecycle_revision = lifecycle_revision + 1,
           last_transition_at = ?, updated_at = ? WHERE id = ? AND current_run_key = ? AND lifecycle_revision = ? AND runtime_state = 'waiting'`)
           .run(waitKind, value.at, value.at, item.id, value.runKey, item.lifecycle_revision);

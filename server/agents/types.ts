@@ -111,7 +111,7 @@ export interface AgentTypeContext {
   /** Persist the first selected name and return the session's canonical name. */
   updateTaskName?: (name: string) => string | void;
   /** Raise a durable, structured user-input requirement for Activity. */
-  markDecisionNeeded?: (reason: string) => void;
+  markDecisionNeeded?: (reason: string, isPending?: () => boolean) => void;
   /** Advance the persisted dashboard revision after a render mutation. */
   markDashboardChanged?: () => void;
 }

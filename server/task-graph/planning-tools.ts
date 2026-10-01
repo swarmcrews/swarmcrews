@@ -93,7 +93,7 @@ export function createTaskGraphPlanningTools(input: {
   primaryRunKey: string;
   mode: Exclude<LeaderOrchestrationMode, "direct">;
   leaderSessionKey: string;
-  markDecisionNeeded?: (reason: string) => void;
+  markDecisionNeeded?: (reason: string, isPending?: () => boolean) => void;
 }): NormalizedToolDef[] {
   const experiments = resolveTaskGraphExperiments(input.experiments);
   const document = new SemanticGraphDocumentDraft();
@@ -104,11 +104,17 @@ export function createTaskGraphPlanningTools(input: {
     return source;
   }
   const handleProjection = (snapshot: TaskGraphPlanSnapshotView) => {
+    const stillNeedsInput = () => {
+      const current = input.coordinator.inspection(input.workItemId, input.primaryRunKey).plan;
+      return current?.proposalId === snapshot.proposalId && current.proposalRevision === snapshot.proposalRevision
+        && (current.state === "needs_input" || (current.state === "ready" && current.canStart
+          && (input.mode === "plan" || !current.autoStartEligible)));
+    };
     if (snapshot.state === "needs_input") {
-      input.markDecisionNeeded?.(snapshot.questions[0] ?? "The execution plan needs input.");
+      input.markDecisionNeeded?.(snapshot.questions[0] ?? "The execution plan needs input.", stillNeedsInput);
     } else if (snapshot.state === "ready" && snapshot.canStart
       && (input.mode === "plan" || !snapshot.autoStartEligible)) {
-      input.markDecisionNeeded?.("The execution plan is ready for review and approval.");
+      input.markDecisionNeeded?.("The execution plan is ready for review and approval.", stillNeedsInput);
     }
     const view = experiments.decisionContinuations
       ? graphDecisionView({ plan: snapshot, runtime: null, history: [] }, experiments) : snapshot;

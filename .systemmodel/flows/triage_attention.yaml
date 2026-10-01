@@ -5,10 +5,12 @@ summary: Desktop and mobile Activity prioritize errors, decision waits, reviews,
 constraints: []
 decisions: [ decision.canonical_work_item_lifecycle ]
 risks: []
-suggested_files: [ src/ActivityView.tsx, src/use-session-activity.ts, src/mobile/ActivityScreen.tsx, src/mobile/mobile-activity-actions.ts, server/commands/session-review.ts ]
-suggested_tests: [ src/ActivityView.test.tsx, src/use-session-activity.test.ts, src/mobile/ActivityScreen.test.tsx, src/mobile/mobile-activity-actions.test.ts, server/commands/session-review.test.ts ]
+suggested_files: [ src/ActivityView.tsx, src/use-session-activity.ts, src/mobile/ActivityScreen.tsx, src/mobile/mobile-selectors.ts, src/mobile/mobile-activity-actions.ts, server/commands/session-review.ts, server/session-decision-wait.ts, server/session-host-provider-loop.ts, server/task-graph/work-item-activity.ts ]
+suggested_tests: [ src/ActivityView.test.tsx, src/use-session-activity.test.ts, src/mobile/ActivityScreen.test.tsx, src/mobile/mobile-selectors.test.ts, src/mobile/mobile-activity-actions.test.ts, server/commands/session-review.test.ts, server/session-decision-wait.test.ts, server/task-graph/work-item-activity.test.ts, server/task-graph/planning-coordinator.test.ts ]
 steps:
   - Derive needs-you, working, and waiting projections from server-owned session and WorkItem state.
+  - Publish decision-needed attention only after the provider stream and harness have drained, input is still pending, and no Crew execution, timer, or queued continuation remains. Publishing a form or approval request records intent, not a halt.
+  - Clear stale decision attention on resume or graph execution; automatic and blocked-child waits are not user decisions.
   - Inspect reason, report, transcript, dashboard, run history, and change state.
   - Route review, dismiss, restore, or reply through the matching bare-session or canonical command.
   - Apply revisioned lifecycle results without erasing acknowledged outcomes or exposing nested minions as top-level work.

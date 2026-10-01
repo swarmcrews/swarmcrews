@@ -2,7 +2,7 @@ import type { Bus } from "./bus.ts";
 import type { WorkItemBindingSnapshot, WorkItemDetailSnapshot, WorkItemRunSnapshot } from "../shared/work-item-contracts.ts";
 import { workItemBindingChangedEnvelopeSchema, workItemRunCreatedEnvelopeSchema, workItemRunSealedEnvelopeSchema } from "../shared/ws-envelope.ts";
 
-export function emitItemChanged(bus: Bus, detail: WorkItemDetailSnapshot, cause: string, at: number): void {
+export function emitItemChanged(bus: Bus, detail: Pick<WorkItemDetailSnapshot, "workItem">, cause: string, at: number): void {
   const payload = { type: "work_item_changed", workItem: detail.workItem,
     revision: detail.workItem.lifecycle.lifecycleRevision, cause, timestamp: at };
   bus.emitToWorkItem?.(detail.workItem.id, payload);

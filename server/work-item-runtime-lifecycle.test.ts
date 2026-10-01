@@ -30,6 +30,22 @@ describe("concrete work-item runtime lifecycle", () => {
     expect((await service.get(draft.workItem.id))?.workItem.lifecycle.outcome).toBe("completed");
   });
 
+  it.each(["timer", "continuation", "blocked"] as const)("does not retain decision attention during a %s wait", async (waitKind) => {
+    const db = initDb(":memory:"); ensureWorkItemSchema(db);
+    const bus = createBus({ clients: new Set() } as never);
+    const service = createSqliteWorkItemService({ db, bus,
+      generateKey: (kind, id) => `${kind}-${id}`, launchRun: vi.fn(), continueRun: vi.fn(), now: () => 10 });
+    const lifecycle = createWorkItemRuntimeLifecycle({ db, bus, service });
+    const draft = await service.create({ requestId: "create", projectId: "p", projectPath: "/repo", title: "T", changeMode: "live" });
+    await service.startRun({ requestId: "start", workItemId: draft.workItem.id, prompt: "go", expectedLifecycleRevision: 0, expectedCurrentRunKey: null });
+    const identity = { workItemId: draft.workItem.id, runKey: "run-start", runKind: "primary" as const, parentRunKey: null, taskId: null };
+    lifecycle.runStarted({ ...identity, at: 11 });
+    lifecycle.runWaiting({ ...identity, waitKind: "decision", at: 12 });
+    lifecycle.runWaiting({ ...identity, waitKind, at: 13 });
+    expect((await service.get(draft.workItem.id))?.workItem).toMatchObject({ waitKind: "other" });
+    db.close();
+  });
+
   it("ignores a late provider init after an interrupted run is sealed", async () => {
     const db = initDb(":memory:"); ensureWorkItemSchema(db);
     const bus = createBus({ clients: new Set() } as never);
