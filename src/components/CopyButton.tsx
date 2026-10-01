@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { browserLogger } from "../logging.ts";
 
 const log = browserLogger.child("copy-button");
@@ -57,6 +57,15 @@ export function CopyButton({
   title?: string;
 }) {
   const [copied, setCopied] = useState(false);
+  const mounted = useRef(false);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(feedbackTimer.current);
+    };
+  }, []);
   const placementStyle =
     layout === "absolute"
       ? { position: "absolute" as const, top: 4, right: 4 }
@@ -68,8 +77,10 @@ export function CopyButton({
       e.preventDefault();
       try {
         await copyText(text);
+        if (!mounted.current) return;
         setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        clearTimeout(feedbackTimer.current);
+        feedbackTimer.current = setTimeout(() => setCopied(false), 1500);
       } catch (err) {
         // Surface the failure instead of silently no-op'ing (Firefox in a
         // non-secure context leaves navigator.clipboard undefined).

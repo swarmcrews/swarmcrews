@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CopyButton, copyText } from "./CopyButton.tsx";
@@ -23,6 +23,7 @@ afterEach(() => {
     // jsdom has no clipboard by default; remove whatever the test set.
     setClipboard(undefined);
   }
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -58,6 +59,29 @@ describe("copyText", () => {
 });
 
 describe("CopyButton", () => {
+  it("cancels feedback timers on unmount and restarts them on repeated copies", async () => {
+    vi.useFakeTimers();
+    setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) });
+    const { unmount } = render(<CopyButton text="copy me" />);
+    await act(async () => { fireEvent.click(screen.getByRole("button")); });
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { fireEvent.click(screen.getByRole("button")); });
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not schedule feedback when clipboard completion arrives after unmount", async () => {
+    vi.useFakeTimers();
+    let resolve!: () => void;
+    setClipboard({ writeText: () => new Promise<void>(done => { resolve = done; }) });
+    const { unmount } = render(<CopyButton text="copy me" />);
+    fireEvent.click(screen.getByRole("button"));
+    unmount();
+    await act(async () => { resolve(); });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("copies via the fallback and shows the copied state (Firefox non-secure context)", async () => {
     setClipboard(undefined);
     const exec = vi.fn().mockReturnValue(true);
