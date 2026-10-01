@@ -15,7 +15,7 @@ test("drives a real credential-free Task Graph through browser, dispatcher, SQLi
   const project = await openProjectFixture(page, "Task Graph Harness");
   const workspaceId = project.workspaceId ?? project.id;
 
-  await connectTaskGraphSocket(page);
+  await connectTaskGraphSocket(page, project.id);
   const createWorkItem = await sendCommand(page, {
     type: "create_work_item",
     requestId: crypto.randomUUID(),

@@ -1,15 +1,16 @@
 id: flow.recover_after_disconnect
 type: flow
 name: Recover after disconnect or server restart
-summary: Reconnection restores the complete session graph, WorkItems, bindings, transcripts, waits, tasks, dashboards, approvals, and harness continuity, then replays only undelivered workflow attention.
+summary: Reconnection restores scoped activity and authoritative host state while recovering missed transcript events in bounded cursor pages; durable workflow recovery remains independent of client subscriptions.
 constraints: [ constraint.minion_lifecycle_semantics ]
 decisions: [ decision.typed_event_bus, decision.canonical_work_item_lifecycle ]
 suggested_files: [ src/use-socket.ts, src/App.tsx, src/use-work-items.ts, src/mobile/MobileApp.tsx, server/session-host.ts, server/session-registry.ts, server/session-registry-recovery.ts, server/session-persist.ts, server/session-task-state-persist.ts, server/commands/sync-session.ts ]
 suggested_tests: [ src/use-socket.test.tsx, src/App.dom.test.tsx, src/use-work-items.test.ts, src/mobile/MobileApp.test.tsx, server/session-persist.test.ts, server/session-registry.test.ts, server/commands/sync-session.test.ts ]
 steps:
   - Reconnect the WebSocket and safely flush queued outbound commands.
-  - Relist sessions and WorkItems, then sync each mounted session from persisted host truth.
-  - Restore the complete session graph and durable activity, continuity, wait and task facts before reconciling children; load transcript bodies on demand from bounded history pages.
+  - Load compact session summaries and WorkItems for the selected project; explicitly discover deep-linked sessions without downloading unrelated project inventories.
+  - Sync mounted sessions from persisted host truth, preserving existing transcripts while replaying missed events in bounded ascending cursor pages. Acknowledge only delivered events; durable clear markers invalidate pre-clear cursors even after new rows arrive, and unavailable history falls back to a bounded replacement.
+  - Restore the complete server-owned session graph and durable continuity, wait and task facts before reconciling children; client disclosure and subscriptions must not change durable recovery semantics.
   - Preserve blocked children and eligible waits; suppress sealed or superseded wakes, deduplicate delivery, and bound retries without acknowledging undelivered attention.
   - Reattach UI bindings and resume incomplete continuity without redoing terminal tasks or duplicating keyed creation.
 freshness:

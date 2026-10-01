@@ -20,7 +20,7 @@ test("converges successful and failure/retry/blocked Task Graph state through th
   );
   const project = await openProjectFixture(page, "Task Graph State");
   const workspaceId = project.workspaceId ?? project.id;
-  await connectTaskGraphSocket(page);
+  await connectTaskGraphSocket(page, project.id);
 
   // Launch from Canvas so the canonical WorkItem is bound to this real Leader
   // node and its LeaderTaskGraphBridge. Pi is a credential-free fixture here;

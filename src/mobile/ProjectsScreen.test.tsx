@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { checkProjectGit, createProject, getHarnessReadiness, getRepositoryPathSuggestions, listProjects } from "../api.ts";
-import type { MobileSessionInfo } from "./mobile-selectors.ts";
 import { ProjectsScreen } from "./ProjectsScreen.tsx";
 
-vi.mock("../api.ts", () => ({
+vi.mock("../api.ts", async importOriginal => ({
+  ...await importOriginal<typeof import("../api.ts")>(),
   checkProjectGit: vi.fn(async () => ({ isRepository: true })),
   createProject: vi.fn(),
   listProjects: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock("../api.ts", () => ({
 }));
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.mocked(createProject).mockReset();
   vi.mocked(checkProjectGit).mockResolvedValue({ isRepository: true });
   vi.mocked(listProjects).mockReset();
@@ -22,65 +23,64 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function session(overrides: Partial<MobileSessionInfo>): MobileSessionInfo {
-  return {
-    sessionKey: overrides.sessionKey ?? "s-1",
-    sessionId: null,
-    status: overrides.status ?? "idle",
-    cwd: overrides.cwd ?? "/work/alpha",
-    ...overrides,
-  };
+function summaryResponse(summary: unknown) {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+    url.includes("auth/token") ? { token: "test" } : summary), { status: 200 })));
 }
 
 describe("ProjectsScreen", () => {
-  it("lists projects with per-project session counts and attention, and selects one", async () => {
+  it("loads badge-only project summaries without any session inventory", async () => {
     vi.mocked(listProjects).mockResolvedValue([
-      { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-      { id: "beta", name: "Beta", path: "/work/beta", lastOpened: "2026-06-02T00:00:00.000Z", hasSidecar: false },
+      { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true },
+      { id: "beta", name: "Beta", path: "/work/beta", lastOpened: "", hasSidecar: true },
+    ]);
+    summaryResponse([
+      { projectId: "alpha", activeLeaders: 2, activeCrew: 1 },
+      { projectId: "beta", activeLeaders: 0, activeCrew: 0 },
     ]);
     const onSelectProject = vi.fn();
-
-    render(
-      <ProjectsScreen
-        sessions={[
-          // Three leaders scoped to Alpha (one a worktree subpath, one waiting, one in error).
-          session({ sessionKey: "a1", cwd: "/work/alpha", status: "error", totalCost: 0.12 }),
-          session({ sessionKey: "a2", cwd: "/work/alpha/.minions/worktrees/leader-1", status: "running", totalCost: 0.3 }),
-          session({ sessionKey: "a3", cwd: "/work/alpha/.minions/worktrees/leader-2", status: "waiting" }),
-          // Minions are excluded from the count.
-          session({ sessionKey: "m1", cwd: "/work/alpha", role: "minion", status: "running" }),
-          // A Beta session.
-          session({ sessionKey: "b1", cwd: "/work/beta", status: "idle" }),
-        ]}
-        onSelectProject={onSelectProject}
-      />,
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Alpha")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("2 active · $0.42 · 2 needs you")).toBeInTheDocument();
-    expect(screen.getByText("1 session · $0.00")).toBeInTheDocument();
+    render(<ProjectsScreen onSelectProject={onSelectProject} />);
+    expect(await screen.findByText("2 active Leaders · 1 active crew")).toBeInTheDocument();
+    expect(screen.getByText("0 active Leaders · 0 active crew")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Tutorial" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
-
     fireEvent.click(screen.getByText("Alpha"));
-    expect(onSelectProject).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "alpha", path: "/work/alpha" }),
-    );
+    expect(onSelectProject).toHaveBeenCalledWith(expect.objectContaining({ id: "alpha" }));
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("activity-summary"))).toBe(true);
+  });
+
+  it("leaves unknown activity distinct from an authoritative zero after failure", async () => {
+    vi.mocked(listProjects).mockResolvedValue([
+      { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));
+    render(<ProjectsScreen onSelectProject={vi.fn()} />);
+    expect(await screen.findByText("Checking activity…")).toBeInTheDocument();
+    expect(screen.queryByText(/0 active Leaders/)).not.toBeInTheDocument();
   });
 
   it("shows an empty state when there are no projects", async () => {
     vi.mocked(listProjects).mockResolvedValue([]);
 
-    render(<ProjectsScreen sessions={[]} onSelectProject={vi.fn()} />);
+    render(<ProjectsScreen onSelectProject={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByText("No recent projects found.")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Start tutorial" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Tutorial" })).not.toBeInTheDocument();
+  });
+
+  it("explains that projects register repositories and Canvas workspaces organize work", async () => {
+    vi.mocked(listProjects).mockResolvedValue([]);
+    render(<ProjectsScreen onSelectProject={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Add repository" }));
+
+    expect(screen.getByRole("heading", { name: "Register a repository" })).toBeVisible();
+    expect(screen.getByText(/A project connects Swarmcrews to one repository/)).toHaveTextContent(
+      "Canvas workspaces, such as Global, organize work inside it.",
+    );
+    expect(screen.getByRole("button", { name: "Register project" })).toBeVisible();
   });
 
   it("creates a project from the mobile project page and selects it", async () => {
@@ -96,17 +96,17 @@ describe("ProjectsScreen", () => {
     });
     const onSelectProject = vi.fn();
 
-    render(<ProjectsScreen sessions={[]} onSelectProject={onSelectProject} />);
+    render(<ProjectsScreen onSelectProject={onSelectProject} />);
 
     expect(screen.queryByLabelText("Folders on the server")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add repository" }));
     fireEvent.change(screen.getByLabelText("Folders on the server"), {
       target: { value: "/work/new-project" },
     });
     fireEvent.change(screen.getByLabelText("Name"), {
       target: { value: "New Project" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register project" }));
 
     await waitFor(() => {
       expect(createProject).toHaveBeenCalledWith("New Project", "/work/new-project");
@@ -126,8 +126,8 @@ describe("ProjectsScreen", () => {
       platform: "win32", separator: "\\", roots: [], directory: "D:\\repos", parent: "D:\\", breadcrumbs: [],
       entries: [{ name: "demo", path: "D:\\repos\\demo" }], truncated: false,
     });
-    render(<ProjectsScreen sessions={[]} onSelectProject={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    render(<ProjectsScreen onSelectProject={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add repository" }));
     fireEvent.click(screen.getByRole("button", { name: "Browse" }));
     const option = await screen.findByRole("option", { name: /demo/i });
     vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({
@@ -154,13 +154,13 @@ describe("ProjectsScreen", () => {
       nodes: [],
     });
 
-    render(<ProjectsScreen sessions={[]} onSelectProject={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "New project" }));
+    render(<ProjectsScreen onSelectProject={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Add repository" }));
     fireEvent.change(screen.getByLabelText("Folders on the server"), {
       target: { value: "/work/new-project" },
     });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Project" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register project" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Swarmcrews may run into issues without Git");
     expect(createProject).not.toHaveBeenCalled();

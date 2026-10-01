@@ -39,7 +39,7 @@ test("reconnect refetch converges in flight and a stale control cannot rewrite S
   const project = await openProjectFixture(page, "Task Graph Recovery");
   const workspaceId = project.workspaceId ?? project.id;
 
-  await connectTaskGraphSocket(page);
+  await connectTaskGraphSocket(page, project.id);
   const createWorkItem = await sendCommand(page, {
     type: "create_work_item",
     requestId: crypto.randomUUID(),
@@ -72,6 +72,12 @@ test("reconnect refetch converges in flight and a stale control cannot rewrite S
       workItemId,
       graphRevision: fixture.revision,
     });
+    let authority;
+    await expect.poll(async () => {
+      authority = (await sendCommand(page, { type: "get_work_item",
+        requestId: crypto.randomUUID(), workItemId })).result.workItem;
+      return authority.lifecycle.runtimeState;
+    }).toBe("working");
     await sendCommand(page, {
       type: "start_task_graph_run",
       requestId: crypto.randomUUID(),
@@ -80,7 +86,7 @@ test("reconnect refetch converges in flight and a stale control cannot rewrite S
       primaryRunKey,
       revisionId: fixture.revisionId,
       sourceSnapshot: fixture.sourceSnapshot,
-      expectedLifecycleRevision: 1,
+      expectedLifecycleRevision: authority.lifecycle.lifecycleRevision,
     });
 
     let beforeReload;
@@ -125,7 +131,7 @@ test("reconnect refetch converges in flight and a stale control cannot rewrite S
     });
 
     await page.reload();
-    await connectTaskGraphSocket(page);
+    await connectTaskGraphSocket(page, project.id);
     const refetchedEnvelope = await sendCommand(page, {
       type: "get_task_graph_snapshot",
       requestId: crypto.randomUUID(),
@@ -194,7 +200,7 @@ test("reconnect refetch converges in flight and a stale control cannot rewrite S
     });
   } finally {
     if (fs.existsSync(dbPath)) {
-      await connectTaskGraphSocket(page).catch(() => undefined);
+      await connectTaskGraphSocket(page, project.id).catch(() => undefined);
       const graph = await sendCommand(page, {
         type: "get_task_graph_snapshot",
         requestId: crypto.randomUUID(),

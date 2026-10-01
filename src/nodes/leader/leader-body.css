@@ -50,6 +50,14 @@
   scrollbar-width: thin;
 }
 
+.leader-message-feed-content {
+  display: flex;
+  flex: 1 0 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .leader-conversation-empty {
   display: flex;
   min-height: 150px;

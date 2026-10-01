@@ -117,8 +117,8 @@ export const COMMAND_SCHEMAS = {
     items: canvasContextItemsSchema,
   }),
   stop_session: sessionScoped("stop_session"),
-  sync_session: sessionScoped("sync_session"),
-  list_sessions: command("list_sessions", { includeArchived: z.boolean().optional() }),
+  sync_session: command("sync_session", { sessionKey, afterHistoryId: z.number().int().nonnegative().optional() }),
+  list_sessions: command("list_sessions", { includeArchived: z.boolean().optional(), projectId: z.string().min(1).nullable().optional() }),
   list_harnesses: command("list_harnesses", {}),
   acknowledge_session: command("acknowledge_session", {
     sessionKey: z.string().min(1),

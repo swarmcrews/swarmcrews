@@ -105,6 +105,7 @@ app.use((req, res, next) => {
 
 app.get("/api/mcp/oauth/callback", connectionOAuthCallback);
 app.get("/api/auth/token", createAuthTokenHandler(AUTH_TOKEN));
+app.post("/api/auth/token", createAuthTokenHandler(AUTH_TOKEN));
 const authMiddleware = createApiAuthMiddleware(AUTH_TOKEN);
 
 // Mount REST API routes (with auth)
@@ -304,7 +305,6 @@ wss.on("error", (err: unknown) => {
 
 wss.on("connection", (ws) => {
   attachConnectionListeners(ws, {
-    snapshotSessions: () => registry.snapshot(),
     dispatch: (cmd, target) => dispatchCommand(commandContext, cmd, target),
   });
 });

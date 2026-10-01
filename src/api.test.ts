@@ -67,7 +67,7 @@ describe("API client boundary", () => {
     await expect(getAuthToken()).resolves.toBe("secret");
 
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/token");
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/token", { method: "POST" });
   });
 
   it.each([

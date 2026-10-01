@@ -24,6 +24,8 @@ export function msgId(): string {
 export function extractLeaderCore(d: LeaderData): SessionStreamState {
   return {
     sessionKey: d.sessionKey,
+    historyHighWater: d.historyHighWater,
+    highestLiveHistoryId: d.highestLiveHistoryId,
     contextDelivery: d.contextDelivery,
     status: d.status,
     messages: d.messages,

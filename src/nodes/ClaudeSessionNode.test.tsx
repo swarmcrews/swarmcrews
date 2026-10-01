@@ -600,3 +600,18 @@ describe("ClaudeSessionNode: streaming delta handling", () => {
     expect(last?.messages.some((m) => m.role === "assistant" && m.content === "Complete message.")).toBe(true);
   });
 });
+
+ it("merges incremental reconnect pages without replacing an already visible transcript", async () => {
+    const { socket, replay } = createReplaySocket();
+    const states: ClaudeSessionData[] = [];
+    render(<Probe socket={socket} initial={makeInitialData({ messages: [
+      { id: "earlier", role: "assistant", content: "Keep earlier output", timestamp: 1 },
+    ] })} onState={d => states.push(d)} />);
+    await pump(replay, [{ message: {
+      type: "sync_response", sessionKey: "session-1", found: true, afterHistoryId: 4,
+      history: { highWater: 5, before: null, nextAfter: null, url: "/api/history/session-1" },
+      events: [{ type: "sdk_event", sessionKey: "session-1", timestamp: 5, historyId: 5,
+        event: { kind: "text", role: "assistant", text: "Missed output" } }],
+    } }]);
+    expect(states.at(-1)?.messages.map(m => m.content)).toEqual(["Keep earlier output", "Missed output"]);
+  });

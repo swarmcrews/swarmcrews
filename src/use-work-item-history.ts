@@ -7,6 +7,7 @@ import {
   type SessionStreamState,
 } from "./session-stream.ts";
 import type { ServerMessage, SocketSubscribe } from "./use-socket.ts";
+import { nextHistoryPage } from "./session-recovery.ts";
 
 export interface WorkItemHistoryState {
   orderedRuns: WorkItemRunSnapshot[];
@@ -42,6 +43,8 @@ export function useWorkItemHistory(input: {
   const currentMessages = input.currentStream?.messages;
   const currentHighWater = input.currentStream?.historyHighWater;
   const [streams, setStreams] = useState<Record<string, SessionStreamState>>({});
+  const streamsRef = useRef(streams);
+  streamsRef.current = streams;
   const [opened, setOpened] = useState<{ workItemId: typeof workItemId; keys: string[] }>({ workItemId, keys: [] });
   const [runStatus, setRunStatus] = useState<WorkItemHistoryState["runStatus"]>({});
   const [pendingPage, setPendingPage] = useState<string | null>(null);
@@ -144,7 +147,9 @@ export function useWorkItemHistory(input: {
         if (requestedRuns.current.has(runKey)) continue;
         requestedRuns.current.add(runKey);
         setRunStatus((current) => ({ ...current, [runKey]: "loading" }));
-        socketSend({ type: "sync_session", sessionKey: runKey });
+        const cursor = streamsRef.current[runKey]?.historyHighWater;
+        socketSend({ type: "sync_session", sessionKey: runKey,
+          ...(cursor !== undefined ? { afterHistoryId: cursor } : {}) });
       }
     };
     const unsubscribe = socketSubscribe("*", (raw: unknown) => {
@@ -169,6 +174,9 @@ export function useWorkItemHistory(input: {
       if (!sessionKey || !runKeys.has(sessionKey)) return;
       if (msg.type === "sync_response") {
         setRunStatus((current) => ({ ...current, [sessionKey]: msg.found ? "ready" : "unavailable" }));
+        const after = nextHistoryPage(msg);
+        if (msg.found && msg.afterHistoryId !== undefined && after !== null
+          && after > msg.afterHistoryId) socketSend?.({ type: "sync_session", sessionKey, afterHistoryId: after });
       }
       setStreams((current) => {
         const previous = current[sessionKey] ?? emptySessionStreamState(sessionKey);

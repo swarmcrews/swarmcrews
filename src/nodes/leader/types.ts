@@ -62,6 +62,8 @@ export interface LeaderData {
   workItemSnapshot?: WorkItemSnapshot | null;
   liveEditAwareness?: LiveEditAwareness;
   sessionKey: string | null;
+  historyHighWater?: number | undefined;
+  highestLiveHistoryId?: number | undefined;
   status: "disconnected" | "creating" | "running" | "idle" | "stopped" | "error" | "completed";
   messages: LeaderMessage[];
   messageDelivery?: Record<string, import("./CanvasDeliveryReceipt.tsx").DeliveryReceipt>;

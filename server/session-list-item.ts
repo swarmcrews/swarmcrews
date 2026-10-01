@@ -135,7 +135,8 @@ export function buildSessionListItem(
     harness,
     harnessCapabilities,
     lastActivityAt,
-    reviewLifecycle: s.reviewLifecycle,
+    reviewLifecycle: { ...s.reviewLifecycle, finalReport: null,
+      reviewReason: s.reviewLifecycle.reviewReason?.slice(0, 512) ?? null },
     activeMinions: s.taskState
       ? Array.from(s.taskState.tasks.entries())
           .filter(

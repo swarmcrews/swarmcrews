@@ -1,3 +1,4 @@
+import { subscribeConnectionSession } from "../session-subscriptions.ts";
 import { persistenceDb } from "../session-persist.ts";
 import { readHistoryPage } from "../session-history.ts";
 import { withoutArchivedWork } from "../session-list-visibility.ts";
@@ -38,6 +39,7 @@ function harnessSnapshot(name: string): {
 
 export const syncSession: CommandHandler = (ctx, cmd, ws) => {
   if (!cmd.sessionKey) return;
+  subscribeConnectionSession(ws, cmd.sessionKey);
   const host = ctx.registry.get(cmd.sessionKey);
   if (!host) {
     unicastToSession(ws, cmd.sessionKey, {
@@ -57,7 +59,13 @@ export const syncSession: CommandHandler = (ctx, cmd, ws) => {
   }
 
   const db = persistenceDb();
-  const page = db ? readHistoryPage(db, host.id) : { events: host.eventBuffer };
+  // Without a durable log, buffered events have no row IDs: an incremental
+  // filter would discard them all. Explicitly replace from the bounded tail.
+  const page = db ? (cmd.afterHistoryId !== undefined
+    ? readHistoryPage(db, host.id, Number.MAX_SAFE_INTEGER, undefined, cmd.afterHistoryId)
+    : readHistoryPage(db, host.id)) : { events: host.eventBuffer,
+      history: { before: null, highWater: 0, url: `/api/history/${encodeURIComponent(host.id)}`,
+        reset: cmd.afterHistoryId !== undefined } };
   unicastToSession(ws, cmd.sessionKey, {
     type: "sync_response",
     sessionKey: cmd.sessionKey,
@@ -106,6 +114,7 @@ export const syncSession: CommandHandler = (ctx, cmd, ws) => {
           }))
       : [],
     ...page,
+    ...(cmd.afterHistoryId !== undefined ? { afterHistoryId: cmd.afterHistoryId } : {}),
   });
 
   // Re-emit render state so the RenderNode subscription picks it up on

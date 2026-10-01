@@ -28,7 +28,8 @@ function emitSocketMessage(msg: unknown) {
   });
 }
 
-vi.mock("../api.ts", () => ({
+vi.mock("../api.ts", async importOriginal => ({
+  ...await importOriginal<typeof import("../api.ts")>(),
   getProjectSettings: vi.fn(async () => ({})),
   listProjects: vi.fn(async () => []),
   getHarnessReadiness: vi.fn(async () => ({ schemaVersion: 1, checkedAt: "", expiresAt: "", ready: true, readyHarnesses: ["claude"], harnesses: [] })),
@@ -103,6 +104,24 @@ afterEach(() => {
 });
 
 describe("MobileApp", () => {
+
+  it("uses compact project badges and loads scoped inventory only after selection", async () => {
+    installPushGlobals();
+    vi.mocked(listProjects).mockResolvedValue([
+      { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true },
+    ]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.includes("auth/token") ? { token: "test" } : [{ projectId: "alpha", activeLeaders: 1, activeCrew: 2 }]
+    ), { status: 200 })));
+    render(<MobileApp />);
+    expect(await screen.findByText("1 active Leader · 2 active crew")).toBeInTheDocument();
+    expect(send.mock.calls.some(([command]) => command.type === "list_sessions" && command.projectId)).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
+    expect(send).toHaveBeenCalledWith({ type: "list_sessions", projectId: "alpha" });
+    fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+    expect(await screen.findByText("1 active Leader · 2 active crew")).toBeInTheDocument();
+    expect(send).toHaveBeenCalledWith({ type: "list_sessions", projectId: null });
+  });
 
   it("restores Activity filters and scroll, keeps drafts per session, and uses the same shell for review", async () => {
     installPushGlobals();

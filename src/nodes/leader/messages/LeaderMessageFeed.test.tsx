@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { LeaderData } from "../types.ts";
 import { LeaderMessageFeed } from "./LeaderMessageFeed.tsx";
 
-function renderEmptyFeed(isWorking: boolean, streamingText = "") {
+function renderEmptyFeed(isWorking: boolean, streamingText = "", contentRef = { current: null as HTMLDivElement | null }) {
   return render(
     <LeaderMessageFeed
       outputRef={{ current: null }}
+      contentRef={contentRef}
       data={{ sessionKey: "leader-1", messages: [], streamingText } as unknown as LeaderData}
       groupedMessages={[]}
       messageContextSelection={null}
@@ -20,6 +21,13 @@ function renderEmptyFeed(isWorking: boolean, streamingText = "") {
 }
 
 describe("Leader conversation empty state", () => {
+  it("exposes the inner content for delayed-growth observation", () => {
+    const contentRef = { current: null as HTMLDivElement | null };
+    renderEmptyFeed(false, "An answer", contentRef);
+    expect(contentRef.current).toContainElement(screen.getByText("An answer"));
+    expect(contentRef.current?.parentElement).toHaveAttribute("aria-label", "Conversation messages");
+  });
+
   it("invites a message for an idle session without claiming it is thinking", () => {
     renderEmptyFeed(false);
     expect(screen.getByRole("heading", { name: "Your conversation starts here" })).toBeInTheDocument();

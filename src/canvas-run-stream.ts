@@ -17,5 +17,5 @@ export function canvasRunStreamPatch(
     return message.role === "user" && (state === "sending" || state === "unconfirmed" || state === "failed");
   });
   return { ...emptySessionStreamState(nextRunKey), messages, status: "creating",
-    contextDelivery: {}, historyHighWater: undefined };
+    contextDelivery: {}, historyHighWater: undefined, highestLiveHistoryId: undefined };
 }

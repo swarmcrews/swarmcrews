@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 for (const mobile of [false, true]) {
-  test(`activity loads progressively on ${mobile ? 'mobile' : 'desktop'}`, async ({ page }) => {
+  test(`activity loads progressively on ${mobile ? 'mobile' : 'desktop'}`, async ({ page }, info) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -36,9 +36,9 @@ for (const mobile of [false, true]) {
     await expect(page.locator('.act-launch-panel')).toBeHidden();
     await expect.poll(() => requests.length).toBe(1);
     expect(requests[0].limit).toBe(20);
-    send({ type: 'session_list', sessions: [] });
+    send({ type: 'session_list', topic: `project:${project.id}`, sessions: [] });
     await expect(page.getByRole('status').filter({ hasText: 'Loading activity' })).toBeVisible();
-    await page.screenshot({ path: `/tmp/activity-loading-${mobile ? 'mobile' : 'desktop'}.png` });
+    await page.screenshot({ path: info.outputPath(`activity-loading-${mobile ? 'mobile' : 'desktop'}.png`) });
     const reply = (request, items, nextCursor) => send({ type: 'work_item_response',
       command: 'list_work_items', requestId: request.requestId, success: true,
       result: { projectId: project.id, items, nextCursor } });

@@ -46,6 +46,8 @@ export interface MinionTaskState {
 
 export interface MinionData {
   sessionKey: string | null;
+  historyHighWater?: number | undefined;
+  highestLiveHistoryId?: number | undefined;
   status: "disconnected" | "waiting" | "creating" | "running" | "idle" | "stopped" | "completed" | "error";
   leaderId: string | null;
   taskQueue: MinionTaskState[];
@@ -91,6 +93,8 @@ function extractCore(d: MinionData): SessionStreamState {
     d.status === "waiting" ? "disconnected" : d.status;
   return {
     sessionKey: d.sessionKey,
+    historyHighWater: d.historyHighWater,
+    highestLiveHistoryId: d.highestLiveHistoryId,
     status,
     messages: d.messages,
     streamingText: d.streamingText,
@@ -275,7 +279,6 @@ export function MinionNodeRenderer({
   const outputRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const { banners, processNormalizedEvent, dismissBanner } = useStatusBanners();
-  const syncedRef = useRef(false);
   const debugEnabled = useSyncExternalStore(
     debugFlagStore.subscribe,
     debugFlagStore.getSnapshot,
@@ -300,13 +303,6 @@ export function MinionNodeRenderer({
     output.addEventListener("wheel", stop, { passive: false });
     return () => output.removeEventListener("wheel", stop);
   }, [showLog]);
-
-  // Request sync on mount if we have a sessionKey
-  useEffect(() => {
-    if (!socketSend || !data.sessionKey || syncedRef.current) return;
-    syncedRef.current = true;
-    socketSend({ type: "sync_session", sessionKey: data.sessionKey });
-  }, [socketSend, data.sessionKey]);
 
   // Reset agent-subagent minions that were "running" on reload (can't re-attach).
   // Also catches idle-on-reload case where in_progress tasks were left behind.
@@ -379,17 +375,12 @@ export function MinionNodeRenderer({
 
       let merged: MinionData = {
         ...current,
-        sessionKey: next.sessionKey,
+        ...next,
         status: nextStatus,
         // Preserve optimistic user turns the reducer never re-emits (e.g. the
         // "Starting task: …" marker) so a sync rebuild or stale-snapshot
         // reduction can't wipe them from the execution log.
         messages: preserveOptimisticUserMessages(current.messages, next.messages),
-        streamingText: next.streamingText,
-        streamingBlockIndex: next.streamingBlockIndex,
-        totalCost: next.totalCost,
-        turns: next.turns,
-        error: next.error,
       };
 
       // ── sync_response !found transition ──
@@ -459,6 +450,7 @@ export function MinionNodeRenderer({
   );
 
   useSessionStream({
+    socketSend,
     ...(socketSubscribe ? { socketSubscribe } : {}),
     state: extractCore(data),
     onChange: applyCoreUpdate,

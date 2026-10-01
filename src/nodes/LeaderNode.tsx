@@ -393,18 +393,12 @@ export function LeaderNodeRenderer({
 
       let merged: LeaderData = {
         ...current,
-        sessionKey: next.sessionKey,
+        ...next,
         contextDelivery: next.contextDelivery ?? current.contextDelivery,
-        status: next.status,
         // A sync rebuild may omit optimistic user turns. Re-graft
         // them so the user's own messages never disappear between agent turns.
         messages: preserveOptimisticUserMessages(current.messages, next.messages,
           new Set(Object.keys(current.messageDelivery ?? {}))),
-        streamingText: next.streamingText,
-        streamingBlockIndex: next.streamingBlockIndex,
-        totalCost: next.totalCost,
-        turns: next.turns,
-        error: next.error,
         fullError: next.fullError ?? next.error,
       };
 
@@ -1248,7 +1242,7 @@ export function LeaderNodeRenderer({
         chat={
           <>
       <LeaderMessageFeed
-        outputRef={chatFollow.feedRef}
+        outputRef={chatFollow.feedRef} contentRef={chatFollow.contentRef}
         onScroll={chatFollow.onScroll}
         historyLoading={history.loading}
         data={data}

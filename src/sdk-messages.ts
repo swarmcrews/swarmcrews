@@ -22,6 +22,10 @@ export interface DisplayMessage {
   role: "user" | "assistant" | "tool" | "system" | "result" | "thinking";
   content: string;
   timestamp: number;
+  /** Immutable persisted row identity used to merge replay with live traffic. */
+  historyId?: number;
+  /** Model reported by a session init event, presented as transcript context. */
+  sessionModel?: string;
   /** Local placeholder replaced when its persisted user turn arrives. */
   optimistic?: boolean;
   toolName?: string | undefined;
@@ -101,6 +105,7 @@ export function normalizedToDisplayMessages(
         id: derivedId(prefix, "init", event.model),
         role: "system",
         content: `Session on ${event.model}`,
+        sessionModel: event.model,
         timestamp: now,
       }];
 

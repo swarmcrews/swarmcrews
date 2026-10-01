@@ -512,3 +512,60 @@ describe("useSessionStream: batches transient streaming updates", () => {
 
   });
 });
+
+describe("cursor recovery", () => {
+  it("requests metadata with a persisted cursor and drains ascending pages", () => {
+    const listeners = new Set<(msg: ServerMessage) => void>();
+    const subscribe = ((topicOrFn: string | ((msg: ServerMessage) => void), fn?: (msg: ServerMessage) => void) => {
+      const listener = typeof topicOrFn === "function" ? topicOrFn : fn!;
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    }) as SocketSubscribe;
+    const send = vi.fn();
+    const { unmount } = renderHook(() => useSessionStream({
+      socketSend: send, socketSubscribe: subscribe,
+      state: { ...emptySessionStreamState("run"), historyHighWater: 4,
+        messages: [{ id: "old", role: "assistant", content: "old", timestamp: 1 }] },
+      onChange: vi.fn(), prefix: "test",
+    }));
+    expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run", afterHistoryId: 4 });
+    act(() => { for (const fn of listeners) fn({ type: "sync_response", found: true, sessionKey: "run",
+      afterHistoryId: 4, history: { highWater: 12, before: null, nextAfter: 6, url: "/api/history/run" },
+      events: [{ type: "sdk_event", sessionKey: "run", historyId: 6, timestamp: 1,
+        event: { kind: "text", role: "assistant", text: "page" } }],
+    }); });
+    expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run", afterHistoryId: 6 });
+    unmount();
+  });
+});
+
+it("reconnects again from the delivered page when live traffic overtook a multi-page gap", () => {
+  const listeners = new Set<(msg: ServerMessage) => void>();
+  const subscribe = ((_topic: string, fn: (msg: ServerMessage) => void) => {
+    listeners.add(fn); return () => { listeners.delete(fn); };
+  }) as SocketSubscribe;
+  Object.defineProperty(subscribe, "supportsTopics", { value: true });
+  const send = vi.fn();
+  const { result } = renderHook(() => {
+    const [state, setState] = useState<SessionStreamState>({ ...emptySessionStreamState("run"), historyHighWater: 4 });
+    useSessionStream({ socketSend: send, socketSubscribe: subscribe, state, onChange: setState, prefix: "test" });
+    return state;
+  });
+  const emit = (msg: ServerMessage) => act(() => { for (const fn of listeners) fn(msg); });
+  emit({ type: "sdk_event", sessionKey: "run", historyId: 9,
+    event: { kind: "text", role: "assistant", text: "live" } });
+  const page = (afterHistoryId: number, historyId: number, nextAfter: number | null): ServerMessage => ({
+    type: "sync_response", sessionKey: "run", found: true, afterHistoryId,
+    history: { highWater: 9, before: null, nextAfter, url: "/api/history/run" },
+    events: [{ type: "sdk_event", sessionKey: "run", timestamp: historyId, historyId,
+      event: { kind: "text", role: "assistant", text: historyId === 9 ? "live" : `page ${historyId}` } }],
+  });
+  emit(page(4, 6, 6));
+  expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run", afterHistoryId: 6 });
+  emit({ type: "socket_reconnected" });
+  expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run", afterHistoryId: 6 });
+  emit(page(6, 8, 8));
+  emit(page(8, 9, null));
+  expect(result.current.historyHighWater).toBe(9);
+  expect(result.current.messages.map(message => message.content)).toEqual(["page 6", "page 8", "live"]);
+});

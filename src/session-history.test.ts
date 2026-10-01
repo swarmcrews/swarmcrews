@@ -13,7 +13,8 @@ describe("history window stream contract", () => {
     }, "lm");
     expect(live.messages).toEqual(replayed.messages);
     expect(live.messages).toEqual([]);
-    expect(live.historyHighWater).toBe(1);
+    expect(live.highestLiveHistoryId).toBe(1);
+    expect(live.historyHighWater).toBeUndefined();
     expect(sessionStreamReducer(live, archived, "lm")).toBe(live);
     expect(JSON.stringify(live.messages)).not.toContain("RAW_TOOL_OUTPUT");
     expect(buildSessionContext(live.messages)).toBe("");
@@ -26,7 +27,8 @@ describe("history window stream contract", () => {
     }, "lm");
     expect(next.streamingText).toBe("Working");
     expect(next.messages).toEqual([]);
-    expect(next.historyHighWater).toBe(1);
+    expect(next.highestLiveHistoryId).toBe(1);
+    expect(next.historyHighWater).toBeUndefined();
     expect(buildSessionContext(next.messages)).toBe("");
   });
   it("removes saved archive placeholders when replay has no displayable messages", () => {

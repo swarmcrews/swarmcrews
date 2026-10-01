@@ -35,12 +35,18 @@ export const clearSession: CommandHandler = (ctx, cmd, ws) => {
 
   if (host.status === "running") return;
 
+  // Persist the wipe before changing the live host or acknowledging success.
+  if (!clearSessionEvents(cmd.sessionKey)) {
+    unicastToSession(ws, cmd.sessionKey, {
+      type: "session_error", sessionKey: cmd.sessionKey, code: "SESSION_CLEAR_FAILED",
+      error: "History could not be cleared because storage is unavailable. Please retry.", timestamp: Date.now(),
+    });
+    return;
+  }
   host.eventBuffer = [];
   host.totalCost = 0;
   host.turns = 0;
   host.persist();
-
-  clearSessionEvents(cmd.sessionKey);
   resetHistoryFacts(host);
 
   // Clearing a session wipes its history; drop its temporary HTML artifacts

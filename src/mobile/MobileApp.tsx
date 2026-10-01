@@ -166,9 +166,11 @@ export default function MobileApp() {
 
   const { connected, send, subscribe, reconnectState, manualReconnect } = useSocket(buildWsUrl());
   const keyboard = useMobileKeyboard();
-  const { sessions, mobileSessions, hasLoaded: sessionsLoaded } = useSessionActivity(subscribe);
   const { route, navigate, backToActivity: openActivity, closeGraph } = useMobileNavigation();
   const { project: selectedProject, sessionKey: routedSessionKey, screen: activeTab } = route;
+  const { sessions, mobileSessions, hasLoaded: sessionsLoaded } = useSessionActivity(subscribe, {
+    projectId: selectedProject?.id ?? null, connected, send,
+  });
   const activityMemories = useRef(new Map<string, ActivityViewMemory>());
   const sessionMemories = useRef(new Map<string, SessionViewMemory>());
   const sessionWorkItems = useRef(new Map<string, string>());
@@ -190,10 +192,6 @@ export default function MobileApp() {
     });
   }, [subscribe]);
 
-  useEffect(() => {
-    if (activeTab !== "activity" || !connected) return;
-    send({ type: "list_sessions" });
-  }, [activeTab, connected, send]);
 
   // Activity replaces a work item's row when its primary iteration changes.
   // Retain observed identities so an open chat (or Back entry) can follow that
@@ -436,7 +434,7 @@ export default function MobileApp() {
               title={sessionDisplayTitle(selectedSession)} />
           ) : undefined} />
       ) : !selectedProject ? (
-        <ProjectsScreen sessions={mobileSessions} onSelectProject={selectProject} />
+        <ProjectsScreen onSelectProject={selectProject} />
       ) : activeTab === "launch" ? (
         <LaunchScreen onLaunched={handleLaunchSubmitted}
           onLaunchError={(message) => { if (/Maximum session limit/i.test(message)) showSessionLimitNotice(); }}

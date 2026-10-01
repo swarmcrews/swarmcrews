@@ -21,6 +21,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { nextHistoryPage } from "./session-recovery.ts";
 import { recordWsMessageForDebug } from "./debug-record-bridge.ts";
 import {
   sessionStreamReducer,
@@ -152,11 +153,13 @@ export function useSessionStream(opts: UseSessionStreamOptions): void {
 
   useEffect(() => {
     if (!socketSubscribe || !sessionKey) return;
+    const requestSync = (after?: number) => socketSend?.({ type: "sync_session", sessionKey,
+      ...(after !== undefined ? { afterHistoryId: after } : {}) });
     const listener = (msg: unknown) => {
       const current = stateRef.current;
       const serverMsg = msg as ServerMessage;
       if (serverMsg.type === "socket_reconnected") {
-        socketSend?.({ type: "sync_session", sessionKey });
+        requestSync(stateRef.current.historyHighWater);
         return;
       }
       // Debug capture — no-ops when debug mode is off, scoped to the
@@ -171,6 +174,11 @@ export function useSessionStream(opts: UseSessionStreamOptions): void {
         serverMsg,
         prefixRef.current,
       );
+      if (serverMsg.type === "sync_response" && serverMsg.sessionKey === sessionKey && serverMsg.found
+        && serverMsg.afterHistoryId !== undefined) {
+        const after = nextHistoryPage(serverMsg);
+        if (after !== null && after > serverMsg.afterHistoryId) requestSync(after);
+      }
       if (next !== current) {
         // Update ref synchronously so back-to-back messages within the
         // same tick each see the latest state, then notify the caller.
@@ -195,7 +203,7 @@ export function useSessionStream(opts: UseSessionStreamOptions): void {
     const unsubscribe = subscribeSocketTopic(socketSubscribe, sessionTopic(sessionKey), listener);
     // A run can emit events before React commits its new session key. Attach
     // first, then recover that gap, independently of the caller's launch guard.
-    socketSend?.({ type: "sync_session", sessionKey });
+    requestSync(stateRef.current.historyHighWater);
     return () => {
       unsubscribe?.();
       cancelFrame(pendingFrameRef.current);

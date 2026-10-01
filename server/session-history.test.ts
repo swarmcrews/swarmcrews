@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { openPersistDb, closePersistDb, hydrateSessionsFromDb } from "./session-persist.ts";
+import { openPersistDb, closePersistDb, hydrateSessionsFromDb, clearSessionEvents } from "./session-persist.ts";
 import { appendEvent } from "./session-repo.ts";
 import { readHistoryPage, readEventChunk, readHistoricalDirectives, readHistoryPreview } from "./session-history.ts";
 import { recordHistoryEvent, semanticHistory } from "./session-history-host.ts";
@@ -7,6 +7,7 @@ import { HistoryBuffer, evictHistoryCache, historyCacheStats, HISTORY_GLOBAL_BYT
 import { HISTORY_PAGE_BYTES } from "../shared/history.ts";
 import { SessionHost } from "./session-host.ts";
 import { compileContextCheckpoint } from "./context-checkpoint.ts";
+import { subscribeConnectionSession } from "./session-subscriptions.ts";
 import { createBus } from "./bus.ts";
 import type { WebSocketServer } from "ws";
 afterEach(() => { closePersistDb(); evictHistoryCache(); });
@@ -131,12 +132,68 @@ describe("bounded durable history", () => {
     const original = event("live", 1, "x".repeat(1_000_000));
     host.bufferEvent(original);
     const sent: string[] = [];
-    const bus = createBus({ clients: new Set([{ readyState: 1, bufferedAmount: 0, send: (s: string) => sent.push(s) }]) } as unknown as WebSocketServer);
+    const client = { readyState: 1, bufferedAmount: 0, send: (s: string) => sent.push(s) };
+    subscribeConnectionSession(client as never, host.id);
+    const bus = createBus({ clients: new Set([client]) } as unknown as WebSocketServer);
     let observed: unknown; bus.subscribe(envelope => { observed = envelope.event; });
     bus.emitToSession(host.id, original);
     expect(observed).toBe(original.event);
     expect(sent[0]!.length).toBeLessThan(2048);
     expect(JSON.parse(sent[0]!).historyRef.id).toBe(1);
     expect(original.event.text.length).toBe(1_000_000);
+  });
+});
+
+describe("ascending missed-event pages", () => {
+  it("retains a durable reset without reporting cleared transcript activity", () => {
+    const db = openPersistDb(":memory:");
+    const old = appendEvent(db, "s", "sdk_event", event("s", 1, "old"));
+    clearSessionEvents("s");
+    const reset = readHistoryPage(db, "s", Number.MAX_SAFE_INTEGER, 200, old);
+    expect(reset.history.reset).toBe(true);
+    expect(reset.events.map(row => row.type)).toEqual(["session_cleared"]);
+    expect(new SessionHost("s", "/tmp").historyFacts).toMatchObject({
+      lastActivityAt: null, lastResponseAt: null, hasAssistant: false,
+    });
+  });
+  it("rolls back the purge if its durable reset cannot be written", () => {
+    const db = openPersistDb(":memory:");
+    appendEvent(db, "s", "sdk_event", event("s", 1, "old"));
+    db.exec(`CREATE TRIGGER reject_clear BEFORE INSERT ON event_log
+      WHEN NEW.event_type = 'session_cleared' BEGIN SELECT RAISE(ABORT, 'reset failure'); END`);
+    clearSessionEvents("s");
+    expect(readHistoryPage(db, "s").events.map(row => row.event?.kind === "text" ? row.event.text : null)).toEqual(["old"]);
+  });
+  it("keeps archived checkpoint and error kinds instead of fabricating SDK prose", () => {
+    const db = openPersistDb(":memory:");
+    appendEvent(db, "s", "session_compacted", { type: "session_compacted", sessionKey: "s",
+      checkpointId: "cp-1", trigger: "proactive", timestamp: 3, extra: "z".repeat(90_000) });
+    appendEvent(db, "s", "session_error", { type: "session_error", sessionKey: "s",
+      timestamp: 4, error: "Oops " + "x".repeat(90_000) });
+    const page = readHistoryPage(db, "s", Number.MAX_SAFE_INTEGER, 200, 0);
+    expect(page.events.map(e => e.type)).toEqual(["session_compacted", "session_error"]);
+    expect(page.events[0]).toMatchObject({ checkpointId: "cp-1", trigger: "proactive" });
+    expect(page.events[1]?.error).toContain("Archived error");
+  });
+  it("resets a cursor beyond a cleared log and supplies its current tail", () => {
+    const db = openPersistDb(":memory:");
+    const old = appendEvent(db, "s", "sdk_event", event("s", 1, "old"));
+    db.prepare("DELETE FROM event_log WHERE session_key = ?").run("s");
+    const reset = readHistoryPage(db, "s", Number.MAX_SAFE_INTEGER, 200, old);
+    expect(reset.history).toMatchObject({ reset: true, highWater: 0, nextAfter: null });
+    expect(reset.events).toEqual([]);
+  });
+  it("returns bounded ascending pages and only advances through delivered rows", () => {
+    const db = openPersistDb(":memory:");
+    for (let i = 0; i < 250; i++) appendEvent(db, "s", "sdk_event", event("s", i, "hello"));
+    const first = readHistoryPage(db, "s", Number.MAX_SAFE_INTEGER, 200, 0);
+    expect(first.events).toHaveLength(200);
+    expect(first.events.map(e => e.historyId)).toEqual([...first.events.map(e => e.historyId)].sort((a, b) => Number(a) - Number(b)));
+    expect(first.history.nextAfter).toBe(first.events.at(-1)?.historyId);
+    expect(first.history.highWater).toBeGreaterThan(first.history.nextAfter!);
+    const second = readHistoryPage(db, "s", Number.MAX_SAFE_INTEGER, 200, first.history.nextAfter!);
+    expect(second.events).toHaveLength(50);
+    expect(second.history.nextAfter).toBeNull();
+    expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThan(512 * 1024);
   });
 });

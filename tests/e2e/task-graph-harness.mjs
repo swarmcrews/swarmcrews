@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 const HASH = `sha256:${"0".repeat(64)}`;
 
-export async function connectTaskGraphSocket(page) {
+export async function connectTaskGraphSocket(page, projectId) {
   await page.evaluate(async () => {
     if (window.__minionsTaskGraphHarness?.socket?.readyState === WebSocket.OPEN) return;
     const tokenResponse = await fetch("/api/auth/token");
@@ -49,6 +49,10 @@ export async function connectTaskGraphSocket(page) {
     });
     window.__minionsTaskGraphHarness = state;
   });
+  await page.evaluate(projectId => window.__minionsTaskGraphHarness.request(
+    [{ type: "list_sessions", projectId }],
+    { type: "session_list", topic: `project:${projectId}` },
+  ), projectId);
 }
 
 export async function sendCommand(page, command) {

@@ -1,3 +1,4 @@
+import { connectionAccepts, connectionInventory, connectionProject, indexProjectEvent, indexSessionProjects } from "./session-subscriptions.ts";
 import { reserveOutbound } from "./transport-budget.ts";
 /**
  * Typed WebSocket bus for all outbound server traffic.
@@ -8,10 +9,7 @@ import { reserveOutbound } from "./transport-budget.ts";
  *   2. Keep transmission-side concerns — JSON encoding, client liveness,
  *      and per-client send errors — in one place.
  *
- * Non-goals (deliberately):
- *   - Server-side subscription registry. Clients filter on receipt; the
- *     server sends every envelope to every open socket. Per-socket
- *     topic routing is a follow-up if traffic becomes an issue.
+ * Connection subscriptions route project and session traffic before encoding.
  * Slow clients are disconnected at a bounded queue size and recover through sync.
  *
  * The architecture fitness test in
@@ -112,11 +110,23 @@ export type BusPayload = { type: string } & Record<string, unknown>;
  * helpers below so the call site documents who the message is for.
  */
 export function broadcast(wss: WebSocketServer, envelope: WsEnvelope): void {
-  const msg = JSON.stringify(wireProjections.get(envelope) ?? envelope);
+  const projected = wireProjections.get(envelope) ?? envelope;
+  const inventory = envelope.type === "session_list" && Array.isArray(envelope["sessions"])
+    ? envelope["sessions"] as Array<{ sessionKey: string; projectId?: string }> : null;
+  if (inventory) indexSessionProjects(inventory);
+  if (envelope.topic.startsWith("project:")) indexProjectEvent(envelope.topic.slice(8), envelope as Record<string, unknown>);
+  const msg = inventory ? null : JSON.stringify(projected);
   for (const client of wss.clients) {
     // `ws` exposes a numeric readyState; 1 === OPEN without importing the
     // constant (server-side it's `WebSocket.OPEN` from the `ws` lib).
-    sendBounded(client as WebSocket, msg);
+    const ws = client as WebSocket;
+    if (inventory) {
+      const sessions = connectionInventory(ws, inventory);
+      const projectId = connectionProject(ws);
+      if (projectId) sendBounded(ws, JSON.stringify({ ...projected, topic: projectTopic(projectId), sessions }));
+    } else if (connectionAccepts(ws, envelope.topic, envelope as Record<string, unknown>)) {
+      sendBounded(ws, msg!);
+    }
   }
 }
 

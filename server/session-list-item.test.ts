@@ -67,3 +67,14 @@ describe("session snapshot workspace lookups", () => {
     expect(buildSessionListItems(hosts)[0]?.projectId).toBe(workspace.id);
   });
 });
+
+describe("compact inventory", () => {
+  it("keeps attention revisions but leaves large final reports to sync_session", () => {
+    const host = new SessionHost("compact", "/p");
+    host.reviewLifecycle = { ...host.reviewLifecycle, reviewState: "completion_to_review",
+      finalReport: "x".repeat(100_000), reviewReason: "y".repeat(2000), lifecycleRevision: 4 };
+    const item = buildSessionListItem("compact", host, () => null);
+    expect(item.reviewLifecycle).toMatchObject({ reviewState: "completion_to_review", lifecycleRevision: 4 });
+    expect(JSON.stringify(item).length).toBeLessThan(4096);
+  });
+});

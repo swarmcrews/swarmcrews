@@ -665,3 +665,67 @@ describe("preserveOptimisticUserMessages", () => {
     expect(preserveOptimisticUserMessages(prev, next)).toBe(next);
   });
 });
+
+describe("incremental replay", () => {
+  it("replays checkpoint markers and authoritative errors without duplicating markers", () => {
+    const response = { type: "sync_response" as const, sessionKey: "k1", found: true,
+      afterHistoryId: 4, lastError: "offline failure", lastErrorFull: "details", status: "error",
+      history: { highWater: 6, before: null, nextAfter: null, url: "/api/history/k1" },
+      events: [
+        { type: "session_compacted", sessionKey: "k1", historyId: 5, timestamp: 5,
+          checkpointId: "offline-cp", trigger: "proactive" as const },
+        { type: "session_error", sessionKey: "k1", historyId: 6, timestamp: 6,
+          error: "offline failure", fullError: "details" },
+      ],
+    };
+    const state = sessionStreamReducer(freshState({ historyHighWater: 4, contextDelivery: { old: { hash: 1, deliveredAt: 1 } } }), response, "test");
+    expect(state.messages).toContainEqual(expect.objectContaining({ id: "test-checkpoint-offline-cp" }));
+    expect(state.contextDelivery).toEqual({});
+    expect(state.error).toBe("offline failure");
+    expect(state.fullError).toBe("details");
+    expect(state.historyHighWater).toBe(6);
+    expect(sessionStreamReducer(state, response, "test").messages).toHaveLength(1);
+  });
+
+  it("clears replay and live cursors with the transcript", () => {
+    const state = sessionStreamReducer(freshState({ historyHighWater: 4 }),
+      { type: "sdk_event", sessionKey: "k1", historyId: 9, event: assistantText("live") }, "test");
+    const cleared = sessionStreamReducer(state, { type: "session_cleared", sessionKey: "k1" }, "test");
+    expect(cleared.messages).toEqual([]);
+    expect(cleared.historyHighWater).toBeUndefined();
+  });
+  it("keeps distinct persisted rows with identical text while deduplicating live replay", () => {
+    let state = freshState({ historyHighWater: 4 });
+    state = sessionStreamReducer(state, { type: "sdk_event", sessionKey: "k1", historyId: 6,
+      event: assistantText("same") }, "test");
+    expect(state.historyHighWater).toBe(4);
+    state = sessionStreamReducer(state, { type: "sync_response", sessionKey: "k1", found: true,
+      afterHistoryId: 4, history: { highWater: 7, before: null, nextAfter: null, url: "/api/history/k1" },
+      events: [5, 6, 7].map(historyId => ({ type: "sdk_event", sessionKey: "k1",
+        timestamp: historyId, historyId, event: assistantText("same") })),
+    }, "test");
+    expect(state.historyHighWater).toBe(7);
+    expect(state.messages.filter(m => m.content === "same")).toHaveLength(3);
+  });
+  it("replaces a cleared history even when its high water is below the persisted cursor", () => {
+    const state = sessionStreamReducer(freshState({ historyHighWater: 9, messages: [
+      { id: "old", role: "assistant", content: "stale", timestamp: 1 },
+    ] }), { type: "sync_response", sessionKey: "k1", found: true, afterHistoryId: 9,
+      status: "idle", history: { highWater: 0, before: null, nextAfter: null,
+        reset: true, url: "/api/history/k1" }, events: [] }, "test");
+    expect(state.historyHighWater).toBe(0);
+    expect(state.messages).toEqual([]);
+  });
+  it("does not acknowledge an undelivered highWater or drop a live event arriving before the page", () => {
+    const live = sessionStreamReducer(freshState({ historyHighWater: 5 }),
+      { type: "sdk_event", sessionKey: "k1", event: assistantText("live"), historyId: 9 }, "test");
+    const older = sessionStreamReducer(live, { type: "sync_response", sessionKey: "k1", found: true,
+      afterHistoryId: 5, history: { highWater: 12, before: null, nextAfter: 6, url: "/api/history/k1" },
+      events: [{ type: "sdk_event", sessionKey: "k1", timestamp: 1, historyId: 6, event: assistantText("older") }],
+    }, "test");
+    expect(older.historyHighWater).toBe(6); // live id 9 is not a contiguous replay acknowledgement
+    expect(older.messages.map(m => m.content).join(" ")).toContain("live");
+    expect(older.messages.map(m => m.content).join(" ")).toContain("older");
+    expect(older.messages.map(m => m.content)).toEqual(["older", "live"]);
+  });
+});

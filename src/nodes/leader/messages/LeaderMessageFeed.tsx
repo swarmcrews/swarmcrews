@@ -24,6 +24,7 @@ import type { LeaderMessageGroup } from "../../leader-message-helpers.ts";
 
 export interface LeaderMessageFeedProps {
   outputRef: RefObject<HTMLDivElement | null>;
+  contentRef?: RefObject<HTMLDivElement | null>;
   data: LeaderData;
   groupedMessages: (LeaderMessageGroup | TranscriptBoundary)[];
   historyLoading?: boolean;
@@ -39,6 +40,7 @@ export interface LeaderMessageFeedProps {
 
 export function LeaderMessageFeed({
   outputRef,
+  contentRef,
   data,
   groupedMessages,
   historyLoading = false,
@@ -63,6 +65,7 @@ export function LeaderMessageFeed({
       tabIndex={-1}
       aria-label="Conversation messages"
     >
+      <div className="leader-message-feed-content" ref={contentRef}>
       {historyLoading && <div role="status">Loading iteration history…</div>}
       {groupedMessages.length === 0 && !historyLoading && !data.streamingText && !isWorking && (
         <div className="leader-conversation-empty">
@@ -151,6 +154,7 @@ export function LeaderMessageFeed({
       {data.waitUntil && data.waitUntil > Date.now() && (
         <WaitCountdown waitUntil={data.waitUntil} reason={data.waitReason ?? "Waiting..."} />
       )}
+      </div>
     </div>
   );
 }

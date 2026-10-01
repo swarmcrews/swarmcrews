@@ -23,6 +23,7 @@ describe("normalizedToDisplayMessages", () => {
       expect(msgs).toHaveLength(1);
       expect(msgs[0]?.role).toBe("system");
       expect(msgs[0]?.content).toContain("claude-sonnet-4-7");
+      expect(msgs[0]?.sessionModel).toBe("claude-sonnet-4-7");
     });
   });
 

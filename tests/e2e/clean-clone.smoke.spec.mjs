@@ -13,7 +13,7 @@ test("creates, launches, persists, and reloads an echo-backed project", async ({
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "New Project" }).click();
+  await page.getByRole("button", { name: "Register repository" }).click();
   await page.getByPlaceholder("/path/to/new/project...").fill(projectPath);
   await page
     .getByPlaceholder("Project name (optional, defaults to folder name)")

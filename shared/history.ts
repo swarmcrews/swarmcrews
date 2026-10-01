@@ -1,6 +1,6 @@
 /** Additive history protocol: IDs identify immutable SQLite rows, cursors are exclusive. */
 export interface HistoryReference { id: number; bytes: number; url: string }
-export interface HistoryWindow { before: number | null; highWater: number; url: string }
+export interface HistoryWindow { before: number | null; highWater: number; url: string; nextAfter?: number | null; reset?: boolean }
 export const HISTORY_PAGE_BYTES = 512 * 1024;
 export const HISTORY_INLINE_BYTES = 64 * 1024;
 export const HISTORY_EVENT_COUNT = 200;

@@ -460,7 +460,7 @@ function ProjectView({
 
   // Session activity (Activity view) — the same live stream the mobile Activity
   // screen consumes, scoped to this project by working directory.
-  const { mobileSessions, hasLoaded: sessionsLoaded } = useSessionActivity(socket.subscribe);
+  const { mobileSessions, hasLoaded: sessionsLoaded } = useSessionActivity(socket.subscribe, { projectId, connected: socket.connected, send: socket.send });
   const workItemState = useWorkItems({ projectId, connected: socket.connected,
     subscribe: socket.subscribe, send: socket.send });
   const handleDetachSessionFromCanvas = useCallback(
@@ -499,10 +499,6 @@ function ProjectView({
     () => canonicalActivitySessions.filter((s) => sessionBelongsToProject(s, projectPath, projectId)),
     [canonicalActivitySessions, projectPath, projectId],
   );
-  useEffect(() => {
-    if (activeView !== "activity" || !socket.connected) return;
-    socket.send({ type: "list_sessions" });
-  }, [activeView, socket.connected, socket.send]);
   const activityAttentionCount = useMemo(
     () =>
       activitySessions.filter((s) => s.role !== "minion" && needsAttention(s)).length,

@@ -3,28 +3,35 @@ import { listSessions } from "./list-sessions.ts";
 import { SessionHost } from "../session-host.ts";
 import { setup, cmd } from "../../tests/support/server-command-harness.ts";
 
+function scopedSnapshot(h: ReturnType<typeof setup>) {
+  const original = h.ctx.registry.snapshot.bind(h.ctx.registry);
+  vi.spyOn(h.ctx.registry, "snapshot").mockImplementation(options =>
+    original(options).map(item => ({ ...item, projectId: "p" })));
+}
+
 describe("listSessions", () => {
   it("only opts into archive payloads on an explicit request", () => {
     const h = setup();
     const snapshot = vi.spyOn(h.ctx.registry, "snapshot");
-    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p" }), h.ws);
     expect(snapshot).toHaveBeenLastCalledWith({ includeArchived: false });
-    listSessions(h.ctx, cmd({ type: "list_sessions", includeArchived: true }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p", includeArchived: true }), h.ws);
     expect(snapshot).toHaveBeenLastCalledWith({ includeArchived: true });
   });
   it("emits a session_list with the live registry snapshot scoped to the global topic", () => {
     const h = setup({ sessionKey: "first" });
+    scopedSnapshot(h);
     const second = new SessionHost("second", "/p");
     second.status = "running";
     (h.ctx.registry as unknown as {
       map: Map<string, SessionHost>;
     }).map.set("second", second);
 
-    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p" }), h.ws);
 
     expect(h.wsSent).toHaveLength(1);
     const env = h.wsSent[0]!;
-    expect(env["topic"]).toBe("global");
+    expect(env["topic"]).toBe("project:p");
     expect(env["type"]).toBe("session_list");
     const sessions = env["sessions"] as Array<{ sessionKey: string }>;
     expect(sessions.map((s) => s.sessionKey).sort()).toEqual([
@@ -35,6 +42,7 @@ describe("listSessions", () => {
 
   it("includes harness + harnessCapabilities on each snapshot entry (Phase B)", () => {
     const h = setup({ sessionKey: "default-claude" });
+    scopedSnapshot(h);
     const echoHost = new SessionHost("echo-one", "/p");
     echoHost.status = "running";
     echoHost.harnessName = "echo";
@@ -48,7 +56,7 @@ describe("listSessions", () => {
       map: Map<string, SessionHost>;
     }).map.set("ghost", ghostHost);
 
-    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p" }), h.ws);
 
     const sessions = h.wsSent[0]!["sessions"] as Array<{
       sessionKey: string;
@@ -74,6 +82,7 @@ describe("listSessions", () => {
 
   it("includes lastActivityAt from the most recent assistant response", () => {
     const h = setup({ sessionKey: "older" });
+    scopedSnapshot(h);
     h.host.eventBuffer = [
       {
         type: "sdk_event",
@@ -108,7 +117,7 @@ describe("listSessions", () => {
       map: Map<string, SessionHost>;
     }).map.set("newer", newer);
 
-    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p" }), h.ws);
 
     const sessions = h.wsSent[0]!["sessions"] as Array<{
       sessionKey: string;
@@ -126,7 +135,7 @@ describe("listSessions", () => {
       map: Map<string, SessionHost>;
     }).map.clear();
 
-    listSessions(h.ctx, cmd({ type: "list_sessions" }), h.ws);
+    listSessions(h.ctx, cmd({ type: "list_sessions", projectId: "p" }), h.ws);
 
     expect(h.wsSent[0]!["sessions"]).toEqual([]);
   });

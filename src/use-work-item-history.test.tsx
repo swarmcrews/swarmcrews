@@ -174,6 +174,27 @@ describe("useWorkItemHistory", () => {
     expect(loadRuns).toHaveBeenCalledWith(undefined);
   });
 
+  it("pages visible run history from the last delivered cursor after reconnect", () => {
+    const socket = socketHarness();
+    const send = vi.fn();
+    renderHook(() => useWorkItemHistory({ workItemId: "work-1", runs: [run("run-1", 10, 1)],
+      runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe }));
+    socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, status: "idle",
+      history: { highWater: 10, before: null, url: "/api/history/run-1" }, events: [
+        { type: "sdk_event", sessionKey: "run-1", timestamp: 1, historyId: 4,
+          event: { kind: "text", role: "assistant", text: "earlier" } },
+      ] });
+    send.mockClear();
+    socket.emit({ type: "socket_reconnected" });
+    expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-1", afterHistoryId: 4 });
+    socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, afterHistoryId: 4,
+      history: { highWater: 10, before: null, nextAfter: 6, url: "/api/history/run-1" }, events: [
+        { type: "sdk_event", sessionKey: "run-1", timestamp: 2, historyId: 6,
+          event: { kind: "text", role: "assistant", text: "later" } },
+      ] });
+    expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-1", afterHistoryId: 6 });
+  });
+
   it("re-syncs known runs after a socket reconnect", () => {
     const first = socketHarness();
     const second = socketHarness();

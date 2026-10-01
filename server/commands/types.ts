@@ -179,12 +179,14 @@ export interface WsCommand {
    */
   dialecticConfig?: unknown;
   projectPath?: string;
-  projectId?: string;
+  projectId?: string | null;
   title?: string;
   changeMode?: ChangeMode;
   surface?: WorkItemBindingSurface;
   bindingId?: string;
   includeArchived?: boolean;
+  /** Exclusive persisted event cursor for incremental recovery. */
+  afterHistoryId?: number;
   cursor?: string;
   limit?: number;
   workPacketId?: string;

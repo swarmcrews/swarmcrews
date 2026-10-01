@@ -82,6 +82,20 @@ describe("ProjectList journeys", () => {
     expect(logo.querySelector(".brand__mark")).toBeInTheDocument();
   });
 
+  it("describes projects as repository-backed and Canvas workspaces as internal", async () => {
+    render(<ProjectList onOpenProject={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: "Open a repository" })).toBeVisible();
+    expect(screen.getByText(/A project connects Swarmcrews to a repository/)).toHaveTextContent(
+      "Canvas workspaces such as Global organize work inside it.",
+    );
+    expect(screen.getByRole("button", { name: "Open repository" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Register repository" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Register repository" }));
+    expect(screen.getByRole("heading", { name: "Register a repository" })).toBeVisible();
+  });
+
   it("renders and opens projects while readiness is still pending", async () => {
     let resolveReadiness!: (value: typeof ready) => void;
     vi.mocked(getHarnessReadiness).mockReturnValue(new Promise((resolve) => { resolveReadiness = resolve; }));
@@ -135,6 +149,30 @@ describe("ProjectList journeys", () => {
     expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Start tutorial" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Tutorial" })).not.toBeInTheDocument();
+  });
+
+  it("distinguishes a failed recent-projects load from an empty list and retries it", async () => {
+    vi.mocked(listProjects)
+      .mockRejectedValueOnce(new Error("recent projects unavailable"))
+      .mockResolvedValueOnce([project]);
+    render(<ProjectList onOpenProject={vi.fn()} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t load recent projects");
+    expect(screen.queryByText("No recent projects")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("button", { name: "Open Alpha" })).toBeEnabled();
+    expect(listProjects).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows the empty recent-projects state only after a successful empty load", async () => {
+    vi.mocked(listProjects).mockResolvedValue([]);
+    render(<ProjectList onOpenProject={vi.fn()} />);
+
+    expect(await screen.findByText("No recent projects")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
   it("renders the scoped active count returned by the server", async () => {
@@ -215,7 +253,7 @@ describe("ProjectList journeys", () => {
     render(<ProjectList onOpenProject={onOpenProject} />);
     await screen.findByText("Alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register repository" }));
     fireEvent.change(screen.getByPlaceholderText("/path/to/new/project..."), { target: { value: "/repo/new" } });
     fireEvent.change(screen.getByPlaceholderText(/Project name/), { target: { value: "New repo" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
@@ -228,7 +266,7 @@ describe("ProjectList journeys", () => {
     render(<ProjectList onOpenProject={vi.fn()} />);
     await screen.findByText("Alpha");
 
-    fireEvent.click(screen.getByRole("button", { name: "New Project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register repository" }));
     fireEvent.change(screen.getByPlaceholderText("/path/to/new/project..."), { target: { value: "/repo/new" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 

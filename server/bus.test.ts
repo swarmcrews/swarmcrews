@@ -1,3 +1,4 @@
+import { setConnectionProject, subscribeConnectionSession } from "./session-subscriptions.ts";
 
 import { describe, it, expect, beforeEach } from "vitest";
 import type { WebSocketServer } from "ws";
@@ -46,6 +47,7 @@ describe("server/bus: createBus", () => {
   it("emitToSession wraps payload with a session:<key> topic", () => {
     const wss = makeWss([open1]);
     const bus = createBus(wss);
+    subscribeConnectionSession(open1 as never, "leader-abc");
 
     bus.emitToSession("leader-abc", {
       type: "task_plan_update",
@@ -65,6 +67,7 @@ describe("server/bus: createBus", () => {
     const wss = makeWss([open1]);
     const bus = createBus(wss);
 
+    setConnectionProject(open1 as never, "p42");
     bus.emitToProject("p42", { type: "project_update", name: "demo" });
 
     const parsed = JSON.parse(open1.sent[0]!);
@@ -76,10 +79,11 @@ describe("server/bus: createBus", () => {
     const wss = makeWss([open1]);
     const bus = createBus(wss);
 
+    setConnectionProject(open1 as never, "p42");
     bus.emitGlobal({ type: "session_list", sessions: [] });
 
     const parsed = JSON.parse(open1.sent[0]!);
-    expect(parsed.topic).toBe("global");
+    expect(parsed.topic).toBe("project:p42");
     expect(parsed.type).toBe("session_list");
   });
 
@@ -107,6 +111,7 @@ describe("server/bus: createBus", () => {
     const wss = makeWss([open1]);
     const bus = createBus(wss);
 
+    subscribeConnectionSession(open1 as never, "abc");
     bus.emit({ topic: "session:abc", type: "custom", extra: 1 });
 
     const parsed = JSON.parse(open1.sent[0]!);
@@ -202,5 +207,24 @@ describe("bounded delivery", () => {
     const bus = createBus(makeWss([broken, healthy]));
     expect(() => bus.emitGlobal({ type: "test" })).not.toThrow();
     expect(healthy.sent).toHaveLength(1);
+  });
+});
+
+describe("scoped transport", () => {
+  it("never transmits other projects' session inventory or topic events", () => {
+    const a = makeClient(), b = makeClient();
+    const bus = createBus(makeWss([a, b]));
+    setConnectionProject(a as never, "a");
+    setConnectionProject(b as never, "b");
+    bus.emitGlobal({ type: "session_list", sessions: [
+      { sessionKey: "one", projectId: "a" }, { sessionKey: "two", projectId: "b" },
+    ] });
+    bus.emitToProject("a", { type: "project_context_updated", projectId: "a" });
+    bus.emitToSession("two", { type: "sdk_event", sessionKey: "two" });
+    expect(a.sent.map(s => JSON.parse(s))).toEqual([
+      expect.objectContaining({ type: "session_list", sessions: [{ sessionKey: "one", projectId: "a" }] }),
+      expect.objectContaining({ type: "project_context_updated" }),
+    ]);
+    expect(b.sent.map(s => JSON.parse(s).type)).toEqual(["session_list", "sdk_event"]);
   });
 });

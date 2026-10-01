@@ -4,7 +4,6 @@ import { DEFAULT_THINKING_CONFIG } from "../types.ts";
 import { registerNodeType } from "../node-registry.ts";
 import type {
   ServerMessage,
-  SyncEvent,
 } from "../use-socket.ts";
 import { subscribeSocketTopic } from "../use-socket.ts";
 import { useStatusBanners, StatusBannerStack } from "../components/StatusBanner.tsx";
@@ -16,16 +15,11 @@ import { CopyButton } from "../components/CopyButton.tsx";
 import { UserContextHeader } from "../components/UserContextHeader.tsx";
 import { AddAsNodeButton } from "../components/AddAsNodeButton.tsx";
 import {
-  extractParentId,
-  extractStreamDelta,
-  isStreamEnd,
-  isStreamingEvent,
-} from "../streaming.ts";
-import {
   type DisplayMessage,
   msgId,
-  normalizedToDisplayMessages,
 } from "../sdk-messages.ts";
+import { reduceClaudeSession } from "./claude-session-recovery.ts";
+import { nextHistoryPage } from "../session-recovery.ts";
 import { recordWsMessageForDebug } from "../debug-record-bridge.ts";
 import { debugFlagStore } from "../debug.ts";
 import { DebugInspector } from "../components/DebugInspector.tsx";
@@ -64,6 +58,8 @@ export interface SubagentInfo {
 
 export interface ClaudeSessionData {
   sessionKey: string | null;
+  historyHighWater?: number | undefined;
+  highestLiveHistoryId?: number | undefined;
   status:
     | "disconnected"
     | "creating"
@@ -98,66 +94,6 @@ export interface ClaudeSessionData {
   promptSuggestions: string[];
   /** Init data from SDK */
   initData: Record<string, unknown> | null;
-}
-
-/**
- * Event kinds that produce feed messages in ClaudeSessionNode.
- *
- * This whitelist is intentionally narrow: `thinking`, `api_retry`, and
- * `rate_limit` are handled by the status-banner layer (not the feed),
- * while `usage`, `text_delta`, `stream_end`, and `tool_result` carry no
- * displayable content. Checking the kind before calling
- * `normalizedToDisplayMessages` keeps the feed identical to the legacy
- * `normalizedToDisplayMessages` behaviour and avoids banner-vs-feed
- * double-display for rate-limit / retry events.
- */
-const SESSION_FEED_KINDS = new Set([
-  "init",
-  "text",
-  "tool_call",
-  "tool_progress",
-  "done",
-  "permission_denial",
-]);
-
-function rebuildFromSyncEvents(
-  events: SyncEvent[],
-  serverStatus: string,
-  serverCost: number,
-  serverTurns: number,
-  serverError: string | null,
-  sessionKey: string,
-  serverModel?: string | null,
-  serverPermissionMode?: string | null,
-  serverHarness?: string | undefined,
-): ClaudeSessionData {
-  const messages: DisplayMessage[] = [];
-  for (const evt of events) {
-    if (evt.type === "sdk_event" && evt.event) {
-      const ev = evt.event;
-      if (SESSION_FEED_KINDS.has(ev.kind)) {
-        messages.push(...normalizedToDisplayMessages(ev));
-      }
-    }
-  }
-  return {
-    sessionKey,
-    status: serverStatus as ClaudeSessionData["status"],
-    messages,
-    streamingText: "",
-    streamingBlockIndex: null,
-    totalCost: serverCost,
-    turns: serverTurns,
-    error: serverError,
-    model: (serverModel as ModelOption) ?? "sonnet",
-    permissionMode: (serverPermissionMode as PermissionMode) ?? "bypassPermissions",
-    ...(serverHarness ? { harness: serverHarness } : {}),
-    thinkingConfig: DEFAULT_THINKING_CONFIG,
-    lastDurationMs: null,
-    subagents: [],
-    promptSuggestions: [],
-    initData: null,
-  };
 }
 
 // ── Message display components ──────────────────────────
@@ -697,7 +633,6 @@ export function ClaudeSessionRenderer({
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
-  const syncedRef = useRef(false);
   const { banners, processNormalizedEvent, dismissBanner } = useStatusBanners();
   const debugEnabled = useSyncExternalStore(
     debugFlagStore.subscribe,
@@ -757,202 +692,40 @@ export function ClaudeSessionRenderer({
     }
   }, [data.messages.length, data.streamingText]);
 
-  // Request sync on mount if we have a sessionKey
-  useEffect(() => {
-    if (!socketSend || !data.sessionKey || syncedRef.current) return;
-    syncedRef.current = true;
-    socketSend({ type: "sync_session", sessionKey: data.sessionKey });
-  }, [socketSend, data.sessionKey]);
-
-  // Subscribe to WebSocket events for this session
+  // Attach before requesting replay so events during a run transition are recoverable.
   useEffect(() => {
     if (!socketSubscribe || !data.sessionKey) return;
-
-    const unsubscribe = subscribeSocketTopic(socketSubscribe, sessionTopic(data.sessionKey), (msg: unknown) => {
-      const serverMsg = msg as ServerMessage;
+    const sessionKey = data.sessionKey;
+    const requestSync = (after?: number) => socketSend?.({ type: "sync_session", sessionKey,
+      ...(after !== undefined ? { afterHistoryId: after } : {}) });
+    const unsubscribe = subscribeSocketTopic(socketSubscribe, sessionTopic(sessionKey), (raw: unknown) => {
+      const message = raw as ServerMessage;
       const current = dataRef.current;
-      // Debug capture for the ad-hoc subscription. ClaudeSessionNode
-      // does NOT use `useSessionStream`, so we instrument here so the
-      // DebugInspector still sees every event for this session.
-      recordWsMessageForDebug(current.sessionKey, serverMsg, "claude");
-
-      if (
-        serverMsg.type === "sync_response" &&
-        serverMsg.sessionKey === current.sessionKey
-      ) {
-        if (serverMsg.found && serverMsg.events) {
-          const rebuilt = rebuildFromSyncEvents(
-            serverMsg.events,
-            serverMsg.status ?? current.status,
-            serverMsg.totalCost ?? current.totalCost,
-            serverMsg.turns ?? current.turns,
-            serverMsg.lastError ?? null,
-            current.sessionKey!,
-            serverMsg.model,
-            serverMsg.permissionMode,
-            serverMsg.harness,
-          );
-          emitDurableUpdate(rebuilt);
-        } else if (!serverMsg.found) {
-          emitDurableUpdate({
-            ...current,
-            status: "disconnected" as const,
-          });
-        }
-        return;
+      if (message.type === "socket_reconnected") { requestSync(current.historyHighWater); return; }
+      if (!("sessionKey" in message) || message.sessionKey !== sessionKey) return;
+      recordWsMessageForDebug(sessionKey, message, "claude");
+      if (message.type === "sdk_event") processNormalizedEvent(message.event);
+      const next = reduceClaudeSession(current, message);
+      if (next !== current) {
+        if (next.streamingText && next.messages === current.messages && next.status === current.status &&
+            next.error === current.error && next.totalCost === current.totalCost && next.turns === current.turns &&
+            (next.streamingText !== current.streamingText || next.streamingBlockIndex !== current.streamingBlockIndex)) {
+          emitStreamingUpdate(next);
+        } else emitDurableUpdate(next);
       }
-
-      if (!current.sessionKey) return;
-
-      if (
-        serverMsg.type === "sdk_event" &&
-        serverMsg.sessionKey === current.sessionKey
-      ) {
-        const ev = serverMsg.event;
-        processNormalizedEvent(ev);
-
-        // Handle streaming text deltas (single emit, early return).
-        if (isStreamingEvent(ev)) {
-          // Drop stream events from sub-agents (Agent/Task tool) — their
-          // deltas would otherwise interleave with the parent session's
-          // streaming preview because they share the same sessionKey.
-          if (extractParentId(ev) !== null) {
-            return;
-          }
-          const delta = extractStreamDelta(ev);
-          if (delta !== null) {
-            const activeIndex = current.streamingBlockIndex ?? null;
-            // Block boundary: a delta arrived for a different content
-            // block. Reset the buffer so text from `[text, tool_use,
-            // text]` doesn't merge across blocks in the live preview.
-            if (activeIndex !== delta.index) {
-              emitStreamingUpdate({
-                ...current,
-                streamingText: delta.text,
-                streamingBlockIndex: delta.index,
-              });
-            } else {
-              emitStreamingUpdate({
-                ...current,
-                streamingText: (current.streamingText ?? "") + delta.text,
-              });
-            }
-          } else if (
-            isStreamEnd(ev) &&
-            (current.streamingText || current.streamingBlockIndex != null)
-          ) {
-            // Stream ended — clear streaming text so stale content doesn't
-            // linger while the complete assistant message is in flight.
-            emitDurableUpdate({ ...current, streamingText: "", streamingBlockIndex: null });
-          }
-          return;
-        }
-
-        // ── Single-emit accumulator ─────────────────────────
-        let updated: ClaudeSessionData = current;
-        let changed = false;
-
-        // Handle usage and done events (no feed message, but update cost/turns/status).
-        if (ev.kind === "usage" && ev.costUSD != null) {
-          updated = { ...updated, totalCost: ev.costUSD };
-          changed = true;
-        }
-        if (ev.kind === "done") {
-          updated = {
-            ...updated,
-            status: "idle" as const,
-            streamingText: "",
-            streamingBlockIndex: null,
-            promptSuggestions: [],
-          };
-          if (ev.turns != null) updated = { ...updated, turns: ev.turns };
-          changed = true;
-        }
-
-        const newMsgs = SESSION_FEED_KINDS.has(ev.kind) ? normalizedToDisplayMessages(ev) : [];
-        if (newMsgs.length > 0) {
-          let base = updated.messages;
-          // When a done event arrives with a result, drop the last assistant
-          // msg if its content matches — the SDK sends both, but we only
-          // want the green result bubble. Normalize by stripping task-name tags.
-          if (ev.kind === "done") {
-            const resultText = newMsgs.find((m) => m.role === "result")?.content;
-            if (resultText) {
-              const normalizedResult = resultText.replace(/<!--task-name:.+?-->\s*/g, "").trim();
-              const lastIdx = base.findLastIndex((m) => m.role === "assistant");
-              if (lastIdx >= 0 &&
-                  (base[lastIdx]?.content ?? "").replace(/<!--task-name:.+?-->\s*/g, "").trim() === normalizedResult) {
-                base = [...base.slice(0, lastIdx), ...base.slice(lastIdx + 1)];
-              }
-            }
-          }
-          updated = { ...updated, messages: [...base, ...newMsgs] };
-          // When a complete assistant text arrives, clear streaming buffer
-          if (ev.kind === "text" && ev.role === "assistant") {
-            updated.streamingText = "";
-            updated.streamingBlockIndex = null;
-          }
-          changed = true;
-        }
-
-        if (changed) {
-          emitDurableUpdate(updated);
-        }
-        return;
-      }
-
-      if (
-        serverMsg.type === "session_status" &&
-        serverMsg.sessionKey === current.sessionKey
-      ) {
-        emitDurableUpdate({
-          ...current,
-          status: serverMsg.status as ClaudeSessionData["status"],
-        });
-        return;
-      }
-
-      if (
-        serverMsg.type === "session_error" &&
-        serverMsg.sessionKey === current.sessionKey
-      ) {
-        emitDurableUpdate({
-          ...current,
-          status: "error" as const,
-          error: serverMsg.error,
-        });
-        return;
-      }
-
-      if (
-        serverMsg.type === "session_cleared" &&
-        serverMsg.sessionKey === current.sessionKey
-      ) {
-        emitDurableUpdate({
-          ...current,
-          messages: [],
-          streamingText: "",
-          streamingBlockIndex: null,
-          totalCost: 0,
-          turns: 0,
-          subagents: [],
-          promptSuggestions: [],
-        });
+      if (message.type === "sync_response" && message.found && message.afterHistoryId !== undefined) {
+        const after = nextHistoryPage(message);
+        if (after !== null && after > message.afterHistoryId) requestSync(after);
       }
     });
+    requestSync(dataRef.current.historyHighWater);
     return () => {
       unsubscribe?.();
       cancelFrame(pendingStreamingFrameRef.current);
       pendingStreamingFrameRef.current = null;
       pendingStreamingDataRef.current = null;
     };
-  }, [
-    socketSubscribe,
-    data.sessionKey,
-    emitDurableUpdate,
-    emitStreamingUpdate,
-    processNormalizedEvent,
-  ]);
+  }, [socketSubscribe, socketSend, data.sessionKey, emitDurableUpdate, emitStreamingUpdate, processNormalizedEvent]);
 
   const handleCreate = useCallback(() => {
     if (!socketSend) return;
@@ -969,7 +742,6 @@ export function ClaudeSessionRenderer({
       ...(current.harness ? { harness: current.harness } : {}),
       ...(projectId ? { workspaceId: projectId } : projectPath ? { cwd: projectPath } : {}),
     });
-    syncedRef.current = true;
     onUpdateData({
       ...dataRef.current,
       sessionKey: key,

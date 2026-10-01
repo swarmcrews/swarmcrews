@@ -2,8 +2,8 @@ import { CrewIcon } from "./components/CrewIcon.tsx";
 import { LeaderStatusIcon } from "./nodes/leader/LeaderStatusIcon.tsx";
 import { Brand } from "./components/Brand.tsx";
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useProjectList } from "./use-project-list.ts";
 import {
-  listProjects,
   checkProjectGit,
   createProject,
   openProject,
@@ -40,8 +40,7 @@ type PendingGitDecision = { mode: "open" | "create"; path: string; name?: string
 
 export function ProjectList({ onOpenProject }: ProjectListProps) {
   const [activity, setActivity] = useState<ProjectActivitySummary[]>([]);
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { projects, setProjects, loading, error: projectsLoadFailed, reload: loadProjects } = useProjectList();
   const [folderPath, setFolderPath] = useState("");
   const [creating, setCreating] = useState(false);
   const [mode, setMode] = useState<"open" | "create">("open");
@@ -53,19 +52,14 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
 
   useEffect(() => {
     let active = true;
-    void listProjects().then((result) => {
-      if (active) setProjects(result);
-    }).catch((error: unknown) => {
-      log.error("projects_load_failed", { error });
-    }).finally(() => {
-      if (active) setLoading(false);
-    });
     void getHarnessReadiness().then((result) => {
       if (active) setReadiness(result);
     }).catch((error: unknown) => {
       log.warn("harness_readiness_load_failed", { error });
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
   const retryReadiness = useCallback(async () => {
@@ -159,6 +153,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
   };
 
   const projectActionDisabled = creating || !folderPath.trim() || readiness?.ready === false;
+  const hasLoadedEmptyProjects = !loading && !projectsLoadFailed && projects.length === 0;
 
   return (
     <main className="project-list-page">
@@ -170,11 +165,11 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             <span>Workspace</span>
             <h1>Projects</h1>
             {!loading && projects.length > 0 && <ProjectsTutorial />}
-            <p>Open a folder to resume your canvas, or create a new project.</p>
+            <p>Open a repository to resume its Canvas, or register one as a new project.</p>
           </div>
         </header>
 
-        {!loading && projects.length === 0 && <ProjectsTutorial prominent />}
+        {hasLoadedEmptyProjects && <ProjectsTutorial prominent />}
 
         <section className="project-list-card" aria-labelledby="project-action-title">
           <div className="project-list-card__heading">
@@ -183,12 +178,12 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             </span>
             <div>
               <h2 id="project-action-title">
-                {mode === "open" ? "Open a workspace" : "Create a workspace"}
+                {mode === "open" ? "Open a repository" : "Register a repository"}
               </h2>
               <p>
                 {mode === "open"
-                  ? "Choose an existing repository to continue where you left off."
-                  : "Start a fresh Swarmcrews canvas in a local repository."}
+                  ? "A project connects Swarmcrews to a repository. Open one to resume its Canvas; Canvas workspaces such as Global organize work inside it."
+                  : "Create a project that connects Swarmcrews to this repository and its Canvas."}
               </p>
             </div>
           </div>
@@ -204,7 +199,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                 }}
               >
                 <FolderOpen size={13} aria-hidden="true" />
-                Open Folder
+                Open repository
               </button>
               <button
                 type="button"
@@ -215,7 +210,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                 }}
               >
                 <Plus size={13} aria-hidden="true" />
-                New Project
+                Register repository
               </button>
             </div>
 
@@ -300,6 +295,14 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
           <div className="project-list-card__body">
             {loading ? (
               <div className="project-list-state project-list-state--loading">Loading...</div>
+            ) : projectsLoadFailed ? (
+              <div role="alert" className="project-list-alert">
+                <span>Couldn’t load recent projects. Check your connection and try again.</span>
+                <button type="button" onClick={() => void loadProjects()}>
+                  <RefreshCw size={12} aria-hidden="true" />
+                  Retry
+                </button>
+              </div>
             ) : projects.length === 0 ? (
               <div className="project-list-state">
                 <strong>No recent projects</strong>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import type { ServerMessage, SessionInfo, SocketSubscribe } from "./use-socket.ts";
 import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
@@ -104,8 +104,10 @@ function sessionsFromList(
       ...session,
       ...(session.renderState === undefined && prior?.renderState !== undefined
         ? { renderState: prior.renderState } : {}),
-      ...(prior?.reviewLifecycle && prior.reviewLifecycle.lifecycleRevision >
-        (session.reviewLifecycle?.lifecycleRevision ?? -1)
+      ...(prior?.reviewLifecycle && (prior.reviewLifecycle.lifecycleRevision >
+        (session.reviewLifecycle?.lifecycleRevision ?? -1) ||
+        (prior.reviewLifecycle.lifecycleRevision === session.reviewLifecycle?.lifecycleRevision
+          && prior.reviewLifecycle.finalReport && !session.reviewLifecycle?.finalReport))
         ? { reviewLifecycle: prior.reviewLifecycle } : {}),
     };
   });
@@ -283,16 +285,34 @@ export function reduceSessionActivity(
  * Subscribe to the socket firehose and derive the enriched session-activity
  * state. The subscription is set up once per `subscribe` identity.
  */
-export function useSessionActivity(subscribe: SocketSubscribe): SessionActivityState {
+export function useSessionActivity(subscribe: SocketSubscribe, scope?: {
+  projectId: string | null; connected: boolean; send: (data: unknown) => void
+}): SessionActivityState {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [{ sessions, activities, attention }, dispatch] = useReducer(reduceSessionActivity, {
     sessions: [], activities: {}, attention: {},
   });
 
+  const sendRef = useRef(scope?.send);
+  sendRef.current = scope?.send;
+  const currentProject = useRef(scope?.projectId);
+  currentProject.current = scope?.projectId;
   useEffect(() => subscribe("*", (message) => {
-    if (message.type === "session_list") setHasLoaded(true);
+    // An old inventory reply may be queued while the selected project changes.
+    if (message.type === "session_list") {
+      const topic = (message as ServerMessage & { topic?: string }).topic;
+      if (scope && topic && topic !== (currentProject.current ? `project:${currentProject.current}` : "global")) return;
+      setHasLoaded(true);
+    }
     dispatch(message);
-  }), [subscribe]);
+  }), [subscribe, Boolean(scope)]);
+
+  useEffect(() => {
+    if (!scope) return;
+    setHasLoaded(false);
+    dispatch({ type: "session_list", sessions: [] });
+    if (scope.connected) sendRef.current?.({ type: "list_sessions", projectId: scope.projectId });
+  }, [scope?.projectId, scope?.connected]);
 
   const mobileSessions = useMemo<MobileSessionInfo[]>(
     () =>

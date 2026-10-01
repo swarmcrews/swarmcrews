@@ -30,7 +30,6 @@ class FakeWs extends EventEmitter {
 
 function makeDeps(overrides: Partial<ConnectionDeps> = {}): ConnectionDeps {
   return {
-    snapshotSessions: () => [],
     dispatch: vi.fn(),
     ...overrides,
   };
@@ -55,7 +54,7 @@ describe("attachConnectionListeners", () => {
     // expectation flips and we catch the regression.
     expect(() => ws.emit("error", err)).not.toThrow();
   });
-  it("sends the session_list snapshot on attach", () => {
+  it("does not send an eager global snapshot on attach", () => {
     const ws = new FakeWs();
     const snapshot: SessionListItem[] = [
       {
@@ -78,13 +77,11 @@ describe("attachConnectionListeners", () => {
     ];
     attachConnectionListeners(
       ws as unknown as WebSocket,
-      makeDeps({ snapshotSessions: () => snapshot }),
+      makeDeps(),
     );
 
-    expect(ws.sent).toHaveLength(1);
-    const payload = JSON.parse(ws.sent[0]!);
-    expect(payload.type).toBe("session_list");
-    expect(payload.sessions).toEqual(snapshot);
+    expect(ws.sent).toHaveLength(0);
+    void snapshot;
   });
 
   it("dispatches valid JSON messages through the dispatch dep", () => {

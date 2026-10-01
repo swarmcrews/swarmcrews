@@ -46,3 +46,11 @@ describe("handoff user intent and source delivery", () => {
     expect(synced.contextDelivery).toEqual({});
   });
 });
+
+it("retains both delivered and live recovery cursors in canvas core projection", () => {
+  const state = extractLeaderCore({ sessionKey: "leader", status: "idle", messages: [],
+    streamingText: "", totalCost: 0, turns: 1, error: null,
+    historyHighWater: 4, highestLiveHistoryId: 9 } as unknown as LeaderData);
+  expect(state.historyHighWater).toBe(4);
+  expect(state.highestLiveHistoryId).toBe(9);
+});

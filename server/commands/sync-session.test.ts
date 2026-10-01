@@ -5,6 +5,18 @@ import { setup, cmd } from "../../tests/support/server-command-harness.ts";
 import { closePersistDb, disablePersistence, openPersistDb, persistenceDb } from "../session-persist.ts";
 
 describe("sync_session", () => {
+  it("resets from buffered state when durable row IDs are unavailable", () => {
+    const h = setup();
+    disablePersistence();
+    h.host.bufferEvent({ type: "sdk_event", sessionKey: h.host.id, timestamp: 1,
+      event: { kind: "text", role: "assistant", text: "buffered truth" } });
+    syncSession(h.ctx, cmd({ type: "sync_session", afterHistoryId: 42 }), h.ws);
+    expect(h.wsSent[0]).toMatchObject({ type: "sync_response", found: true,
+      afterHistoryId: 42, history: { reset: true, highWater: 0 },
+      events: [expect.objectContaining({ event: { kind: "text", role: "assistant", text: "buffered truth" } })],
+      taskPlan: [], renderState: null, model: h.host.model, status: h.host.status,
+    });
+  });
   it("marks explicitly synchronized archive history without hiding the requested snapshot", () => {
     const h = setup();
     try {

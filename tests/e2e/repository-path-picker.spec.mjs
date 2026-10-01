@@ -18,7 +18,7 @@ for (const view of ["desktop", "mobile"]) {
     });
     await page.setViewportSize(view === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 });
     await page.goto(`/?view=${view}`);
-    if (view === "mobile") await page.getByRole("button", { name: "New project", exact: true }).click();
+    if (view === "mobile") await page.getByRole("button", { name: "Add repository", exact: true }).click();
     const input = page.getByRole("combobox", { name: "Folders on the server" });
     await input.fill(parent);
     await page.getByRole("button", { name: "Browse", exact: true }).click();

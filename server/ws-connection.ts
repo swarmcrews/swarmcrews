@@ -14,22 +14,19 @@
  *   - `message` — JSON-decode + dispatch through the command table.
  *   - `close`   — log the disconnect.
  *
- * On attach we also send the current session list so the client can paint
- * its tray immediately.
+ * Inventory is requested only after a project has been selected.
  */
 
 import type { WebSocket } from "ws";
+import { clearConnectionSubscriptions, setConnectionProject } from "./session-subscriptions.ts";
 import { unicastGlobal } from "./bus.ts";
 import type { WsCommand } from "./commands/index.ts";
 import { validateWsCommand } from "./commands/schemas.ts";
-import type { SessionListItem } from "./session-list-item.ts";
 import { serverLogger } from "./logging.ts";
 
 const log = serverLogger.child("ws-connection");
 
 export interface ConnectionDeps {
-  /** Current session list; sent once on connect. */
-  snapshotSessions: () => SessionListItem[];
   /** Route a parsed WS command. */
   dispatch: (cmd: WsCommand, ws: WebSocket) => void;
 }
@@ -39,11 +36,7 @@ export function attachConnectionListeners(
   deps: ConnectionDeps,
 ): void {
   log.debug("client_connected");
-
-  unicastGlobal(ws, {
-    type: "session_list",
-    sessions: deps.snapshotSessions(),
-  });
+  setConnectionProject(ws, null);
 
   ws.on("error", (err: unknown) => {
     log.warn("connection_error", { error: err });
@@ -68,6 +61,7 @@ export function attachConnectionListeners(
   });
 
   ws.on("close", () => {
+    clearConnectionSubscriptions(ws);
     log.debug("client_disconnected");
   });
 }

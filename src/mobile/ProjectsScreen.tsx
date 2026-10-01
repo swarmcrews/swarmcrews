@@ -1,73 +1,27 @@
-import { SwarmcrewsIcon } from "../components/SwarmcrewsIcon.tsx";
 import { useEffect, useMemo, useState } from "react";
+import { useProjectList } from "../use-project-list.ts";
 
 import {
   checkProjectGit,
   createProject,
   getHarnessReadiness,
-  listProjects,
   type HarnessReadinessSnapshot,
   type ProjectGitAction,
   type ProjectSummary,
 } from "../api.ts";
-import type { MobileSessionInfo } from "./mobile-selectors.ts";
-import { needsAttention, sessionBelongsToProject } from "./mobile-selectors.ts";
+import { ProjectSessionActivity } from "../ProjectSessionActivity.tsx";
+import type { ProjectActivitySummary } from "../../shared/project-activity.ts";
 import { ProjectGitWarning } from "../ProjectGitWarning.tsx";
 import { ProjectsTutorial } from "../ProjectsTutorial.tsx";
 import { RepositoryPathPicker } from "../components/RepositoryPathPicker.tsx";
 
 interface ProjectsScreenProps {
-  sessions: MobileSessionInfo[];
   onSelectProject: (project: ProjectSummary) => void;
 }
 
-interface ProjectStats {
-  count: number;
-  active: number;
-  attention: number;
-  cost: number;
-}
-
-function statsForProject(
-  sessions: MobileSessionInfo[],
-  projectPath: string,
-  projectId: string,
-): ProjectStats {
-  let count = 0;
-  let active = 0;
-  let attention = 0;
-  let cost = 0;
-  for (const session of sessions) {
-    if (session.role === "minion") continue;
-    if (!sessionBelongsToProject(session, projectPath, projectId)) continue;
-    count += 1;
-    if (session.status === "running" || session.status === "creating" || session.status === "waiting") active += 1;
-    if (needsAttention(session)) attention += 1;
-    if (session.totalCost != null && Number.isFinite(session.totalCost)) {
-      cost += session.totalCost;
-    }
-  }
-  return { count, active, attention, cost };
-}
-
-function ProjectStatsSummary({ stats }: { stats: ProjectStats }) {
-  return (
-    <>
-      {stats.active > 0 ? (
-        <><SwarmcrewsIcon name="play" size={12} /> {stats.active} active</>
-      ) : (stats.count === 1 ? "1 session" : `${stats.count} sessions`)}
-      {` · $${stats.cost.toFixed(2)}`}
-      {stats.attention > 0 && (
-        <> · <SwarmcrewsIcon name="warning" size={12} /> {stats.attention} needs you</>
-      )}
-    </>
-  );
-}
-
-export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProps) {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function ProjectsScreen({ onSelectProject }: ProjectsScreenProps) {
+  const [activity, setActivity] = useState<ProjectActivitySummary[]>([]);
+  const { projects, loading, error } = useProjectList();
   const [projectPath, setProjectPath] = useState("");
   const [projectName, setProjectName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -79,20 +33,6 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
   useEffect(() => {
     let cancelled = false;
 
-    setLoading(true);
-    setError(null);
-    void listProjects()
-      .then((result) => {
-        if (cancelled) return;
-        setProjects(result);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : "Failed to load projects");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
     void getHarnessReadiness().then((value) => { if (!cancelled) setReadiness(value); });
 
     return () => {
@@ -100,13 +40,7 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
     };
   }, []);
 
-  const stats = useMemo(() => {
-    const map = new Map<string, ProjectStats>();
-    for (const project of projects) {
-      map.set(project.id, statsForProject(sessions, project.path, project.id));
-    }
-    return map;
-  }, [projects, sessions]);
+  const stats = useMemo(() => new Map(activity.map(summary => [summary.projectId, summary])), [activity]);
 
   function closeCreateForm() {
     if (creating) return;
@@ -180,7 +114,7 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
             }}
             aria-expanded={showCreateForm}
           >
-            New project
+            Add repository
           </button>
         </div>
       </header>
@@ -189,6 +123,10 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
 
       {showCreateForm ? (
         <form className="mob-project-create" onSubmit={handleCreateProject}>
+          <div className="mob-project-create-intro">
+            <h2>Register a repository</h2>
+            <p>A project connects Swarmcrews to one repository. Canvas workspaces, such as Global, organize work inside it.</p>
+          </div>
           <div className="mob-muted">{readiness?.harnesses.map((h) => `${h.name}: ${h.ready ? "Ready" : h.state.replaceAll("_", " ")}`).join(" · ")}</div>
           <RepositoryPathPicker
             value={projectPath}
@@ -230,7 +168,7 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
               type="submit"
               disabled={creating || !projectPath.trim() || readiness?.ready === false || pendingGitDecision !== null}
             >
-              {creating ? "Creating..." : "Create project"}
+              {creating ? "Registering..." : "Register project"}
             </button>
           </div>
         </form>
@@ -245,12 +183,13 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
         </div>
       ) : null}
 
+      <ProjectSessionActivity projectIds={projects.map(project => project.id)} onSummaryChange={setActivity} />
       <div className="mob-project-list">
         {projects.map((project) => {
-          const stat = stats.get(project.id) ?? { count: 0, active: 0, attention: 0, cost: 0 };
+          const stat = stats.get(project.id);
           return (
             <button
-              className={`mob-project-card${stat.attention > 0 ? " mob-project-card--attention" : ""}`}
+              className="mob-project-card"
               key={project.id}
               type="button"
               onClick={() => onSelectProject(project)}
@@ -258,7 +197,7 @@ export function ProjectsScreen({ sessions, onSelectProject }: ProjectsScreenProp
               <span className="mob-project-name">{project.name}</span>
               <span className="mob-project-path">{project.path}</span>
               <span className="mob-project-meta">
-                <ProjectStatsSummary stats={stat} />
+                {stat ? `${stat.activeLeaders} active ${stat.activeLeaders === 1 ? "Leader" : "Leaders"} · ${stat.activeCrew} active crew` : "Checking activity…"}
               </span>
             </button>
           );

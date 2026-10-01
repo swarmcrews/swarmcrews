@@ -9,6 +9,7 @@ const TOKEN = "security-test-token";
 function appFetch() {
   const app = express();
   app.get("/api/auth/token", createAuthTokenHandler(TOKEN));
+  app.post("/api/auth/token", createAuthTokenHandler(TOKEN));
   app.use("/api", createApiAuthMiddleware(TOKEN));
   app.use("/api", (_req, res) => { res.json({ ok: true }); });
   return createExpressFetch({
@@ -44,6 +45,14 @@ describe("HTTP authentication boundary", () => {
     expect((await fetch("http://localhost/api/auth/token", {
       headers: { ...headers, Origin: "https://other.tailnet.ts.net" },
     })).status).toBe(403);
+  });
+
+  it("bootstraps a tailnet browser POST with a matching Origin, but rejects one without Origin", async () => {
+    const fetch = appFetch();
+    const url = "http://localhost/api/auth/token";
+    const headers = { Host: "workstation.tailnet.ts.net", Origin: "https://workstation.tailnet.ts.net:6173" };
+    expect((await fetch(url, { method: "POST", headers })).status).toBe(200);
+    expect((await fetch(url, { method: "POST", headers: { Host: headers.Host } })).status).toBe(403);
   });
 
   it("keeps bearer authentication mandatory for project and mutation APIs", async () => {

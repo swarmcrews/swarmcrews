@@ -4,7 +4,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { initDb } from "./db.ts";
 import * as repo from "./session-repo.ts";
-import { readHistoryPage } from "./session-history.ts";
+import { clearHistory, readHistoryPage } from "./session-history.ts";
 import type { ApprovalState, TaskManagerState } from "./task-tools.ts";
 import type { RenderState } from "../shared/render-dsl.ts";
 import type { WorktreeInfo } from "./worktree-types.ts";
@@ -331,14 +331,14 @@ export function persistTaskState(
   }
 }
 
-/** Wipe session events while retaining the session row. */
-export function clearSessionEvents(sessionKey: string): void {
+/** Wipe conversation rows but retain a durable reset marker for offline clients. */
+export function clearSessionEvents(sessionKey: string): boolean {
   const db = ensureDb();
-  if (!db) return;
+  if (!db) return disabled && !persistenceUnavailable;
   try {
-    repo.purgeEventsForSession(db, sessionKey);
+    clearHistory(db, sessionKey); return true;
   } catch (err) {
-    log.warn("session_events_clear_failed", { error: err });
+    log.warn("session_events_clear_failed", { error: err }); return false;
   }
 }
 

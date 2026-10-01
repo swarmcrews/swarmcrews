@@ -316,6 +316,18 @@ describe("reduceSessionActivity", () => {
     expect(next.sessions[0]).toMatchObject({ status: "idle", renderState });
   });
 
+  it("keeps a synced full report when compact inventory repeats its revision", () => {
+    const full = { reviewState: "completion_to_review" as const, reviewReason: null,
+      finalReport: "Full report", finalDashboardRevision: null, dashboardRevision: 0,
+      terminalReason: "completed" as const, terminalAt: 1, acknowledgedAt: null,
+      dismissedAt: null, lifecycleRevision: 4 };
+    const current = { ...emptyState(), sessions: [session({ sessionKey: "run", reviewLifecycle: full })] };
+    const next = reduceSessionActivity(current, { type: "session_list", sessions: [
+      session({ sessionKey: "run", reviewLifecycle: { ...full, finalReport: null } }),
+    ] });
+    expect(next.sessions[0]?.reviewLifecycle?.finalReport).toBe("Full report");
+  });
+
   it("patches a single session's status on session_status", () => {
     const start = {
       ...emptyState(),

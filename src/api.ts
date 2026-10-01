@@ -22,7 +22,9 @@ export function clearAuthToken(): void {
 export function getAuthToken(): Promise<string> {
   if (_authToken) return Promise.resolve(_authToken);
   if (!_tokenPromise) {
-    const request = fetch(`${BASE}/auth/token`)
+    // Browsers may omit Origin on a same-origin GET. A POST carries Origin so
+    // the server can verify tailnet requests before issuing a token.
+    const request = fetch(`${BASE}/auth/token`, { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch auth token: ${res.status}`);
         return res.json() as Promise<{ token: string }>;

@@ -190,17 +190,8 @@ function makeInitial(): ClaudeSessionData {
 }
 
 describe("ClaudeSessionNode: duplicate-text bug pinning", () => {
-  it("DOES duplicate when the same assistant event is delivered twice", async () => {
-    // Bug capture: ClaudeSessionNode's `normalizedToSessionMessages`
-    // generates a fresh crypto.randomUUID() per message and the
-    // subscription appends with no content-based dedup. So re-delivery
-    // of the same NormalizedEvent produces two assistant bubbles with
-    // different display IDs but identical content.
-    //
-    // NOTE: when this is fixed (e.g. by switching to the shared
-    // reducer or deriving stable IDs from content), flip this assertion
-    // to `toHaveLength(1)` and the regression net catches a future
-    // backslide.
+  it("deduplicates the same assistant event delivered twice", async () => {
+    // Shared replay/live identities now prevent the formerly pinned duplicate.
     const { socket, replay } = createReplaySocket();
     const states: ClaudeSessionData[] = [];
     render(
@@ -227,12 +218,8 @@ describe("ClaudeSessionNode: duplicate-text bug pinning", () => {
     const assistantBubbles = last.messages.filter(
       (m) => m.role === "assistant" && m.content === "Hello world",
     );
-    // BUG: two bubbles. Once fixed, change to exactly 1.
-    expect(assistantBubbles.length).toBeGreaterThanOrEqual(2);
-
-    // Duplicate-detector flags it — useful when this test eventually
-    // becomes a fix-confirmation test.
-    expect(findDuplicateContent(last.messages).length).toBeGreaterThan(0);
+    expect(assistantBubbles).toHaveLength(1);
+    expect(findDuplicateContent(last.messages)).toHaveLength(0);
   });
 
   it("clears streamingText when message_stop arrives, even on the ad-hoc reducer", async () => {

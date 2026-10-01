@@ -15,6 +15,7 @@ import type { WorktreeLineageSnapshot } from "../shared/worktree-integration.ts"
 import type { SandboxResolution } from "../shared/workspace-contracts.ts";
 import type { TaskGraphChangedEnvelope, TaskGraphResponseEnvelope, TaskGraphSnapshotEnvelope } from "../shared/task-graph-view-contracts.ts";
 import type { TaskGraphPlanEnvelope } from "../shared/task-graph-planning-contracts.ts";
+import { BootstrapRequests } from "./session-bootstrap.ts";
 import { browserLogger } from "./logging.ts";
 
 const log = browserLogger.child("websocket");
@@ -38,7 +39,7 @@ export type ServerMessage =
   | { type: "work_item_changed"; workItem: WorkItemSnapshot; revision: number; cause: string; timestamp: number }
   | { type: "work_item_created"; workItem: WorkItemSnapshot; timestamp: number }
   | { type: "work_item_run_created" | "work_item_run_sealed"; workItemId: string; run: WorkItemRunSnapshot; timestamp: number }
-  | { type: "session_list"; sessions: SessionInfo[] }
+  | { type: "session_list"; sessions: SessionInfo[]; includeArchived?: boolean }
   | { type: "harness_list"; catalogMode?: "snapshot" | "patch"; harnesses: HarnessListEntry[] }
   | { type: "session_created"; sessionKey: string }
   | { type: "session_launch_resolved"; sessionKey: string; requested: { harness?: string; model?: string; permissionMode?: string }; effective: { harness: string; model: string; permissionMode: string }; reasons: Array<"harness_not_ready" | "model_incompatible" | "permission_unsupported">; transient: true }
@@ -46,7 +47,7 @@ export type ServerMessage =
   | { type: "session_compacted"; sessionKey: string; checkpointId?: string; trigger?: "proactive" | "context_recovery"; oldSessionId: string | null; newSessionId: string | null; contextTokensBefore?: number; contextWindowTokens?: number; ratioBefore?: number; timestamp: number }
   | { type: "session_error"; sessionKey: string; error: string; fullError?: string }
   | { type: "sdk_event"; sessionKey: string; runKey?: string; workItemId?: string | null; event: NormalizedEvent; timestamp?: number; historyId?: number; historyRef?: HistoryReference }
-  | { type: "sync_response"; sessionKey: string; runKey?: string; workItemId?: string | null; runKind?: "primary" | "child"; parentRunKey?: string | null; taskId?: string | null; found: boolean; archived?: boolean; status?: string; sessionId?: string | null; cwd?: string; totalCost?: number; turns?: number; usageTotals?: SessionUsageTotals; lastError?: string | null; lastErrorFull?: string | null; events?: SyncEvent[]; history?: HistoryWindow; model?: string | null; permissionMode?: string | null; sandboxPolicy?: SandboxResolution | null; initData?: Record<string, unknown>; taskName?: string | null; role?: "leader" | "minion" | "default"; activeMinions?: ActiveMinion[]; taskPlan?: SyncTaskRecord[]; renderState?: RenderState | null; worktree?: { path: string; branch: string } | null; approval?: { requested?: boolean; summary?: string; diff?: unknown; graceUntil?: number } | null; harness?: string; harnessCapabilities?: HarnessCapabilities | null; reviewLifecycle?: SessionReviewLifecycle }
+  | { type: "sync_response"; sessionKey: string; runKey?: string; workItemId?: string | null; runKind?: "primary" | "child"; parentRunKey?: string | null; taskId?: string | null; found: boolean; archived?: boolean; status?: string; sessionId?: string | null; cwd?: string; totalCost?: number; turns?: number; usageTotals?: SessionUsageTotals; lastError?: string | null; lastErrorFull?: string | null; events?: SyncEvent[]; history?: HistoryWindow; afterHistoryId?: number; model?: string | null; permissionMode?: string | null; sandboxPolicy?: SandboxResolution | null; initData?: Record<string, unknown>; taskName?: string | null; role?: "leader" | "minion" | "default"; activeMinions?: ActiveMinion[]; taskPlan?: SyncTaskRecord[]; renderState?: RenderState | null; worktree?: { path: string; branch: string } | null; approval?: { requested?: boolean; summary?: string; diff?: unknown; graceUntil?: number } | null; harness?: string; harnessCapabilities?: HarnessCapabilities | null; reviewLifecycle?: SessionReviewLifecycle }
   | { type: "control_response"; command: string; sessionKey: string | null; requestId: string | null; success: boolean; error?: string; [key: string]: unknown }
   | { type: "session_cleared"; sessionKey: string }
   | { type: "session_task_name"; sessionKey: string; taskName: string }
@@ -306,6 +307,7 @@ interface TopicListener {
 
 export function useSocket(url: string): SocketHandle {
   const wsRef = useRef<WebSocket | null>(null);
+  const bootstrapRequests = useRef(new BootstrapRequests());
   const listenersRef = useRef<Set<TopicListener>>(new Set());
   // Outbound messages enqueued while the socket was not OPEN (initial connect,
   // reconnect backoff, auth-token refresh). Flushed in order on the next open
@@ -350,12 +352,7 @@ export function useSocket(url: string): SocketHandle {
         attemptRef.current = 0;
         setReconnectAttempt(0);
 
-        if (hasOpenedRef.current) {
-          const reconnectMessage: ServerMessage = { type: "socket_reconnected" };
-          for (const listener of listenersRef.current) listener.fn(reconnectMessage);
-        }
-        hasOpenedRef.current = true;
-
+        bootstrapRequests.current.reset();
         // Flush anything queued while we were disconnected, in order. New
         // sends that arrive during the loop go straight out on the now-OPEN
         // socket, so there is no interleaving or double-send.
@@ -363,9 +360,16 @@ export function useSocket(url: string): SocketHandle {
           const queued = pendingSendsRef.current;
           pendingSendsRef.current = [];
           for (const serialized of queued) {
+            bootstrapRequests.current.send(JSON.parse(serialized));
             ws.send(serialized);
           }
         }
+        if (hasOpenedRef.current) {
+          const reconnectMessage: ServerMessage = { type: "socket_reconnected" };
+          for (const listener of listenersRef.current) listener.fn(reconnectMessage);
+        }
+        hasOpenedRef.current = true;
+
       };
 
       ws.onclose = () => {
@@ -403,6 +407,7 @@ export function useSocket(url: string): SocketHandle {
             return;
           }
           const envelope: WsEnvelope = result.data;
+          bootstrapRequests.current.received(envelope);
           if (envelope.type === "sdk_event") {
             if (!normalizedEventEnvelopeSchema.safeParse(envelope).success) {
               log.warn("invalid_normalized_event", { topic: envelope.topic });
@@ -437,6 +442,8 @@ export function useSocket(url: string): SocketHandle {
   }, [connect]);
 
   const send = useCallback((data: unknown) => {
+    const command = data as { type?: string; projectId?: string | null; includeArchived?: boolean; sessionKey?: string; afterHistoryId?: number };
+    if (!bootstrapRequests.current.send(command)) return;
     const serialized = JSON.stringify(data);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(serialized);
@@ -448,6 +455,12 @@ export function useSocket(url: string): SocketHandle {
     // dropping it — otherwise a tap like "Launch leader" that fires
     // `create_session` during a disconnected window is silently lost.
     const queue = pendingSendsRef.current;
+    if (command.type === "list_sessions") {
+      for (let i = queue.length - 1; i >= 0; i--) {
+        const pending = JSON.parse(queue[i]!) as typeof command;
+        if (pending.type === "list_sessions") queue.splice(i, 1);
+      }
+    }
     queue.push(serialized);
     if (queue.length > MAX_PENDING_SENDS) {
       const overflow = queue.length - MAX_PENDING_SENDS;
