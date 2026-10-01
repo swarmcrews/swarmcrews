@@ -101,8 +101,10 @@ readiness. Resolve any blocking result using its suggested remediation. A
 successful check needs at least one authenticated harness; unavailable optional
 harnesses do not all need fixing.
 
-`pnpm start` starts the backend and frontend in the background and opens the
-browser. If a browser does not open, visit **http://localhost:6173**.
+`pnpm start` builds the production frontend, then starts it with the backend in
+the background. The initial build can take a little time; a build failure prevents
+startup. Visit **http://localhost:6173** once it starts. Production mode does not
+open a browser automatically and is recommended for remote access.
 
 **Checkpoint:** you see the Projects page. You do not need to configure a
 database; Swarmcrews creates its SQLite state automatically.
@@ -116,8 +118,8 @@ project you are working on lives somewhere else.
 |---|---|
 | `pnpm status` | Check the background service |
 | `pnpm stop` | Stop the background service |
-| `pnpm restart` | Restart it after changing the server environment |
-| `pnpm dev` | Run in the foreground, with logs and Ctrl-C to stop |
+| `pnpm restart` | Rebuild and restart after changing code or the server environment |
+| `pnpm dev` | Run the development server with hot reload, foreground logs and Ctrl-C to stop |
 | `tail -n 100 .run/swarmcrews.log` | Inspect recent background-service logs |
 
 Use either the background service or the foreground development command on a

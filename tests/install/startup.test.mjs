@@ -123,7 +123,7 @@ test("startup launches both services from a checkout path with spaces without sh
     mkdirSync(join(fixture, "dist"));
     // Stand-in CLIs exercise the real launchers without opening ports or a browser.
     // No .bin shims are installed, so these must run through Node directly.
-    for (const name of ["tsx", "vite", "better-sqlite3"]) {
+    for (const name of ["tsx", "vite", "better-sqlite3", "typescript"]) {
       const packageDir = join(fixture, "node_modules", name);
       mkdirSync(join(packageDir, "bin"), { recursive: true });
       writeFileSync(join(packageDir, "package.json"), JSON.stringify({
@@ -131,8 +131,11 @@ test("startup launches both services from a checkout path with spaces without sh
         exports: { ".": "./index.js", "./cli": "./index.js", "./package.json": "./package.json" },
       }));
       const cli = `
-        import { writeFileSync, existsSync } from "node:fs";
+        import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+        if (process.argv[1].endsWith("tsc.js")) process.exit(0);
+        if (process.argv[2] === "build") { const out = process.argv[process.argv.indexOf("--outDir") + 1]; mkdirSync(out, { recursive: true }); writeFileSync(out + "/index.html", "built"); process.exit(0); }
         writeFileSync(${JSON.stringify(join(fixture, `${name}.json`))}, JSON.stringify(process.argv.slice(2)));
+        writeFileSync(${JSON.stringify(join(fixture, `${name}-env.json`))}, JSON.stringify(process.env.NODE_ENV));
         const timer = setInterval(() => {
           if (existsSync(${JSON.stringify(join(fixture, "tsx.json"))}) &&
               existsSync(${JSON.stringify(join(fixture, "vite.json"))})) clearInterval(timer);
@@ -141,11 +144,12 @@ test("startup launches both services from a checkout path with spaces without sh
       `;
       writeFileSync(join(packageDir, "index.js"), cli);
       writeFileSync(join(packageDir, "bin", "vite.js"), cli);
+      if (name === "typescript") { mkdirSync(join(packageDir, "bin"), { recursive: true }); writeFileSync(join(packageDir, "bin", "tsc.js"), cli); }
     }
     for (const command of ["dev", "preview", "start"]) {
       const result = spawnSync(process.execPath, scripts[command].split(" ").slice(1), {
         cwd: fixture, encoding: "utf8", timeout: 10_000,
-        env: { ...fixtureEnv, MINIONS_NO_OPEN: "1", HOST: "127.0.0.1", VITE_PORT: "6273" },
+        env: { ...fixtureEnv, NODE_ENV: "production", MINIONS_NO_OPEN: "1", HOST: "127.0.0.1", VITE_PORT: "6273" },
       });
       assert.ifError(result.error);
       // A service that exits during startup is a failure, including background start.
@@ -156,9 +160,13 @@ test("startup launches both services from a checkout path with spaces without sh
       }
       assert.deepEqual(JSON.parse(readFileSync(join(fixture, "tsx.json"), "utf8")), ["server/index.ts"]);
       assert.deepEqual(JSON.parse(readFileSync(join(fixture, "vite.json"), "utf8")), [
-        ...(command === "preview" ? ["preview"] : []),
+        ...(command === "preview" || command === "start" ? ["preview"] : []),
         "--host", "127.0.0.1", "--port", "6273", "--strictPort",
       ]);
+      for (const name of ["tsx", "vite"]) {
+        assert.equal(JSON.parse(readFileSync(join(fixture, `${name}-env.json`), "utf8")), command === "dev" ? "development" : "production");
+        rmSync(join(fixture, `${name}-env.json`));
+      }
       rmSync(join(fixture, ".run"), { recursive: true, force: true });
       rmSync(join(fixture, "tsx.json"));
       rmSync(join(fixture, "vite.json"));
@@ -302,12 +310,14 @@ test("rotation closes old descriptors and retains only the bounded byte tail", a
 function launcherFixture(backend, frontend) {
   const fixture = mkdtempSync(join(tmpdir(), "minions-lifecycle-"));
   cpSync(join(root, "scripts"), join(fixture, "scripts"), { recursive: true });
-  for (const [name, code] of [["tsx", backend], ["vite", frontend], ["better-sqlite3", ""]]) {
+  for (const [name, code] of [["tsx", backend], ["vite", frontend], ["better-sqlite3", ""], ["typescript", ""]]) {
+    const fixtureCode = name === "vite" ? `if (process.argv[2] === "build") { const { mkdirSync, writeFileSync, appendFileSync } = await import("node:fs"); appendFileSync("build-count", "vite\\n"); const out = process.argv[process.argv.indexOf("--outDir") + 1]; mkdirSync(out, { recursive: true }); writeFileSync(out + "/index.html", "fixture-built"); process.exit(0); }\n${code}` : code;
     const dir = join(fixture, "node_modules", name);
     mkdirSync(join(dir, "bin"), { recursive: true });
     writeFileSync(join(dir, "package.json"), JSON.stringify({ name, type: "module", main: "index.js", exports: { ".": "./index.js", "./cli": "./index.js", "./package.json": "./package.json" } }));
-    writeFileSync(join(dir, "index.js"), code);
-    writeFileSync(join(dir, "bin", "vite.js"), code);
+    writeFileSync(join(dir, "index.js"), fixtureCode);
+    writeFileSync(join(dir, "bin", "vite.js"), fixtureCode);
+    if (name === "typescript") writeFileSync(join(dir, "bin", "tsc.js"), "process.exit(0);");
   }
   return fixture;
 }
@@ -401,6 +411,54 @@ test("successful background startup detaches and continues logging after the obs
   }
 });
 
+test("production start builds before launch, uses production env and preview at 6173, and does not rebuild an owned service", { timeout: 20_000 }, () => {
+  const capture = `import { appendFileSync } from 'node:fs'; appendFileSync('launches', JSON.stringify({ args: process.argv.slice(2), env: process.env.NODE_ENV }) + '\\n'); setInterval(() => {}, 1000);`;
+  const fixture = launcherFixture(capture, capture);
+  try {
+    const env = { ...fixtureEnv, HOST: "127.0.0.1", NODE_ENV: "development" };
+    const first = spawnSync(process.execPath, ["scripts/start.mjs", "start"], { cwd: fixture, env, encoding: "utf8", timeout: 10_000 });
+    assert.equal(first.status, 0, first.stderr);
+    assert.equal(readFileSync(join(fixture, "build-count"), "utf8"), "vite\n");
+    const launched = readFileSync(join(fixture, "launches"), "utf8").trim().split("\n").map(JSON.parse);
+    assert.deepEqual(launched.sort((a, b) => a.args.length - b.args.length), [
+      { args: ["server/index.ts"], env: "production" },
+      { args: ["preview", "--host", "127.0.0.1", "--port", "6173", "--strictPort"], env: "production" },
+    ]);
+    const again = spawnSync(process.execPath, ["scripts/start.mjs", "start"], { cwd: fixture, env, encoding: "utf8", timeout: 10_000 });
+    assert.equal(again.status, 0, again.stderr);
+    assert.match(again.stdout, /already running/);
+    assert.equal(readFileSync(join(fixture, "build-count"), "utf8"), "vite\n");
+    const oldPid = Number(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8"));
+    const compiler = join(fixture, "node_modules", "typescript", "bin", "tsc.js");
+    writeFileSync(compiler, 'console.error("fixture restart compile error"); process.exit(7);');
+    const failed = spawnSync(process.execPath, ["scripts/start.mjs", "restart"], { cwd: fixture, env, encoding: "utf8", timeout: 10_000 });
+    assert.equal(failed.status, 1, failed.stderr);
+    assert.match(failed.stderr, /fixture restart compile error/);
+    assert.equal(Number(readFileSync(join(fixture, ".run", "swarmcrews.pid"), "utf8")), oldPid);
+    process.kill(oldPid, 0);
+    writeFileSync(compiler, 'process.exit(0);');
+    const restarted = spawnSync(process.execPath, ["scripts/start.mjs", "restart"], { cwd: fixture, env, encoding: "utf8", timeout: 12_000 });
+    assert.equal(restarted.status, 0, restarted.stderr);
+    assert.equal(readFileSync(join(fixture, "build-count"), "utf8"), "vite\nvite\n");
+  } finally {
+    spawnSync(process.execPath, ["scripts/start.mjs", "stop"], { cwd: fixture, env: fixtureEnv, timeout: 10_000 });
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test("failed build never launches or writes a PID", () => {
+  const fixture = launcherFixture('setInterval(() => {}, 1000)', 'setInterval(() => {}, 1000)');
+  try {
+    writeFileSync(join(fixture, "node_modules", "typescript", "bin", "tsc.js"), 'console.error("fixture compile error"); process.exit(7);');
+    const result = spawnSync(process.execPath, ["scripts/start.mjs", "start"], { cwd: fixture, env: fixtureEnv, encoding: "utf8", timeout: 10_000 });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /fixture compile error/);
+    assert.match(result.stderr, /production build failed/);
+    assert.equal(existsSync(join(fixture, ".run")), false);
+    assert.equal(existsSync(join(fixture, "build-count")), false);
+  } finally { rmSync(fixture, { recursive: true, force: true }); }
+});
+
 test("background startup exposes runner errors before log initialization", () => {
   const fixture = launcherFixture('', '');
   try {
@@ -418,7 +476,7 @@ test("background startup exposes runner errors before log initialization", () =>
   }
 });
 
-test("production runner supervises two explicit restarts then stops on a crash", { timeout: 15_000, skip: process.platform === "win32" }, async () => {
+test("development runner supervises two explicit restarts then stops on a crash", { timeout: 15_000, skip: process.platform === "win32" }, async () => {
   const fixture = launcherFixture(`
     import { existsSync, readFileSync, writeFileSync } from "node:fs";
     const generation = existsSync("generation") ? Number(readFileSync("generation", "utf8")) + 1 : 1;

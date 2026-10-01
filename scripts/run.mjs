@@ -11,18 +11,22 @@ import { supervise } from "./launcher-supervisor.mjs";
 
 checkDependencies(["tsx", "vite", "better-sqlite3"]);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const mode = process.argv[2] === "preview" ? "preview" : "dev";
+const mode = process.argv[2] ?? "dev";
+if (!["dev", "preview", "production"].includes(mode)) {
+  console.error(`Unknown runner mode "${mode}". Use dev, preview, or production.`);
+  process.exit(1);
+}
 const require = createRequire(import.meta.url);
 const host = process.env.HOST || "127.0.0.1";
 const vitePort = process.env.VITE_PORT || (mode === "preview" ? "4173" : "6173");
 const tsx = require.resolve("tsx/cli");
 const vite = join(dirname(require.resolve("vite/package.json")), "bin", "vite.js");
-if (mode === "preview" && !existsSync(join(root, "dist"))) {
+if (mode !== "dev" && !existsSync(join(root, "dist"))) {
   console.error("Built preview is unavailable: dist/ does not exist. Run `pnpm build` first.");
   process.exit(1);
 }
 
-const env = { ...process.env, HOST: host };
+const env = { ...process.env, HOST: host, NODE_ENV: mode === "dev" ? "development" : "production" };
 const launchLog = process.env.SWARMCREWS_LAUNCH_LOG ?? process.env.MINIONS_LAUNCH_LOG;
 const logger = launchLog ? boundedLog(launchLog) : null;
 const children = new Set();
@@ -122,7 +126,7 @@ supervise(() => launch([tsx, "server/index.ts"], true), {
   fail,
 });
 if (!stopping) {
-  const args = mode === "preview"
+  const args = mode !== "dev"
     ? ["preview", "--host", host, "--port", vitePort, "--strictPort"]
     : ["--host", host, "--port", vitePort, "--strictPort", ...((process.env.SWARMCREWS_NO_OPEN ?? process.env.MINIONS_NO_OPEN) === "1" ? [] : ["--open"])];
   frontend = launch([vite, ...args]);

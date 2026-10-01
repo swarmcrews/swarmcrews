@@ -74,13 +74,16 @@ pnpm preflight
 pnpm start
 ```
 
-`pnpm start` launches the backend and Vite together as a background service and
-returns the terminal to you immediately. It opens the browser, writes logs to
-`.run/swarmcrews.log`, and keeps running until you `pnpm stop`. Use `pnpm status`
-to check on it. It never configures Tailscale unless you pass `-- --tailscale`.
+`pnpm start` builds the production frontend, then launches it with the backend
+as a background service. After the build and startup check, it returns the terminal
+to you. It writes logs to `.run/swarmcrews.log` and keeps running until you
+`pnpm stop`. Visit **http://localhost:6173**; production startup does not open a
+browser automatically. Use `pnpm status` to check it, or `pnpm restart` to rebuild
+and relaunch after updates. Tailscale is only configured with `-- --tailscale`.
 
-If you'd rather run in the foreground and stream logs (stopping both on
-`Ctrl-C`), use `pnpm dev` instead.
+For development with hot reload and foreground logs (stopping both services on
+`Ctrl-C`), use `pnpm dev`. Use the production service for remote access over
+slower connections; development mode transfers unbundled source modules.
 
 - Local URL: **http://localhost:6173**
 
@@ -265,12 +268,12 @@ or claim the bare `https://<machine>.<tailnet>.ts.net/` origin.
 
 | Command | What it does |
 |---|---|
-| `pnpm start` | Start the full stack as a background service on loopback (non-blocking) |
+| `pnpm start` | Build and start the production full stack as a background service on loopback |
 | `pnpm start -- --tailscale` | Start the background service and opt into tailnet HTTPS |
 | `pnpm dev` | Foreground backend + frontend development server on loopback (streams logs, `Ctrl-C` to stop) |
 | `pnpm preview` | Foreground backend + built frontend preview on loopback |
 | `pnpm stop` | Stop the background service |
-| `pnpm restart` | Restart the background service |
+| `pnpm restart` | Rebuild and restart the production background service |
 | `pnpm status` | Report whether the background app is running |
 | `pnpm server` | Backend server only |
 | `pnpm build` | Production build |

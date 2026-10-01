@@ -79,7 +79,7 @@ function rel(p) {
   return relative(process.cwd(), p) || p;
 }
 
-async function start(enableTail = tailscale) {
+async function start(enableTail = tailscale, built = false) {
   const existing = readPid();
   if (isRunning(existing)) {
     console.log(`Swarmcrews is already running (pid ${existing}).`);
@@ -95,9 +95,10 @@ async function start(enableTail = tailscale) {
 
   pidFile = join(runDir, "swarmcrews.pid");
   logFile = join(runDir, "swarmcrews.log");
-  checkDependencies(["tsx", "vite", "better-sqlite3"]);
+  checkDependencies(["tsx", "vite", "better-sqlite3", "typescript"]);
+  if (!built && !buildProduction()) return;
   mkdirSync(runDir, { recursive: true });
-  const child = spawn(process.execPath, [join(scriptDir, "run.mjs"), "dev"], {
+  const child = spawn(process.execPath, [join(scriptDir, "run.mjs"), "production"], {
     cwd: root,
     detached: true,
     // The runner owns rotation; inherited append descriptors bypass its bound.
@@ -187,8 +188,22 @@ function stop() {
   console.log(`Swarmcrews stopped (pid ${pid}).`);
 }
 
+function buildProduction() {
+  const result = spawnSync(process.execPath, [join(scriptDir, "production-build.mjs")], {
+    cwd: root, env: process.env, stdio: "inherit", shell: false, windowsHide: true,
+  });
+  if (result.error || result.status !== 0) {
+    console.error(`Swarmcrews was not started: production build failed${result.error ? ` (${result.error.message})` : ""}.`);
+    process.exitCode = 1;
+    return false;
+  }
+  return true;
+}
+
 async function restart() {
-  checkDependencies(["tsx", "vite", "better-sqlite3"]);
+  checkDependencies(["tsx", "vite", "better-sqlite3", "typescript"]);
+  // Keep an existing service online if compilation fails.
+  if (!buildProduction()) return;
   const restoreTailscale = tailscale || existsSync(tailscaleFile);
   const pid = readPid();
   if (isRunning(pid)) {
@@ -200,7 +215,7 @@ async function restart() {
   } else if (existsSync(pidFile)) {
     rmSync(pidFile);
   }
-  await start(restoreTailscale);
+  await start(restoreTailscale, true);
 }
 
 function status() {
