@@ -49,12 +49,12 @@ test("keeps New Leader configuration and popovers contained", async ({ page }) =
   const settings = launchPanel.getByRole("complementary", { name: "Run setup" });
   await expect(settings.getByText("Run configuration")).toBeVisible();
   await expect(settings.locator("details")).toHaveCount(0);
-  await expect(settings.getByLabel("Configured settings")).toContainText(/shared/i);
+  await expect(settings.getByRole("checkbox", { name: "Isolated worktree" })).not.toBeChecked();
   await expect(settings.getByRole("combobox", { name: "Model" })).toBeVisible();
   await expect(settings.getByRole("checkbox", { name: "Isolated worktree" })).toBeVisible();
   await expect(settings.getByText("Skills", { exact: true })).toBeVisible();
   await settings.getByRole("checkbox", { name: /System Model Authoring/i }).click();
-  await expect(settings.getByLabel("Configured settings")).toContainText(/1 skill/i);
+  await expect(settings.getByRole("region", { name: "Skills" })).toContainText("1 selected");
 
   // Run setup can legitimately scroll as settings and skills grow. Verify the
   // controls remain reachable instead of pinning which nested panel scrolls.

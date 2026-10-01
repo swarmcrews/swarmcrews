@@ -11,6 +11,8 @@ import {
   compareActivityPriority,
   hasLiveMinions,
   isVisibleInActivity,
+  isActivityWorking,
+  activityStatusLabel,
   needsAttention,
   sessionBelongsToProject,
   sessionDisplayTitle,
@@ -50,6 +52,27 @@ describe("mobile selectors", () => {
     expect(needsAttention(session({ pendingAttention: true }))).toBe(true);
     expect(needsAttention(session({ reviewableChanges: true }))).toBe(true);
     expect(needsAttention(session({ status: "running" }))).toBe(false);
+  });
+
+  it("keeps a leader waiting on live minions active despite stale decision state", () => {
+    const leader = session({ status: "waiting", role: "leader",
+      activeMinions: [{ taskId: "m", title: "Build", status: "running", sessionKey: "m-run" }],
+    });
+    expect(needsAttention(leader)).toBe(false);
+    expect(isActivityWorking(leader)).toBe(true);
+    expect(activityStatusLabel(leader)).toBe("Active");
+    expect(needsAttention({ ...leader, pendingAttention: true })).toBe(true);
+    const stale = { ...leader, reviewLifecycle: lifecycle("decision_needed") };
+    expect(needsAttention(stale)).toBe(false);
+    expect(isActivityWorking(stale)).toBe(true);
+    expect(attentionReason(stale)).not.toBe("decision needed");
+  });
+
+  it.each(["running", "creating"] as const)("ignores a stale decision while %s", (status) => {
+    const live = session({ status, reviewLifecycle: lifecycle("decision_needed"), pendingAttention: true });
+    expect(needsAttention(live)).toBe(false);
+    expect(isActivityWorking(live)).toBe(true);
+    expect(attentionReason(live)).not.toBe("decision needed");
   });
 
   it("uses the durable lifecycle for attention and visibility", () => {
@@ -267,10 +290,10 @@ describe("attention classification", () => {
       status: "inactive",
       reviewLifecycle: lifecycle("interrupted_to_review"),
     }))).toBe("inactive");
-    expect(attentionKind(session({ reviewLifecycle: lifecycle("decision_needed") }))).toBe("waiting");
+    expect(attentionKind(session({ reviewLifecycle: lifecycle("decision_needed") }))).toBe("attention");
     expect(attentionKind(session({ status: "error" }))).toBe("error");
-    expect(attentionKind(session({ status: "waiting" }))).toBe("waiting");
-    expect(attentionKind(session({ status: "idle", pendingAttention: true }))).toBe("waiting");
+    expect(attentionKind(session({ status: "waiting" }))).toBe("attention");
+    expect(attentionKind(session({ status: "idle", pendingAttention: true }))).toBe("attention");
     // Changes-ready is the fallback (e.g. an acknowledged run with a live diff).
     expect(attentionKind(session({ reviewableChanges: true }))).toBe("changes");
   });

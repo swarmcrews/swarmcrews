@@ -1,0 +1,148 @@
+.mob-launch-command-toolbar,
+.mob-launch-command-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mob-launch-command-toolbar button,
+.mob-launch-command-heading button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+}
+
+.mob-launch-command-toolbar button:disabled {
+  opacity: 0.5;
+}
+
+.mob-launch-command-toolbar button[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mob-launch-command-panel {
+  min-width: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.mob-launch-command-heading {
+  padding: 4px 8px 4px 12px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.mob-launch-command-list {
+  max-height: min(280px, 35dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+}
+
+.mob-launch-command-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  font: inherit;
+}
+
+.mob-launch-command-list button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-surface));
+}
+
+.mob-launch-command-list svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.mob-launch-command-list button > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mob-launch-command-list strong {
+  font-size: 14px;
+}
+
+.mob-launch-command-list small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mob-launch-command-panel p {
+  padding: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.mob-launch-command-toolbar button:focus-visible,
+.mob-launch-command-panel button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.mob-launch-command-toolbar {
+  margin-top: 8px;
+}
+
+.mob-launch .mob-launch-command-list button > span {
+  margin-bottom: 0;
+  color: var(--text-primary);
+}
+
+/* The follow-up composer is a three-column grid; commands stay above its
+   attachment/input/send row and the results scroll rather than covering it. */
+.mob-composer > .mob-launch-command-toolbar,
+.mob-composer > .mob-launch-command-panel,
+.mob-iteration-skills {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.mob-composer > .mob-launch-command-toolbar {
+  margin-top: 0;
+}
+
+.mob-composer .mob-launch-command-list {
+  max-height: min(220px, 25dvh);
+}
+
+.mob-iteration-skills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mob-iteration-skills button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+}

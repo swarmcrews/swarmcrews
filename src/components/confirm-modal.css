@@ -1,0 +1,30 @@
+.confirm-modal-backdrop {
+  box-sizing: border-box;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.confirm-modal {
+  box-sizing: border-box;
+  animation: confirm-modal-enter 140ms ease-out;
+}
+
+.confirm-modal-actions button { min-height: 36px; }
+
+.confirm-modal button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@keyframes confirm-modal-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (pointer: coarse) {
+  .confirm-modal-actions button { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confirm-modal { animation: none; }
+}

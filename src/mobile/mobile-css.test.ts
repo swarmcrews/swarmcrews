@@ -69,9 +69,9 @@ describe("mobile.css overflow guards", () => {
 });
 
 describe("mobile.css activity redesign surfaces", () => {
-  it("lays the summary strip out as three equal, viewport-bounded columns", () => {
+  it("lays the summary strip out as two equal, viewport-bounded columns", () => {
     const body = ruleBody(".mob-activity-summary").replace(/\s+/g, " ");
-    expect(body).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
+    expect(body).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
   });
 
   it("accents the attention summary count with the warning token", () => {
@@ -90,7 +90,7 @@ describe("mobile.css activity redesign surfaces", () => {
 
   it("colours the triage rows by attention kind", () => {
     expect(ruleBody(".mob-triage-row--error")).toContain("var(--status-error)");
-    expect(ruleBody(".mob-triage-row--waiting")).toContain("var(--status-warning)");
+    expect(ruleBody(".mob-triage-row--attention")).toContain("var(--status-warning)");
     expect(ruleBody(".mob-triage-row--changes")).toContain("var(--status-success)");
   });
 
@@ -162,5 +162,16 @@ describe("mobile.css chat density", () => {
     const body = ruleBody(".mob-tool-icon");
     expect(body).toContain("width: 16px");
     expect(body).toContain("height: 16px");
+  });
+});
+
+describe("mobile.css short-phone chat space", () => {
+  it("compacts only closed-keyboard chat chrome below a 600px viewport", () => {
+    const shortPhone = css.slice(css.indexOf("@media (max-height: 600px)"));
+    expect(shortPhone).toContain(".mob-chat > .mob-chat-header");
+    expect(shortPhone).toContain("-webkit-line-clamp: 1");
+    expect(shortPhone).toContain('.mob-app[data-keyboard="closed"] .mob-composer');
+    expect(shortPhone).toContain("env(safe-area-inset-bottom)");
+    expect(shortPhone).toContain(".mob-chat-feed");
   });
 });

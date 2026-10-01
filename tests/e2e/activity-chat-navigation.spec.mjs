@@ -8,7 +8,7 @@ test('Activity opens at latest, preserves history while streaming, and resumes f
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   const fixture = await openResponsiveFixture(page);
-  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
+  await page.getByRole("button", { name: "Review request: Improve responsive layouts across laptop screens", exact: true }).click();
   const feed = page.getByRole('region', { name: 'Conversation messages' });
   await expect(feed).toContainText('Verify controls, keyboard access, and scrolling at smaller sizes.');
   await expect.poll(() => bottomGap(feed)).toBeLessThan(2);
@@ -33,7 +33,7 @@ test('Activity opens at latest, preserves history while streaming, and resumes f
   await expect.poll(() => bottomGap(feed)).toBeLessThan(2);
   await feed.evaluate(el => { el.scrollTop = 100; });
   await expect(jump).toBeVisible();
-  await page.getByRole('button', { name: 'Context Needs you', exact: true }).click();
+  await page.getByRole('button', { name: 'Context Needs attention', exact: true }).click();
   await page.getByRole('button', { name: 'Conversation', exact: true }).click();
   await expect.poll(() => feed.evaluate(el => el.scrollTop)).toBe(100);
   await jump.click();
@@ -46,10 +46,10 @@ test('fullscreen keeps conversation spacious and panels dismissible, then return
   page.on('pageerror', error => errors.push(error.message));
   await page.setViewportSize({ width: 1440, height: 900 });
   await openResponsiveFixture(page);
-  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
+  await page.getByRole("button", { name: "Review request: Improve responsive layouts across laptop screens", exact: true }).click();
   await page.getByRole('button', { name: 'Add to canvas', exact: true }).click();
   await page.getByRole('tab', { name: /^Activity(?: \d+)?$/ }).click();
-  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
+  await page.getByRole("button", { name: "Review request: Improve responsive layouts across laptop screens", exact: true }).click();
   await page.getByRole('button', { name: 'Expand fullscreen', exact: true }).click();
   const overlay = page.getByRole('dialog', { name: 'Leader fullscreen cockpit' });
   const feed = overlay.getByRole('region', { name: 'Conversation messages' });

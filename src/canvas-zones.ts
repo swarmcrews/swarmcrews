@@ -125,10 +125,9 @@ export function zoneSummary(nodes: CanvasNode[]): string {
   const states = nodes.map(zoneLeaderState);
   const count = (...values: string[]) => states.filter(s => values.includes(s)).length;
   return [count("Needs input") && `${count("Needs input")} needs input`, count("Error") && `${count("Error")} errors`,
-    count("Working", "Starting") && `${count("Working", "Starting")} working`,
+    count("Working", "Starting", "Active") && `${count("Working", "Starting", "Active")} working`,
     count("Ready for review") && `${count("Ready for review")} ready for review`,
-    count("Waiting", "Waiting for files") && `${count("Waiting", "Waiting for files")} waiting`,
-    count("Merge conflict", "Interrupted") && `${count("Merge conflict", "Interrupted")} needs attention`].filter(Boolean).join(" · ") ||
+    count("Merge conflict", "Interrupted", "Waiting for files") && `${count("Merge conflict", "Interrupted", "Waiting for files")} needs attention`].filter(Boolean).join(" · ") ||
     (nodes.length === 0 ? "Empty workspace" : states.every(s => ["Done", "Reviewed", "Archived"].includes(s)) ? "All done" : `${nodes.length} leader${nodes.length === 1 ? "" : "s"}`);
 }
 

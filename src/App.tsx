@@ -742,6 +742,8 @@ function ProjectView({
                   sessions={activitySessions}
                   initialSelectedKey={activitySelection}
                   nodes={nodes}
+                  edges={graph.edges}
+                  onOpenCanvas={() => { setActivitySelection(null); setActiveView("canvas"); }}
                   onLaunchLeader={handleLaunchActivityLeader}
                   onCommitLaunchLeader={(node, workspaceId) => dispatch({ type: "ADD_NODE", node, workspaceId })}
                   onCreateWorkspace={(name) => {

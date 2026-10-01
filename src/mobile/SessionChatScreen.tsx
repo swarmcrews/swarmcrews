@@ -1,3 +1,5 @@
+import { useMobileCommandPicker } from "./use-mobile-command-picker.tsx";
+import { useIterationCommands, type IterationCommandSkills } from "./use-iteration-commands.tsx";
 import { ChatLinkScope } from "../components/ChatLink.tsx";
 import { AgentMessageText } from "../components/AgentMessageText.tsx";
 import { CrewIcon } from "../components/CrewIcon.tsx";
@@ -9,6 +11,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ChangeEvent, FormEvent, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 
 import type { DisplayMessage } from "../sdk-messages.ts";
+import { withSessionModelContext } from "../session-model-context.ts";
 import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import type { TranscriptBoundary, TranscriptEntry } from "../components/SessionTranscript.tsx";
 import { buildUnifiedWorkItemMessages } from "../WorkItemTranscript.tsx";
@@ -59,6 +62,7 @@ import type { PendingApproval } from "./mobile-approvals.ts";
 import type { ChatFollowMemory } from "../use-chat-follow.ts";
 
 export interface SessionViewMemory {
+  commandSkills?: IterationCommandSkills;
   prompt?: string;
   attachments?: ImageAttachment[];
   textAttachments?: TextAttachment[];
@@ -121,9 +125,16 @@ function messageTone(message: DisplayMessage): string {
   return message.role;
 }
 
+function hasHorizontalScroll(target: Element | null, boundary: HTMLElement): boolean {
+  for (let element = target; element && element !== boundary; element = element.parentElement) {
+    if (element.scrollWidth > element.clientWidth && /auto|scroll/.test(getComputedStyle(element).overflowX)) return true;
+  }
+  return false;
+}
+
 export function MessageBubble({ message, detail = false }: { message: DisplayMessage; detail?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
   const touchStartRef = useRef<{ identifier: number; x: number; y: number } | null>(null);
   const toolInfo = message.role === "tool" ? toolDisplayInfo(message.toolName, message.toolInput) : null;
   const label = toolInfo?.label ?? message.toolName ?? message.role;
@@ -133,8 +144,17 @@ export function MessageBubble({ message, detail = false }: { message: DisplayMes
     : previewBody;
   const compact = !detail && (message.role === "tool" || message.role === "system" || message.role === "thinking");
   const copyable = (message.role === "assistant" || message.role === "result") && message.content.length > 0;
+  const handleCopy = useCallback(() => {
+    void copyText(message.content)
+      .then(() => setCopyState("copied"))
+      .catch(() => setCopyState("error"));
+  }, [message.content]);
   const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLElement>) => {
-    if (!copyable || event.touches.length !== 1) {
+    const target = event.target instanceof Element ? event.target : null;
+    const selection = window.getSelection();
+    if (!copyable || event.touches.length !== 1 || (selection && !selection.isCollapsed) ||
+      target?.closest("pre, code, a, button, input, textarea, select, summary") ||
+      hasHorizontalScroll(target, event.currentTarget)) {
       touchStartRef.current = null;
       return;
     }
@@ -148,7 +168,7 @@ export function MessageBubble({ message, detail = false }: { message: DisplayMes
   const handleTouchEnd = useCallback((event: ReactTouchEvent<HTMLElement>) => {
     const start = touchStartRef.current;
     touchStartRef.current = null;
-    if (!copyable || !start) return;
+    if (!copyable || !start || !window.getSelection()?.isCollapsed) return;
 
     const touch = Array.from(event.changedTouches).find(
       (candidate) => candidate.identifier === start.identifier,
@@ -159,16 +179,14 @@ export function MessageBubble({ message, detail = false }: { message: DisplayMes
     const verticalDistance = Math.abs(touch.clientY - start.y);
     if (horizontalDistance < 64 || horizontalDistance < verticalDistance * 1.5) return;
 
-    void copyText(message.content)
-      .then(() => setCopied(true))
-      .catch(() => setCopied(false));
-  }, [copyable, message.content]);
+    handleCopy();
+  }, [copyable, handleCopy]);
 
   useEffect(() => {
-    if (!copied) return;
-    const timeout = window.setTimeout(() => setCopied(false), 1_500);
+    if (copyState !== "copied") return;
+    const timeout = window.setTimeout(() => setCopyState("idle"), 1_500);
     return () => window.clearTimeout(timeout);
-  }, [copied]);
+  }, [copyState]);
 
   const contents = (
     <>
@@ -205,7 +223,14 @@ export function MessageBubble({ message, detail = false }: { message: DisplayMes
           {contents}
         </button>
       ) : contents}
-      {copied ? <span className="mob-message-copy-status" role="status">Copied</span> : null}
+      {copyable ? <div className="mob-message-actions">
+        <button type="button" className="mob-message-copy" aria-label="Copy response"
+          onClick={handleCopy} data-copied={copyState === "copied"}>
+          {copyState === "copied" ? "✓ Copied" : "Copy"}
+        </button>
+        {copyState === "copied" ? <span className="mob-message-copy-status" role="status">Copied</span> : null}
+        {copyState === "error" ? <span className="mob-message-copy-error" role="alert">Couldn’t copy. Try again or select the text.</span> : null}
+      </div> : null}
     </article>
   );
 }
@@ -228,7 +253,7 @@ export function groupMobileMessages(messages: TranscriptEntry[]): MobileMessageG
     activity = [];
   };
 
-  for (const message of messages) {
+  for (const message of withSessionModelContext(messages)) {
     if ("kind" in message) {
       flush();
       groups.push(message);
@@ -698,6 +723,11 @@ function SessionChatContent({
     emptySessionStreamState(sessionKey),
   );
   const [prompt, setPrompt] = useState(memory?.prompt ?? "");
+  const isLeader = session?.role === "leader";
+  const iterationCommands = useIterationCommands(session?.projectId, isLeader, memory);
+  const commandPicker = useMobileCommandPicker({ onChange: setPrompt, commands: iterationCommands.commands,
+    onSelect: iterationCommands.select,
+    disabled: !isLeader || !iterationCommands.ready || !connected || unavailable || loading });
   const [attachments, setAttachments] = useState<ImageAttachment[]>(memory?.attachments ?? []);
   const [textAttachments, setTextAttachments] = useState<TextAttachment[]>(memory?.textAttachments ?? []);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -736,7 +766,7 @@ function SessionChatContent({
   const groupedMessages = useMemo(() => groupMobileMessages(transcript), [transcript]);
   const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
   const boundaryRefs = useRef(new Map<string, HTMLElement>());
-  const follow = useChatFollow(sessionKey, `${transcript.length}:${state.streamingText}`, activeTab === "chat", reading);
+  const follow = useChatFollow(sessionKey, `${transcript.length}:${state.streamingText}`, activeTab === "chat" && !unavailable && !loading, reading);
   function jumpToIteration(boundary: TranscriptBoundary) {
     const target = boundaryRefs.current.get(boundary.id);
     target?.scrollIntoView({ block: "start" });
@@ -773,15 +803,16 @@ function SessionChatContent({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = prompt.trim();
-    if (unavailable || loading || !connected || (!trimmed && attachments.length === 0 && textAttachments.length === 0)) return;
+    if (unavailable || loading || !connected || iterationCommands.blocked || (!trimmed && attachments.length === 0 && textAttachments.length === 0)) return;
     send({
       type: "send_message",
       sessionKey,
-      prompt: appendTextAttachmentsToPrompt(trimmed, textAttachments),
+      ...iterationCommands.messageOptions(appendTextAttachmentsToPrompt(trimmed, textAttachments)),
       ...(trimmed ? { displayPrompt: trimmed } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
     });
     setPrompt("");
+    commandPicker.close();
     setAttachments([]);
     setTextAttachments([]);
     setAttachmentError(null);
@@ -827,12 +858,11 @@ function SessionChatContent({
     setTextAttachments((current) => current.filter((_, i) => i !== index));
   }
 
-  const canSend = connected && !unavailable && !loading && (prompt.trim().length > 0 || attachments.length > 0 || textAttachments.length > 0);
+  const canSend = connected && !unavailable && !loading && !iterationCommands.blocked && (prompt.trim().length > 0 || attachments.length > 0 || textAttachments.length > 0);
   const promptLength = prompt.trim().length;
   const activeMinions = session?.role === "leader" ? (session.activeMinions ?? []) : [];
   const taskPlan = session?.role === "leader" ? (session.taskPlan ?? []) : [];
   const graphPlan = useMemo(() => mobileGraphPlan(taskPlan), [taskPlan]);
-  const isLeader = session?.role === "leader";
   const hasDashboard = renderState.components.length > 0;
   const planTotal = taskPlan.length || activeMinions.length;
   const liveWork =
@@ -945,11 +975,12 @@ function SessionChatContent({
         </nav>
       ) : null}
 
-      {isLeader && session && workspaceView !== "changes" ? <LeaderActivityStrip session={session} /> : null}
+      {isLeader && session && workspaceView === "work" ? <LeaderActivityStrip session={session} /> : null}
 
       {activeTab === "chat" && !unavailable && !loading ? (
         <>
           <div className="mob-chat-feed" ref={follow.feedRef} onScroll={follow.onScroll} tabIndex={-1} aria-label="Conversation">
+            <div className="mob-chat-content" ref={follow.contentRef}>
             {isLeader ? null : <SessionCallout session={session} />}
             {history.loading ? <div role="status">Loading iteration history…</div> : null}
             {transcript.length === 0 && !state.streamingText && !history.loading ? (
@@ -997,6 +1028,7 @@ function SessionChatContent({
             (state.messages.length > 0 || Boolean(state.streamingText)) ? (
               <ActiveThinkingIndicator />
             ) : null}
+            </div>
           </div>
 
           {follow.hasNewActivity ? <ChatFollow onResume={follow.resume} /> : null}
@@ -1010,6 +1042,11 @@ function SessionChatContent({
             <label className="mob-composer-label" htmlFor="mob-composer-input">
               Message
             </label>
+            {isLeader && <>
+              {commandPicker.panel}
+              {commandPicker.toolbar}
+              {iterationCommands.controls}
+            </>}
             {attachments.length + textAttachments.length > 0 ? (
               <div className="mob-composer-attachments" aria-label="Attached files">
                 {attachments.map((attachment, index) => (
@@ -1072,13 +1109,14 @@ function SessionChatContent({
               +
             </button>
             <textarea
+              {...commandPicker.inputProps}
               id="mob-composer-input"
               value={prompt}
-              onChange={(event) => setPrompt(event.currentTarget.value)}
               onFocus={() => setComposerFocused(true)}
               onBlur={() => setComposerFocused(false)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                commandPicker.inputProps.onKeyDown(event);
+                if (!event.defaultPrevented && !event.nativeEvent.isComposing && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
@@ -1091,6 +1129,8 @@ function SessionChatContent({
           </form>
         </>
       ) : null}
+
+      {isLeader && iterationCommands.editor}
 
       {isLeader && activeTab === "plan" ? (
         <PlanMinionPanel tasks={taskPlan} minions={activeMinions} />

@@ -174,7 +174,12 @@ export function LeaderPromptBar({
       setSelectedIndex((index) => Math.max(0, index - 1));
       return;
     }
-    if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+    if (event.key === "Tab" && event.shiftKey) {
+      setMenuDismissed(true);
+      return;
+    }
+    if ((event.key === "Enter" && !event.shiftKey) ||
+      (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey)) {
       event.preventDefault();
       if (event.key === "Enter") event.stopPropagation();
       const command = matches[selectedIndex];

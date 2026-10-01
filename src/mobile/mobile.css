@@ -294,10 +294,10 @@
   gap: 10px;
 }
 
-/* Activity summary strip: tappable needs-you / active / waiting filters. */
+/* Activity summary strip: tappable needs-attention / active filters. */
 .mob-activity-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
   margin-bottom: 14px;
   border: 1px solid var(--border-default);
@@ -402,7 +402,7 @@
   border-left-color: var(--status-idle);
 }
 
-.mob-triage-row--waiting {
+.mob-triage-row--attention {
   border-left-color: var(--status-warning);
 }
 
@@ -450,7 +450,7 @@
   background: color-mix(in srgb, var(--status-idle) 14%, transparent);
 }
 
-.mob-triage-icon--waiting {
+.mob-triage-icon--attention {
   color: var(--status-warning);
   background: color-mix(in srgb, var(--status-warning) 18%, transparent);
 }
@@ -495,7 +495,7 @@
   color: var(--text-secondary);
 }
 
-.mob-triage-reason--waiting {
+.mob-triage-reason--attention {
   color: var(--status-warning);
 }
 
@@ -867,7 +867,8 @@
 .mob-status-pill--error { background: color-mix(in srgb, var(--status-error) 18%, transparent); color: var(--status-error); }
 .mob-status-pill--stopped { background: color-mix(in srgb, var(--status-stopped) 22%, transparent); color: var(--status-stopped); }
 .mob-status-pill--creating { background: color-mix(in srgb, var(--status-creating) 18%, transparent); color: var(--status-creating); }
-.mob-status-pill--waiting { background: color-mix(in srgb, var(--status-waiting) 18%, transparent); color: var(--status-waiting); }
+.mob-status-pill--waiting,
+.mob-status-pill--attention { background: color-mix(in srgb, var(--status-waiting) 18%, transparent); color: var(--status-waiting); }
 
 .mob-chat {
   display: flex;
@@ -1131,6 +1132,14 @@
   padding: 16px var(--mob-safe-right) 16px var(--mob-safe-left);
   scroll-padding-bottom: calc(104px + env(safe-area-inset-bottom) + var(--mob-keyboard-offset));
   display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mob-chat-content {
+  display: flex;
+  flex: 1 0 auto;
+  min-width: 0;
   flex-direction: column;
   gap: 10px;
 }
@@ -1731,22 +1740,34 @@ article.mob-plan-row {
   align-self: flex-start;
 }
 
-.mob-message[data-copyable="true"] {
-  touch-action: pan-y pinch-zoom;
+.mob-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.mob-message-copy-status {
-  position: absolute;
-  right: 8px;
-  bottom: 5px;
-  padding: 2px 5px;
-  border-radius: 4px;
-  background: var(--success-bg);
-  color: var(--success-color);
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 1.2;
+.mob-message-copy {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
 }
+
+.mob-message-copy:hover { background: var(--state-hover); }
+.mob-message-copy:active { background: var(--state-active); }
+.mob-message-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mob-message-copy[data-copied="true"] { color: var(--success-color); border-color: var(--success-color); }
+.mob-message-copy-error { color: var(--danger-color); font-size: 12px; }
+/* Announce feedback without repeating the visible button label. */
+.mob-message-copy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .mob-message--tool,
 .mob-message--system,
@@ -2931,6 +2952,13 @@ article.mob-plan-row {
   opacity: 0.6;
 }
 
+.mob-launch-submit-help {
+  margin: 6px 2px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .mob-launch-status,
 .mob-launch-error {
   margin-bottom: 12px;
@@ -3413,6 +3441,11 @@ article.mob-plan-row {
   background: var(--state-active);
 }
 
+.mob-project-alert-note {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
 .mob-project-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3441,6 +3474,23 @@ article.mob-plan-row {
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--bg-surface);
+}
+
+.mob-project-create-intro {
+  display: grid;
+  gap: 4px;
+}
+
+.mob-project-create-intro h2 {
+  color: var(--text-primary);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.mob-project-create-intro p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .mob-project-create .mob-launch-error {
@@ -3504,11 +3554,6 @@ article.mob-plan-row {
 
 .mob-project-card:active {
   background: var(--state-active);
-}
-
-.mob-project-card--attention {
-  border-color: color-mix(in srgb, var(--status-warning) 55%, var(--border-default));
-  background: color-mix(in srgb, var(--status-warning) 7%, var(--bg-surface));
 }
 
 .mob-project-name {
@@ -3588,36 +3633,100 @@ article.mob-plan-row {
   color: var(--status-error);
 }
 
-.mob-settings-section {
+.mob-settings-group {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
+}
+
+.mob-settings-group-heading {
+  display: grid;
+  gap: 4px;
+  padding: 0 2px;
+}
+
+.mob-settings-group-heading h2 {
+  font-size: 14px;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+
+.mob-settings-group-heading p {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.mob-settings-disclosure {
+  min-width: 0;
   padding: 16px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-panel);
   background: var(--bg-surface);
 }
 
-.mob-settings-section--danger {
+.mob-settings-disclosure--danger {
   border-color: color-mix(in srgb, var(--status-error) 45%, var(--border-default));
   background: color-mix(in srgb, var(--status-error) 5%, var(--bg-surface));
 }
 
-.mob-settings-section-heading {
+.mob-settings-disclosure > summary {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  list-style: none;
 }
 
-.mob-settings-section-heading h2 {
+.mob-settings-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mob-settings-disclosure > summary::after {
+  content: "+";
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mob-settings-disclosure[open] > summary::after {
+  content: "−";
+}
+
+.mob-settings-disclosure > summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.mob-settings-disclosure-title {
+  min-width: 0;
+  color: var(--text-primary);
   font-size: 16px;
+  font-weight: 700;
   line-height: 1.25;
-  letter-spacing: 0;
 }
 
-.mob-settings-section-heading p {
+.mob-settings-disclosure-description {
+  min-width: 0;
   color: var(--text-secondary);
+  font-size: 13px;
   line-height: 1.4;
+}
+
+.mob-settings-disclosure-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--border-default);
 }
 
 .mob-settings-control {
@@ -3708,7 +3817,7 @@ article.mob-plan-row {
 }
 
 .mob-settings-toggle small,
-.mob-settings-section-heading h2 small {
+.mob-settings-disclosure-title small {
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
@@ -3897,7 +4006,7 @@ article.mob-plan-row {
     margin-right: 0;
   }
 
-  .mob-settings-section {
+  .mob-settings-disclosure {
     padding: 12px;
   }
 
@@ -4036,6 +4145,8 @@ article.mob-plan-row {
   max-height: 50%;
   overflow-y: auto;
 }
+/* Attachment chips remain visible; redundant counts yield room to the reply. */
+.mob-app[data-keyboard="open"] .mob-composer-meta { display: none; }
 .mob-app[data-keyboard="open"] .mob-chat-tabs,
 .mob-app[data-keyboard="open"] .mob-leader-strip { display: none; }
 
@@ -4103,4 +4214,22 @@ article.mob-plan-row {
   .mob-app-header { gap: 6px; }
   .mob-app-header-main, .mob-app-header-actions { gap: 4px; }
   .mob-app-header-actions .mob-connection-dot { display: none; }
+}
+
+/* A 320 × 568 phone has enough room for a readable reply once repeated Work
+   activity moves off Chat. Keep the title and status in flow, then trim only
+   non-interactive vertical chrome while the keyboard is closed. */
+@media (max-height: 600px) {
+  .mob-chat > .mob-chat-header { padding-block: 4px; }
+
+  .mob-chat-title h1:not(.mob-visually-hidden) {
+    -webkit-line-clamp: 1;
+  }
+
+  .mob-chat-feed { padding-block: 8px; }
+
+  .mob-app[data-keyboard="closed"] .mob-composer {
+    padding-top: 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom) + var(--mob-keyboard-offset));
+  }
 }

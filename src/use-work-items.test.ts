@@ -105,9 +105,9 @@ describe("canonical client work-item state", () => {
   it("canonical items win over legacy rows, dedupe by workItemId, and preserve supplied order", () => {
     const sessions = [{ sessionKey: "old", sessionId: null, workItemId: "a", status: "idle", cwd: "/repo" },
       { sessionKey: "legacy", sessionId: null, status: "idle", cwd: "/repo" }];
-    const merged = mergeCanonicalActivity(sessions, [item("a", 2, 20), item("b", 1, 10)]);
+    const merged = mergeCanonicalActivity(sessions, [{ ...item("a", 2, 20), iteration: 2 }, item("b", 1, 10)]);
     expect(merged.map((row) => row.workItemId ?? row.sessionKey)).toEqual(["a", "b", "legacy"]);
-    expect(merged[0]).toMatchObject({ taskName: "Task a", lastActivity: "Working", status: "running" });
+    expect(merged[0]).toMatchObject({ taskName: "Task a", lastActivity: "Working", status: "running", workItemIteration: 2 });
   });
 
   it.each([undefined, null])("merges a current run with missing work-item identity (%s)", (workItemId) => {

@@ -8,7 +8,10 @@ for (const view of ["desktop", "mobile"]) {
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await openProjectFixture(page, `MCP journey ${view}`);
-    if (view === "mobile") await page.getByRole("button", { name: "Settings", exact: true }).click();
+    if (view === "mobile") {
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.locator("summary").filter({ hasText: "Connections" }).click();
+    }
     else {
       await page.getByRole("button", { name: "Open settings", exact: true }).click();
       await page.getByRole("button", { name: "Connections Apps and MCP tools" }).click();

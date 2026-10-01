@@ -43,7 +43,6 @@
    Activity selection/attention shadows remain owned by their components. */
 :root[data-theme="porcelain"] :is(
   .project-list-card,
-  .act-session-feature,
   .leader-launch-primary
 ) {
   border-radius: var(--radius-panel);

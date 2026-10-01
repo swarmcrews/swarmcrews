@@ -19,37 +19,42 @@ export type MobileSessionInfo = SessionInfo & {
    * server-side.
    */
   canonicalWorkItem?: boolean;
+  /** Total primary iterations known from the canonical work item, even before run history is fetched. */
+  workItemIteration?: number;
 };
 
 /** Shared display vocabulary for Activity rows, home, and inspector. */
 export function sessionStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     running: "Working now", creating: "Starting", idle: "Ready for input",
-    inactive: "Inactive", waiting: "Waiting for you", completed: "Completed",
+    inactive: "Inactive", waiting: "Needs attention", completed: "Completed",
     error: "Error", stopped: "Stopped", disconnected: "Disconnected",
   };
   return labels[status] ?? status.replace(/[-_]/g, " ");
 }
 
 export function activityStatusLabel(session: MobileSessionInfo): string {
-  return session.workItemPresentation?.label ?? sessionStatusLabel(session.status);
+  return session.workItemPresentation?.label
+    ?? (session.status === "waiting" && isActivityWorking(session) ? "Active" : sessionStatusLabel(session.status));
 }
 
 /** Map canonical badges onto the existing Activity status colors. */
 export function activityStatusTone(session: MobileSessionInfo): string {
   const badge = session.workItemPresentation?.badge;
-  if (!badge) return session.status;
+  if (!badge) return session.status === "waiting"
+    ? isActivityWorking(session) ? "running" : "attention" : session.status;
   if (badge === "active") return session.status === "creating" ? "creating" : "running";
   if (badge === "success") return "completed";
-  if (badge === "waiting" || badge === "error") return badge;
+  if (badge === "attention" || badge === "error") return badge;
   return "inactive";
 }
 
 export function isActivityWorking(session: MobileSessionInfo): boolean {
   if (needsAttention(session)) return false;
   const presentation = session.workItemPresentation;
-  return presentation ? presentation.badge === "active" || presentation.badge === "waiting"
-    : session.status === "running" || session.status === "creating";
+  return presentation ? presentation.badge === "active"
+    : session.status === "running" || session.status === "creating"
+      || (session.status === "waiting" && hasLiveMinions(activeMinionSummary(session)));
 }
 
 export function isActivityReady(session: MobileSessionInfo): boolean {
@@ -57,7 +62,14 @@ export function isActivityReady(session: MobileSessionInfo): boolean {
     && ["draft", "idle", "inactive", "completed", "stopped", "error", "disconnected"].includes(session.status);
 }
 
+function hasStaleDecision(session: MobileSessionInfo): boolean {
+  return session.reviewLifecycle?.reviewState === "decision_needed"
+    && (session.status === "running" || session.status === "creating"
+      || hasLiveMinions(activeMinionSummary(session)));
+}
+
 function pendingReviewState(session: MobileSessionInfo): string {
+  if (hasStaleDecision(session)) return "none";
   const lifecycle = session.reviewLifecycle;
   return lifecycle?.acknowledgedAt != null || lifecycle?.dismissedAt != null
     ? "none" : lifecycle?.reviewState ?? "none";
@@ -135,6 +147,7 @@ export function needsAttention(session: MobileSessionInfo): boolean {
   if (session.workItemPresentation) {
     return session.workItemPresentation.needsAttention || session.reviewableChanges === true;
   }
+  if (hasStaleDecision(session)) return session.reviewableChanges === true;
   const lifecycle = session.reviewLifecycle;
   if (lifecycle) {
     if (lifecycle.dismissedAt !== null || lifecycle.acknowledgedAt !== null) {
@@ -144,7 +157,7 @@ export function needsAttention(session: MobileSessionInfo): boolean {
   }
   return (
     session.status === "error" ||
-    session.status === "waiting" ||
+    (session.status === "waiting" && !hasLiveMinions(activeMinionSummary(session))) ||
     session.pendingAttention === true ||
     session.reviewableChanges === true
   );
@@ -155,26 +168,27 @@ export function needsAttention(session: MobileSessionInfo): boolean {
  * is deliberately neutral: the work is okay, but the user still needs to
  * choose whether to keep it in Activity or remove it from Open.
  */
-export type AttentionKind = "inactive" | "error" | "waiting" | "changes";
+export type AttentionKind = "inactive" | "error" | "attention" | "changes";
 
 /** Classify why a session needs the user, driving its triage icon/accent. */
 export function attentionKind(session: MobileSessionInfo): AttentionKind {
   if (session.workItemPresentation) {
     const badge = session.workItemPresentation.badge;
-    return badge === "error" ? "error" : badge === "waiting" ? "waiting" : "changes";
+    return badge === "error" ? "error" : badge === "attention" ? "attention" : "changes";
   }
   const reviewState = pendingReviewState(session);
   if (reviewState === "interrupted_to_review" && session.status === "inactive") return "inactive";
   if (reviewState === "error_to_review" || reviewState === "interrupted_to_review") return "error";
-  if (reviewState === "decision_needed") return "waiting";
+  if (reviewState === "decision_needed") return "attention";
   if (session.status === "error") return "error";
-  if (session.status === "waiting" || session.pendingAttention === true) return "waiting";
+  if (session.status === "waiting" || session.pendingAttention === true) return "attention";
   return "changes";
 }
 
 /** Short human reason shown beside a triage row's title. */
 export function attentionReason(session: MobileSessionInfo): string {
   if (session.workItemPresentation?.needsAttention) return session.workItemPresentation.label;
+  if (hasStaleDecision(session)) return activityStatusLabel(session);
   const lifecycle = session.reviewLifecycle;
   if (lifecycle?.acknowledgedAt != null && session.reviewableChanges) return "changes ready";
   if (lifecycle?.acknowledgedAt != null) return "reviewed";
@@ -189,8 +203,8 @@ export function attentionReason(session: MobileSessionInfo): string {
       return "inactive";
     case "error":
       return "errored";
-    case "waiting":
-      return "waiting for you";
+    case "attention":
+      return "needs attention";
     case "changes":
       return "changes ready";
   }
@@ -198,7 +212,7 @@ export function attentionReason(session: MobileSessionInfo): string {
 
 /** The verb for a triage row's primary action button. */
 export function attentionAction(session: MobileSessionInfo): string {
-  if (session.workItemPresentation?.badge === "waiting"
+  if (session.workItemPresentation?.badge === "attention"
     && !session.workItemPresentation.availableActions.includes("provide_input")) return "View";
   const reviewState = pendingReviewState(session);
   if (reviewState === "completion_to_review") return "Read";
@@ -211,7 +225,7 @@ export function attentionAction(session: MobileSessionInfo): string {
       return "View";
     case "error":
       return "Open";
-    case "waiting":
+    case "attention":
       return "Reply";
     case "changes":
       return "Review";
@@ -242,8 +256,8 @@ export function compareActivityPriority<T extends MobileSessionInfo>(a: T, b: T)
   const bLifecycle = b.reviewLifecycle;
   const aAcknowledged = aLifecycle?.acknowledgedAt != null;
   const bAcknowledged = bLifecycle?.acknowledgedAt != null;
-  const aPriority = aAcknowledged ? 5 : REVIEW_PRIORITY[aLifecycle?.reviewState ?? "none"] ?? 4;
-  const bPriority = bAcknowledged ? 5 : REVIEW_PRIORITY[bLifecycle?.reviewState ?? "none"] ?? 4;
+  const aPriority = aAcknowledged ? 5 : REVIEW_PRIORITY[hasStaleDecision(a) ? "none" : aLifecycle?.reviewState ?? "none"] ?? 4;
+  const bPriority = bAcknowledged ? 5 : REVIEW_PRIORITY[hasStaleDecision(b) ? "none" : bLifecycle?.reviewState ?? "none"] ?? 4;
   if (aPriority !== bPriority) return aPriority - bPriority;
   const aAt = aLifecycle?.terminalAt ?? a.lastActivityAt ?? 0;
   const bAt = bLifecycle?.terminalAt ?? b.lastActivityAt ?? 0;

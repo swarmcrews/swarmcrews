@@ -67,7 +67,7 @@ const VISIBILITY_LABELS: Record<ActivityVisibility, string> = {
   dismissed: "Dismissed",
 };
 
-type ActivitySummaryFilter = "needs-you" | "active" | "waiting";
+type ActivitySummaryFilter = "needs-you" | "active";
 
 function matchesSummaryFilter(
   session: MobileSessionInfo,
@@ -78,9 +78,6 @@ function matchesSummaryFilter(
       return needsAttention(session);
     case "active":
       return isActivityWorking(session);
-    case "waiting":
-      return session.status === "waiting" ||
-        session.reviewLifecycle?.reviewState === "decision_needed";
   }
 }
 
@@ -241,7 +238,7 @@ function TriageRow({
         onClick={() => onOpenSession(session.sessionKey)}
       >
         <span className={`mob-triage-icon mob-triage-icon--${kind}`} aria-hidden="true">
-          {kind === "inactive" ? "Ⅱ" : kind === "error" ? "!" : kind === "waiting" ? "?" : "±"}
+          {kind === "inactive" ? "Ⅱ" : kind === "error" ? "!" : kind === "attention" ? "?" : "±"}
         </span>
         <span className="mob-triage-body">
           <span className="mob-triage-line">
@@ -309,7 +306,7 @@ function SessionCard({
         <span className="mob-card-topline">
           <span className="mob-card-role">{sessionRoleLabel(session)}</span>
           <span className={`mob-status-pill mob-status-pill--${activityStatusTone(session)}`}>
-            {session.workItemPresentation ? activityStatusLabel(session) : session.status}
+            {activityStatusLabel(session)}
           </span>
         </span>
         <span className="mob-card-title">{sessionDisplayTitle(session)}</span>
@@ -385,7 +382,9 @@ function RunHistory({
     requestedPages.current.add(pageKey);
     onLoadRuns(workItemId, pageKey === "__first__" ? undefined : pageKey);
   }, [onLoadRuns, open, runNextCursor, workItemId]);
-  if (!workItemId) return null;
+  // The list response gives us an iteration count before any run-history page
+  // is requested. Keep that entry point available for multi-iteration work.
+  if (!workItemId || (historicalRuns.length === 0 && (session.workItemIteration ?? 0) < 2)) return null;
   return (
     <details className="mob-run-history" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>
@@ -395,41 +394,38 @@ function RunHistory({
         ) : null}
       </summary>
       <div className="mob-run-history-body">
-        {historicalRuns.length === 0 ? (
-          <p className="mob-run-history-empty">
-            {runs.length === 0 ? "No previous iterations loaded." : "No previous iterations."}
-          </p>
-        ) : (
-          <ol aria-label={`Run history for ${sessionDisplayTitle(session)}`}>
-            {historicalRuns.map((run) => <li key={run.runKey}>
-              <div className="mob-run-history-line">
-                <strong>Iteration {run.runNumber}</strong>
-                <span>{run.outcome}</span>
+        {historicalRuns.length === 0 && <p className="mob-run-history-empty" role="status">
+          {open ? "Loading earlier iterations…" : "Open to load earlier iterations."}
+        </p>}
+        {historicalRuns.length > 0 && <ol aria-label={`Run history for ${sessionDisplayTitle(session)}`}>
+          {historicalRuns.map((run) => <li key={run.runKey}>
+            <div className="mob-run-history-line">
+              <strong>Iteration {run.runNumber}</strong>
+              <span>{run.outcome}</span>
+            </div>
+            <time>{run.endedAt
+              ? new Date(run.endedAt).toLocaleString()
+              : "Active now"}</time>
+            <button
+              className="mob-mini-btn"
+              type="button"
+              aria-expanded={previewRunKey === run.runKey}
+              onClick={() => setPreviewRunKey((current) => current === run.runKey ? null : run.runKey)}
+            >
+              {previewRunKey === run.runKey ? "Hide preview" : "Preview"}
+            </button>
+            {previewRunKey === run.runKey ? (
+              <div className="mob-run-history-preview" role="region"
+                aria-label={`Preview of iteration ${run.runNumber}`}>
+                <strong>Read-only preview</strong>
+                <ChatLinkScope project={session.projectId} cwd={session.cwd}>
+                  <AgentMessageText text={run.finalReport ?? "This iteration did not publish a final report."} />
+                </ChatLinkScope>
               </div>
-              <time>{run.endedAt
-                ? new Date(run.endedAt).toLocaleString()
-                : "Active now"}</time>
-              <button
-                className="mob-mini-btn"
-                type="button"
-                aria-expanded={previewRunKey === run.runKey}
-                onClick={() => setPreviewRunKey((current) => current === run.runKey ? null : run.runKey)}
-              >
-                {previewRunKey === run.runKey ? "Hide preview" : "Preview"}
-              </button>
-              {previewRunKey === run.runKey ? (
-                <div className="mob-run-history-preview" role="region"
-                  aria-label={`Preview of iteration ${run.runNumber}`}>
-                  <strong>Read-only preview</strong>
-                  <ChatLinkScope project={session.projectId} cwd={session.cwd}>
-                    <AgentMessageText text={run.finalReport ?? "This iteration did not publish a final report."} />
-                  </ChatLinkScope>
-                </div>
-              ) : null}
-            </li>)}
-          </ol>
-        )}
-        {runNextCursor[workItemId] ? (
+            ) : null}
+          </li>)}
+        </ol>}
+        {historicalRuns.length > 0 && runNextCursor[workItemId] ? (
           <p className="mob-run-history-empty" role="status">Loading earlier iterations…</p>
         ) : null}
       </div>
@@ -481,7 +477,7 @@ export function ActivityScreen({ loading = false, loadError = null, onRetryLoad,
   }> = [
     {
       id: "needs-you",
-      label: "needs you",
+      label: "needs attention",
       count: visibilitySessions.filter((session) => needsAttention(session)).length,
       attention: true,
     },
@@ -489,11 +485,6 @@ export function ActivityScreen({ loading = false, loadError = null, onRetryLoad,
       id: "active",
       label: "active",
       count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "active")).length,
-    },
-    {
-      id: "waiting",
-      label: "waiting",
-      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "waiting")).length,
     },
   ];
 
@@ -694,9 +685,9 @@ export function ActivityScreen({ loading = false, loadError = null, onRetryLoad,
       ) : null}
 
       {triage.needsYou.length > 0 ? (
-        <section className="mob-activity-section mob-activity-section--triage" aria-label="Needs you">
+        <section className="mob-activity-section mob-activity-section--triage" aria-label="Needs attention">
           <h2 className="mob-section-header">
-            <span>Needs you</span>
+            <span>Needs attention</span>
             <span className="mob-section-count">{triage.needsYou.length}</span>
           </h2>
           <div className="mob-triage-list">

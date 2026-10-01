@@ -1,8 +1,8 @@
-import { act, render, renderHook, screen } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { initialWorkItemLifecycle, type WorkItemLifecycle, type WorkItemWaitKind } from "../shared/work-item-lifecycle.ts";
 import type { WorkItemSnapshot } from "../shared/work-item-contracts.ts";
-import { ActivitySessionHome, sessionRelevanceLabel } from "./ActivitySessionHome.tsx";
+import { briefingEntries } from "./activity-return-briefing.ts";
 import { activityStatusLabel, activityStatusTone, attentionAction, attentionKind, groupSessionsForTriage,
   isActivityReady, isActivityWorking, needsAttention } from "./mobile/mobile-selectors.ts";
 import { mergeCanonicalActivity, mergeWorkItemSnapshot } from "./use-work-items.ts";
@@ -18,7 +18,7 @@ function item(lifecycle: Partial<WorkItemLifecycle>, waitKind: WorkItemWaitKind 
 describe("canonical Activity status convergence", () => {
   it.each([
     { lifecycle: { runtimeState: "starting" }, label: "Starting", attention: false, working: true },
-    { lifecycle: { runtimeState: "waiting" }, waitKind: "other", label: "Waiting", attention: false, working: true },
+    { lifecycle: { runtimeState: "waiting" }, waitKind: "other", label: "Active", attention: false, working: true },
     { lifecycle: { runtimeState: "waiting" }, waitKind: "decision", label: "Decision needed", attention: true, working: false },
     { lifecycle: { runtimeState: "waiting" }, waitKind: "file_conflict", label: "Waiting for files", attention: true, working: false },
     { lifecycle: { runtimeState: "inactive", outcome: "completed" }, label: "Ready for review", attention: true, working: false },
@@ -30,7 +30,6 @@ describe("canonical Activity status convergence", () => {
     "keeps $label consistent across labels, filters, and triage", ({ lifecycle, waitKind, label, attention, working }) => {
       const [row] = mergeCanonicalActivity([], [item(lifecycle, waitKind)]);
       expect(activityStatusLabel(row!)).toBe(label);
-      expect(sessionRelevanceLabel(row!)).toBe(label);
       expect(needsAttention(row!)).toBe(attention);
       expect(isActivityWorking(row!)).toBe(working);
       expect(isActivityReady(row!)).toBe(!attention && !working);
@@ -42,9 +41,8 @@ describe("canonical Activity status convergence", () => {
 
   it("shows automatic waits without claiming that the user must respond", () => {
     const rows = mergeCanonicalActivity([], [item({ runtimeState: "waiting" }, "other")]);
-    render(<ActivitySessionHome sessions={rows} onOpenSession={() => {}} onLaunch={() => {}} />);
-    expect(screen.getByText("No decisions or reviews waiting on you.")).toBeInTheDocument();
-    expect(screen.queryByText("Waiting for you")).toBeNull();
+    expect(briefingEntries(rows)).toEqual([]);
+    expect(activityStatusTone(rows[0]!)).toBe("running");
   });
 
   it("keeps review and file waits distinct from requests to reply", () => {

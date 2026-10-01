@@ -89,3 +89,33 @@ it("shows message timestamps in the Activity transcript", () => {
     "2026-07-29T15:42:00.000Z",
   );
 });
+
+it("moves startup models into their own iteration headers without hiding system notices", () => {
+  const init = (model: string): DisplayMessage => ({ id: model, role: "system",
+    content: `Session on ${model}`, sessionModel: model, timestamp: 1 });
+  const messages: TranscriptEntry[] = [
+    { kind: "run-boundary", id: "one", label: "Iteration 1", content: "Iteration 1 · completed" },
+    init("model-one"),
+    { id: "notice", role: "system", content: "Retrying connection", timestamp: 2 },
+    { kind: "run-boundary", id: "two", label: "Iteration 2", content: "Iteration 2 · Active now" },
+    { id: "user", role: "user", content: "Continue", timestamp: 3 },
+  ];
+  const { rerender } = render(<SessionTranscript messages={messages} streamingText="" />);
+  expect(within(screen.getByRole("navigation", { name: "Iteration 1 navigation" }))
+    .getByText("Iteration 1 · completed · model-one")).toBeInTheDocument();
+  expect(screen.queryByText("Session on model-one")).not.toBeInTheDocument();
+  expect(screen.getByText("Retrying connection")).toBeInTheDocument();
+  rerender(<SessionTranscript messages={[...messages, init("model-two")]} streamingText="" />);
+  expect(within(screen.getByRole("navigation", { name: "Iteration 2 navigation" }))
+    .getByText("Iteration 2 · Active now · model-two")).toBeInTheDocument();
+  expect(messages[0]?.content).toBe("Iteration 1 · completed");
+});
+
+it("shows the startup model as user context when there is no iteration header", () => {
+  render(<SessionTranscript messages={[
+    { id: "init", role: "system", content: "Session on model-one", sessionModel: "model-one", timestamp: 1 },
+    { id: "user", role: "user", content: "Build this", timestamp: 2 },
+  ]} streamingText="" />);
+  expect(screen.getByText("Model: model-one").closest(".act-tx-msg--user")).toBeInTheDocument();
+  expect(screen.queryByText("Session on model-one")).not.toBeInTheDocument();
+});

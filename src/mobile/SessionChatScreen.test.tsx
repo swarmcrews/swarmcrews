@@ -38,6 +38,69 @@ function leaderSession(overrides: Partial<MobileSessionInfo> = {}): MobileSessio
 }
 
 describe("SessionChatScreen", () => {
+  it("observes transcript content growth without moving a paused reader", () => {
+    const dimensions = { height: 200, content: 1000 };
+    const observe = vi.fn();
+    let resize = () => {};
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(() => dimensions.height);
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => dimensions.content);
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: () => void) { resize = callback; }
+      observe = observe;
+      disconnect() {}
+    });
+    try {
+      const view = render(<SessionChatScreen sessionKey="content-growth" subscribe={fakeSubscribe()}
+        send={vi.fn()} onBack={() => {}} />);
+      const feed = screen.getByLabelText("Conversation");
+      const content = feed.querySelector(".mob-chat-content");
+      expect(content).not.toBeNull();
+      expect(observe).toHaveBeenCalledWith(content);
+      dimensions.content = 1600; act(() => resize());
+      expect(feed.scrollTop).toBe(1600);
+      feed.scrollTop = 100; fireEvent.scroll(feed);
+      dimensions.content = 2000; act(() => resize());
+      expect(feed.scrollTop).toBe(100);
+      view.unmount();
+    } finally { vi.restoreAllMocks(); vi.unstubAllGlobals(); }
+  });
+
+  it("offers an explicit Copy action, reports failure, and lets the reader retry", async () => {
+    const writeText = vi.fn().mockRejectedValueOnce(new Error("Clipboard denied"))
+      .mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<MessageBubble message={{ id: "copy", role: "assistant", content: "**Original** answer", timestamp: 1 }} />);
+    const copy = screen.getByRole("button", { name: "Copy response" });
+    copy.focus();
+    fireEvent.click(copy);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn’t copy");
+    fireEvent.click(copy);
+    expect(await screen.findByRole("status")).toHaveTextContent("Copied");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(writeText).toHaveBeenLastCalledWith("**Original** answer");
+    expect(copy).toHaveFocus();
+  });
+
+  it("does not swipe-copy when panning code or selecting response text", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<MessageBubble message={{ id: "code", role: "assistant", content: "```\nlong code example\n```", timestamp: 1 }} />);
+    const code = screen.getByText("long code example");
+    const swipe = (target: Element) => {
+      fireEvent.touchStart(target, { touches: [{ identifier: 1, clientX: 20, clientY: 80 }] });
+      fireEvent.touchEnd(target, { changedTouches: [{ identifier: 1, clientX: 110, clientY: 80 }] });
+    };
+    swipe(code);
+    const selection = window.getSelection()!;
+    const range = document.createRange(); range.selectNodeContents(code);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(selection.isCollapsed).toBe(false);
+    swipe(screen.getByRole("article"));
+    selection.removeAllRanges();
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
   it("receives immediate catch-up replies on mount, session switch, and reconnect", () => {
     const listeners = new Set<(message: ServerMessage) => void>();
     const subscribe = ((topicOrListener: string | ((message: ServerMessage) => void),
@@ -355,6 +418,23 @@ describe("SessionChatScreen", () => {
     expect(onSelectSession).toHaveBeenCalledWith("minion-1");
   });
 
+  it("keeps a long session title, status, and composer accessible on a short phone", () => {
+    const title = "Restore short-phone conversation space without obscuring the reply composer";
+    render(
+      <SessionChatScreen
+        sessionKey="leader-1"
+        session={leaderSession({ taskName: title })}
+        subscribe={fakeSubscribe()}
+        send={vi.fn()}
+        onBack={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+    expect(screen.getByText(/Working now.*Leader/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled();
+  });
+
   it("enables Stop for every retained session until it is stopped", () => {
     const props = {
       sessionKey: "leader-1",
@@ -656,7 +736,7 @@ describe("SessionChatScreen", () => {
     expect(screen.queryByText("Minion dashboard")).not.toBeInTheDocument();
   });
 
-  it("keeps a live leader activity strip visible across tabs", () => {
+  it("keeps leader activity on Work while leaving the Chat transcript room", () => {
     render(
       <SessionChatScreen
         sessionKey="leader-1"
@@ -674,17 +754,19 @@ describe("SessionChatScreen", () => {
       />,
     );
 
-    // Visible on the default chat tab...
+    // The chat header already communicates status; do not spend short-phone
+    // transcript space repeating the leader activity strip.
+    expect(screen.queryByRole("region", { name: "Leader activity" })).toBeNull();
+    expect(screen.getByText(/Working now.*Leader/)).toBeInTheDocument();
+
+    // The richer activity detail remains available from Work.
+    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.click(screen.getByRole("button", { name: /plan/i }));
     const strip = screen.getByRole("region", { name: "Leader activity" });
     expect(within(strip).getByText("running")).toBeInTheDocument();
     expect(within(strip).getByText("1 running")).toBeInTheDocument();
     expect(within(strip).getByText("1 blocked")).toBeInTheDocument();
     expect(within(strip).getByText("Editing SessionChatScreen.tsx")).toBeInTheDocument();
-
-    // ...and still visible after switching to the Plan tab.
-    fireEvent.click(screen.getByRole("button", { name: "Work" }));
-    fireEvent.click(screen.getByRole("button", { name: /plan/i }));
-    expect(screen.getByRole("region", { name: "Leader activity" })).toBeInTheDocument();
   });
 
   it("marks the plan tab badge live when work is running", () => {
@@ -787,4 +869,24 @@ describe("SessionChatScreen", () => {
     expect(payload).not.toHaveProperty("componentId");
     expect(payload).not.toHaveProperty("answers");
   });
+});
+
+it("uses startup model context in mobile headers and user messages instead of activity", () => {
+  const init: DisplayMessage = { id: "init", role: "system", content: "Session on model-one",
+    sessionModel: "model-one", timestamp: 1 };
+  const user: DisplayMessage = { id: "prompt", role: "user", content: "Build this", timestamp: 2 };
+  expect(groupMobileMessages([
+    { kind: "run-boundary", id: "run", label: "Iteration 1", content: "Iteration 1 · Active now" }, user, init,
+  ])).toEqual([
+    { kind: "run-boundary", id: "run", label: "Iteration 1", content: "Iteration 1 · Active now · model-one" },
+    { kind: "message", message: user },
+  ]);
+  const groups = groupMobileMessages([user, init]);
+  expect(groups).toHaveLength(1);
+  const group = groups[0]!;
+  expect(group.kind).toBe("message");
+  if (group.kind !== "message") throw new Error("Expected user message");
+  render(<MessageBubble message={group.message} />);
+  expect(screen.getByText("Model: model-one").closest(".mob-message--user")).toBeInTheDocument();
+  expect(screen.queryByText("Session on model-one")).not.toBeInTheDocument();
 });

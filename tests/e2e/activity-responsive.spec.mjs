@@ -28,7 +28,7 @@ async function expectContained(locator, width, height) {
 }
 
 test("keeps conversation, supporting context, and navigation usable across sizes", async ({ page }) => {
-  await page.getByRole("region", { name: "Recent work" }).getByRole("button", { name: /Improve responsive layouts across laptop screens/ }).click();
+  await page.getByRole("button", { name: "Review request: Improve responsive layouts across laptop screens", exact: true }).click();
   const conversation = page.getByRole('main', { name: 'Conversation' });
   const context = page.getByRole('region', { name: 'Leader context' });
   const draft = page.getByRole('textbox', { name: 'Reply or steer this agent' });
@@ -41,7 +41,7 @@ test("keeps conversation, supporting context, and navigation usable across sizes
     await expect(draft).toHaveValue('Keep this reply while changing panels.');
     await expectContained(draft, width, height);
 
-    const contextToggle = page.getByRole('button', { name: 'Context Needs you', exact: true });
+    const contextToggle = page.getByRole('button', { name: 'Context Needs attention', exact: true });
     if (await contextToggle.isVisible()) {
       await expect(context).toBeHidden();
       const transcript = page.locator('.act-conversation-scroll');

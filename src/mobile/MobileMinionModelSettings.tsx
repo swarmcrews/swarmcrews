@@ -104,11 +104,14 @@ export function MobileMinionModelSettings({
   };
 
   return (
-    <section className="mob-settings-section" aria-labelledby="mob-default-minion-heading">
-      <div className="mob-settings-section-heading">
-        <h2 id="mob-default-minion-heading">Default Minion</h2>
-        <p>Use one fixed definition, or opt into capability-based assignment.</p>
-      </div>
+    <details className="mob-settings-disclosure" open>
+      <summary id="mob-default-minion-heading">
+        <span className="mob-settings-disclosure-title">Default Minion</span>
+        <span className="mob-settings-disclosure-description">
+          Use one fixed definition, or opt into capability-based assignment.
+        </span>
+      </summary>
+      <div className="mob-settings-disclosure-content" aria-labelledby="mob-default-minion-heading">
 
       <label className="mob-settings-toggle">
         <span>
@@ -204,6 +207,7 @@ export function MobileMinionModelSettings({
           </div>
         </div>
       )}
-    </section>
+      </div>
+    </details>
   );
 }

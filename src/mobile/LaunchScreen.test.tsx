@@ -95,6 +95,100 @@ afterEach(() => {
 });
 
 describe("LaunchScreen", () => {
+  it("explains why launch is unavailable until a project, skills, and a goal are ready", async () => {
+    vi.mocked(listProjects).mockResolvedValue([]);
+    const { rerender } = render(
+      <LaunchScreen canonicalLaunch={vi.fn()} onLaunched={vi.fn()} />,
+    );
+
+    const submit = screen.getByRole("button", { name: "Launch leader" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByText("Choose a project before launch.")).toHaveAttribute("id", submit.getAttribute("aria-describedby"));
+
+    let resolveSkills!: (skills: SkillTemplate[]) => void;
+    vi.mocked(getProjectSkills).mockReturnValueOnce(new Promise((resolve) => { resolveSkills = resolve; }));
+    rerender(
+      <LaunchScreen
+        canonicalLaunch={vi.fn()}
+        onLaunched={vi.fn()}
+        lockedProject={{ id: "alpha", path: "/work/alpha", name: "Alpha" }}
+      />,
+    );
+
+    expect(screen.getByText("Preparing project skills before launch.")).toHaveAttribute("id", submit.getAttribute("aria-describedby"));
+    await act(async () => resolveSkills([]));
+    await waitFor(() => expect(screen.getByText("Add a prompt or attach a file before launch.")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Ship the fix" } });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(submit).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("offers configured slash commands on new leaders and arms their available skills", async () => {
+    vi.mocked(getProjectSettings).mockResolvedValue({
+      dashboardLeaderActions: [{ id: "custom", name: "Custom audit", prompt: "Audit the selected workflow.", icon: "search", skillIds: ["lint", "missing"] }],
+    });
+    vi.mocked(getProjectSkills).mockResolvedValue([LINT_SKILL]);
+    const launch = vi.fn();
+    render(<LaunchScreen canonicalLaunch={launch} onLaunched={vi.fn()}
+      lockedProject={{ id: "custom", path: "/work/custom", name: "Custom" }} />);
+    const commands = screen.getByRole("button", { name: "/ Commands" });
+    await waitFor(() => expect(commands).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Existing draft" } });
+    fireEvent.click(commands);
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Existing draft");
+    fireEvent.click(screen.getByRole("option", { name: /Custom audit/ }));
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Audit the selected workflow.");
+    expect(screen.getByLabelText("Prompt")).toHaveFocus();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("missing");
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: "Audit the selected workflow.", options: expect.objectContaining({ skillIds: ["lint"] }),
+    }), expect.any(Function), expect.any(Function));
+  });
+
+  it("filters slash commands, shows empty results, and dismisses without changing the prompt", async () => {
+    render(<LaunchScreen canonicalLaunch={vi.fn()} onLaunched={vi.fn()}
+      lockedProject={{ id: "slash", path: "/work/slash", name: "Slash" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "/ Commands" })).toBeEnabled());
+    const prompt = screen.getByLabelText("Prompt");
+    fireEvent.change(prompt, { target: { value: "/nothing-matches" } });
+    expect(screen.getByText("No matching commands")).toBeInTheDocument();
+    fireEvent.change(prompt, { target: { value: "/crew" } });
+    expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(1);
+    expect(screen.getByRole("option", { name: /Graph/ })).toBeInTheDocument();
+    fireEvent.keyDown(prompt, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(prompt).toHaveValue("/crew");
+    fireEvent.change(prompt, { target: { value: "/graph" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    expect((prompt as HTMLTextAreaElement).value).toContain("Use the Task Graph feature");
+  });
+
+  it("does not offer stale commands while switching projects", async () => {
+    vi.mocked(getProjectSettings).mockResolvedValueOnce({ dashboardLeaderActions: [
+      { id: "first", name: "First command", prompt: "First prompt", icon: "search", skillIds: [] },
+    ] });
+    const props = { canonicalLaunch: vi.fn(), onLaunched: vi.fn() };
+    const { rerender } = render(<LaunchScreen {...props}
+      lockedProject={{ id: "first", path: "/work/first", name: "First" }} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "/ Commands" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "/ Commands" }));
+    expect(screen.getByRole("option", { name: /First command/ })).toBeInTheDocument();
+    let resolveSettings!: (settings: Awaited<ReturnType<typeof getProjectSettings>>) => void;
+    vi.mocked(getProjectSettings).mockReturnValueOnce(new Promise((resolve) => { resolveSettings = resolve; }));
+    rerender(<LaunchScreen {...props}
+      lockedProject={{ id: "second", path: "/work/second", name: "Second" }} />);
+    expect(screen.getByRole("button", { name: "/ Commands" })).toBeDisabled();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    await act(async () => resolveSettings({ dashboardLeaderActions: [] }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "/ Commands" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "/ Commands" }));
+    expect(within(screen.getByRole("listbox")).getAllByRole("option")).toHaveLength(2);
+    expect(screen.queryByRole("option", { name: /First command/ })).not.toBeInTheDocument();
+  });
+
   it("keeps run setup collapsed behind a native, truthful disclosure", async () => {
     vi.mocked(getProjectSettings).mockResolvedValue({
       defaultWorktreeIsolation: true,
@@ -334,6 +428,7 @@ describe("LaunchScreen", () => {
 
     expect(submit).toBeDisabled();
     expect(submit).toHaveAttribute("aria-busy", "true");
+    expect(submit).toHaveTextContent("Launching leader…");
     expect(canonicalLaunch).toHaveBeenCalledTimes(1);
   });
 
@@ -364,14 +459,15 @@ describe("LaunchScreen", () => {
     expect(submit).not.toHaveAttribute("aria-busy");
   });
 
-  it("does not launch a Leader without project identity", () => {
+  it("keeps launch unavailable when the selected project has no identity", () => {
     const canonicalLaunch = vi.fn();
     render(<LaunchScreen canonicalLaunch={canonicalLaunch} onLaunched={vi.fn()}
       lockedProject={{ path: "/work/unbound", name: "Unbound" }} />);
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Ship it" } });
-    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    const submit = screen.getByRole("button", { name: "Launch leader" });
+    expect(submit).toBeDisabled();
+    expect(screen.getByText("Choose a project before launch.")).toHaveAttribute("id", submit.getAttribute("aria-describedby"));
     expect(canonicalLaunch).not.toHaveBeenCalled();
-    expect(screen.getByText("Select a project before starting a Leader.")).toBeInTheDocument();
   });
 
   it("locks to a project: hides the picker, skips the fetch, and launches into it", async () => {

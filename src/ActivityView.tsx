@@ -34,7 +34,6 @@ import {
   activityStatusLabel,
   activityStatusTone,
   isActivityWorking,
-  isActivityReady,
 } from "./mobile/mobile-selectors.ts";
 import {
   canAcknowledge,
@@ -80,6 +79,9 @@ import { LeaderNodeRenderer } from "./nodes/LeaderNode.tsx";
 import { ActivityEmptyState } from "./ActivityEmptyState.tsx";
 import { ActivityOnboarding } from "./ActivityOnboarding.tsx";
 import { ActivitySessionHome } from "./ActivitySessionHome.tsx";
+import { WorkspaceCanvasPreview } from "./WorkspaceCanvasPreview.tsx";
+import type { PreviewEdge } from "./workspace-canvas-preview.ts";
+import { useActivityReturnBriefing } from "./use-activity-return-briefing.ts";
 import { selectRecentAgentWork } from "./activity-recent-work.ts";
 import { randomUuid } from "./random-id.ts";
 import { useActivityLifecycle } from "./use-activity-lifecycle.ts";
@@ -111,16 +113,9 @@ import "./activity.css";
  * Desktop Activity view — the default landing surface, mirroring the mobile
  * Activity screen on a wider canvas.
  *
- * Left: the live session list, grouped Active → Idle → Stopped (the same
- * `groupSessionsByActivity` selector mobile uses). Right: a structured
- * inspector for the selected session showing its metadata, a live transcript,
- * and the actions to reveal it on the canvas or expand it into the existing
- * fullscreen cockpit.
- *
- * Sessions are matched to their canvas leader node by `sessionKey`; that
- * mapping is what unlocks the transcript + fullscreen actions for sessions
- * that live on the canvas. Sessions without a node (e.g. minions, or leaders
- * not yet placed) still appear and show their activity stream.
+ * Left: session navigation and triage. Right: a returning-user briefing, or
+ * the selected session's metadata, transcript and actions. Session keys link
+ * canvas leaders; durable work-item identities survive primary-run changes.
  */
 
 export interface ActivityViewProps extends ActivityLoadingProps {
@@ -133,6 +128,9 @@ export interface ActivityViewProps extends ActivityLoadingProps {
   lifecycleController?: ReturnType<typeof useActivityLifecycle>;
   sessions: MobileSessionInfo[];
   nodes: CanvasNode[];
+  edges?: readonly PreviewEdge[];
+  /** Open the current workspace without changing its selection or viewport. */
+  onOpenCanvas?: () => void;
   /** Prepare a fresh Leader draft with the same defaults as Canvas. */
   onLaunchLeader: () => CanvasNode | string | void;
   /** Add an Activity draft to Canvas once its session has been initiated. */
@@ -186,12 +184,21 @@ type ActivitySession = MobileSessionInfo & {
   lifecyclePending?: boolean;
 };
 
-type ActivitySummaryFilter = "needs-you" | "working" | "ready";
+type ActivitySummaryFilter = "needs-you" | "working";
 type InspectorActionRequest = { entryId: string; action: string };
 
 type InspectorSideTab = "dashboard" | "graph" | "minions" | "details";
 
 const ACTIVITY_OPTIMISTIC_USER_PREFIX = "activity-optimistic-user-";
+const ACTIVITY_PREVIEW_LENGTH = 240;
+
+function activityPreview(text: string): string {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (normalized.length <= ACTIVITY_PREVIEW_LENGTH) return normalized;
+  const fragment = normalized.slice(0, ACTIVITY_PREVIEW_LENGTH);
+  const lastSpace = fragment.lastIndexOf(" ");
+  return `${fragment.slice(0, lastSpace > ACTIVITY_PREVIEW_LENGTH * 0.7 ? lastSpace : ACTIVITY_PREVIEW_LENGTH).trimEnd()}…`;
+}
 
 function isAgentResponse(message: DisplayMessage): boolean {
   return message.role === "assistant" || message.role === "thinking"
@@ -231,8 +238,6 @@ function matchesSummaryFilter(
       return needsAttention(session);
     case "working":
       return isActivityWorking(session);
-    case "ready":
-      return isActivityReady(session);
   }
 }
 
@@ -376,6 +381,11 @@ function SessionTriageRow({
 }) {
   const kind = attentionKind(session);
   const retainedInactive = isRetainedInactive(session);
+  const reason = attentionReason(session);
+  const activity = session.lastActivity?.trim() ?? "";
+  const showActivity = activity.length > 0
+    && !isSessionTitleEcho(session, activity)
+    && activity.localeCompare(reason, undefined, { sensitivity: "accent" }) !== 0;
   const classes = [
     "act-triage-row",
     `act-triage-row--${kind}`,
@@ -405,12 +415,12 @@ function SessionTriageRow({
           </span>
           <span className="act-triage-sub">
             <span className={`act-triage-reason act-triage-reason--${kind}`}>
-              {attentionReason(session)}
+              {reason}
             </span>
-            {session.lastActivity?.trim() && !isSessionTitleEcho(session, session.lastActivity) && (
+            {showActivity && (
               <>
                 <span className="act-card-separator" aria-hidden>·</span>
-                <span className="act-card-activity" title={session.lastActivity}>{session.lastActivity}</span>
+                <span className="act-card-activity" title={activity}>{activity}</span>
               </>
             )}
           </span>
@@ -964,7 +974,7 @@ function Inspector({
           onClick={() => setCompactPane("conversation")}>Conversation</button>
         <button type="button" aria-pressed={compactPane === "context"}
           onClick={() => setCompactPane("context")}>
-          Context{needsAttention(session) && <span className="act-compact-attention">Needs you</span>}
+          Context{needsAttention(session) && <span className="act-compact-attention">Needs attention</span>}
         </button>
       </div>
 
@@ -978,7 +988,7 @@ function Inspector({
                     ? <Pause size={15} />
                     : attentionKind(session) === "error"
                       ? "!"
-                      : attentionKind(session) === "waiting"
+                      : attentionKind(session) === "attention"
                         ? "?"
                         : <GitCompare size={15} />}
                 </span>
@@ -1259,9 +1269,21 @@ function Inspector({
                         : "No timestamp was reported for this session."}</p>
                     </div>
                   </header>
-                  <div className="act-latest-activity">
-                    {session.lastActivity || "This leader has not published an activity summary yet."}
+                  <div className="act-latest-activity act-latest-activity--preview">
+                    {activityPreview(session.lastActivity)}
                   </div>
+                  <footer className="act-latest-activity__footer">
+                    <button type="button" onClick={() => {
+                      setCompactPane("conversation");
+                      const feed = inspectorRef.current?.querySelector<HTMLElement>(".act-conversation-scroll");
+                      if (feed) {
+                        feed.scrollTop = feed.scrollHeight;
+                        feed.focus({ preventScroll: true });
+                      }
+                    }}>
+                      Open full conversation
+                    </button>
+                  </footer>
                 </article>}
                 <details className="act-content-card act-session-metadata">
                   <summary className="act-content-card__head">Session information<ChevronRight size={15} aria-hidden /></summary>
@@ -1427,7 +1449,7 @@ export function ActivityView({
   initialSelectedKey = null,
   lifecycleController,
   sessions,
-  nodes,
+  nodes, edges, onOpenCanvas,
   onLaunchLeader,
   onCommitLaunchLeader,
   onCreateWorkspace,
@@ -1605,19 +1627,14 @@ export function ActivityView({
   }> = [
     {
       id: "needs-you",
-      label: "Needs you",
+      label: "Needs attention",
       count: visibilitySessions.filter((session) => needsAttention(session)).length,
       attention: true,
     },
     {
       id: "working",
-      label: "Working",
+      label: "Active",
       count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "working")).length,
-    },
-    {
-      id: "ready",
-      label: "Ready",
-      count: visibilitySessions.filter((session) => matchesSummaryFilter(session, "ready")).length,
     },
   ];
 
@@ -1639,6 +1656,7 @@ export function ActivityView({
   // never creates a draft. A draft is committed to Canvas only after launch
   // assigns a session key.
   const loadPending = loading || Boolean(loadError);
+  const briefing = useActivityReturnBriefing(allActivitySessions, projectId ?? projectPath ?? sessions[0]?.cwd, active, !loadPending && connected);
   const emptyStateActive = activitySessions.length === 0 && !loadPending;
   const autoLaunchActive = active && emptyStateActive && visibility === "open" && !summaryFilter;
   const recentWork = useMemo(
@@ -1997,9 +2015,9 @@ export function ActivityView({
         ) : (
           <>
             {triage.needsYou.length > 0 && (
-              <section className="act-section act-section--triage" aria-label="Needs you">
+              <section className="act-section act-section--triage" aria-label="Needs attention">
                 <h2 className="act-section-head">
-                  <span>Needs you</span>
+                  <span>Needs attention</span>
                   <span className="act-section-count">{triage.needsYou.length}</span>
                 </h2>
                 <div className="act-triage-list">
@@ -2105,10 +2123,11 @@ export function ActivityView({
 
       {!selectedSession && (!launchNode || !launchVisible) && activitySessions.length > 0 && (
         <ActivitySessionHome
-          sessions={activitySessions}
+          briefing={briefing}
+          canvasPreview={onOpenCanvas && <WorkspaceCanvasPreview nodes={nodes} edges={edges} onOpenCanvas={onOpenCanvas} />}
           onOpenSession={(sessionKey) => {
-            const session = activitySessions.find((item) => item.sessionKey === sessionKey);
-            if (session) openSessionAction(session);
+            const session = allActivitySessions.find((item) => item.sessionKey === sessionKey);
+            if (session) { setVisibility("all"); setSummaryFilter(null); openSessionAction(session); }
           }}
           onLaunch={openLaunchExperience}
         />

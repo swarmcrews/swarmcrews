@@ -208,7 +208,7 @@ export type WorkItemAction =
 
 export interface WorkItemPresentation {
   label: string;
-  badge: "neutral" | "active" | "waiting" | "success" | "error" | "archived";
+  badge: "neutral" | "active" | "attention" | "success" | "error" | "archived";
   attentionRank: number;
   needsAttention: boolean;
   availableActions: readonly WorkItemAction[];
@@ -235,12 +235,12 @@ export function selectWorkItemPresentation(
     return { label: "Archived", badge: "archived", attentionRank: 6, needsAttention: false, availableActions: actions };
   }
   if (state.integrationState === "live_conflict_wait") {
-    return { label: "Waiting for files", badge: "waiting", attentionRank: 0,
+    return { label: "Waiting for files", badge: "attention", attentionRank: 0,
       needsAttention: true, availableActions: actions };
   }
   if (state.runtimeState === "waiting" && context.waitKind === "decision") {
     actions.push("provide_input");
-    return { label: "Decision needed", badge: "waiting", attentionRank: 0, needsAttention: true, availableActions: actions };
+    return { label: "Decision needed", badge: "attention", attentionRank: 0, needsAttention: true, availableActions: actions };
   }
   if (state.outcome === "error" && state.resolution === "open") {
     actions.push("review", "start_iteration");
@@ -271,9 +271,9 @@ export function selectWorkItemPresentation(
   if (state.runtimeState === "waiting") {
     const fileWait = context.waitKind === "file_conflict";
     return {
-      label: fileWait ? "Waiting for files" : "Waiting",
-      badge: "waiting",
-      attentionRank: 4,
+      label: fileWait ? "Waiting for files" : "Active",
+      badge: fileWait ? "attention" : "active",
+      attentionRank: fileWait ? 0 : 4,
       needsAttention: fileWait,
       availableActions: actions,
     };
@@ -326,7 +326,8 @@ export function projectLegacySessionLifecycle(input: {
     || ["stopped", "error", "completed", "disconnected"].includes(status)
     || ["completion_to_review", "error_to_review", "interrupted_to_review"].includes(review.reviewState);
 
-  if (!hasTerminalEvidence && review.reviewState === "decision_needed") {
+  if (!hasTerminalEvidence && !["creating", "running"].includes(status)
+    && review.reviewState === "decision_needed") {
     runtimeState = "waiting";
     waitKind = "decision";
   } else if (hasTerminalEvidence) {

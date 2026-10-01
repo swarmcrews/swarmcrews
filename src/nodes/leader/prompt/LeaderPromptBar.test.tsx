@@ -132,6 +132,15 @@ describe("LeaderPromptBar skill mentions", () => {
 });
 
 describe("LeaderPromptBar slash commands", () => {
+  it("leaves Shift+Tab available for backward focus without inserting a command", () => {
+    const { onInputChange } = renderPromptBar({ initialInput: "/" });
+    const textarea = screen.getByLabelText("Leader prompt");
+    expect(fireEvent.keyDown(textarea, { key: "Tab", shiftKey: true })).toBe(true);
+    expect(textarea).toHaveValue("/");
+    expect(onInputChange).not.toHaveBeenCalled();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
   it("shows context shortcuts, Graph, and Ship for a slash", () => {
     renderPromptBar({ initialInput: "/" });
 

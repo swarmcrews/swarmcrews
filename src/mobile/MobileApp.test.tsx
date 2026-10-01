@@ -135,7 +135,7 @@ describe("MobileApp", () => {
       { sessionKey: "second", sessionId: null, role: "leader", cwd: "/work/alpha", status: "running", taskName: "Improve navigation" },
     ] });
     emitSocketMessage({ type: "approval_requested", sessionKey: "first", summary: "Callback fix ready" });
-    fireEvent.click(screen.getByRole("button", { name: "needs you: 1. Filter activity" }));
+    fireEvent.click(screen.getByRole("button", { name: "needs attention: 1. Filter activity" }));
     const activity = screen.getByRole("main", { name: "Activity" });
     activity.scrollTop = 125;
     fireEvent.scroll(activity);
@@ -153,7 +153,7 @@ describe("MobileApp", () => {
     expect(screen.getByRole("region", { name: "Review changes" })).toBeInTheDocument();
     expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: "merge_worktree" }));
     fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "needs you: 1. Clear filter" })).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "needs attention: 1. Clear filter" })).toHaveAttribute("aria-pressed", "true"));
     expect(screen.getByRole("main", { name: "Activity" }).scrollTop).toBe(125);
     expect(new URL(window.location.href).searchParams.has("session")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
@@ -458,7 +458,7 @@ describe("MobileApp", () => {
       }],
     });
 
-    expect(await screen.findByRole("button", { name: "needs you: 1. Filter activity" })).toHaveTextContent("1");
+    expect(await screen.findByRole("button", { name: "needs attention: 1. Filter activity" })).toHaveTextContent("1");
   });
 
   it("manages default Minion settings from the mobile settings tab", async () => {

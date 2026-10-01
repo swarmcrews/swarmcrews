@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { initialWorkItemLifecycle } from "../shared/work-item-lifecycle.ts";
 import type { CanvasNode } from "./types.ts";
 import { canvasReducer } from "./canvas-state.ts";
 import { clusterIds, createZone, moveToZone, readZones, visibleZoneNodes, zoneMembership, zoneSummary, zoneLeaderState, zoneConnectionLabels, activeWorkspaceId, GLOBAL_WORKSPACE_ID, readWorkspaces, workspaceTransferIds } from "./canvas-zones.ts";
@@ -73,6 +74,13 @@ describe("canvas zone persistence and visibility", () => {
     const edges = [{ sourceNodeId: "a", targetNodeId: "b" }];
     expect(zoneConnectionLabels(edges, zoneMembership([a, b, zone])).get("b")).toBe("Connected to Release");
     expect(edges).toHaveLength(1);
+  });
+  it("counts automatic waits as active and file waits as needing attention", () => {
+    const waiting = (waitKind: string) => node(waitKind, "leader", { workItemSnapshot: {
+      lifecycle: { ...initialWorkItemLifecycle(), runtimeState: "waiting" }, waitKind,
+    } });
+    expect(zoneLeaderState(waiting("other"))).toBe("Active");
+    expect(zoneSummary([waiting("other"), waiting("file_conflict")])).toBe("1 working · 1 needs attention");
   });
   it("shows pending nested dashboard questions and stops counting submitted forms", () => {
     const form = { id: "q", type: "form", fields: [] };

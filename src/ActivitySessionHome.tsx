@@ -1,263 +1,110 @@
-import { agentMessagePreview } from "./agent-message-format.ts";
-import { ArrowRight, Plus } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowRight, Plus, RefreshCw } from "lucide-react";
+import type { BriefingGroup } from "./activity-return-briefing.ts";
+import type { ActivityBriefing } from "./use-activity-return-briefing.ts";
+import "./activity-return-briefing.css";
 
-import type { MobileSessionInfo } from "./mobile/mobile-selectors.ts";
-import {
-  attentionKind,
-  attentionAction,
-  needsAttention,
-  activityStatusLabel,
-  activityStatusTone,
-  isActivityWorking,
-  isSessionTitleEcho,
-  sessionDisplayTitle,
-  sessionRoleLabel,
-} from "./mobile/mobile-selectors.ts";
-import { timeAgo } from "./nodes/leader-message-helpers.ts";
+const sections: { id: BriefingGroup; title: string; description: string }[] = [
+  { id: "input", title: "Needs your input", description: "New or changed requests. Open a session for options and consequences." },
+  { id: "outcome", title: "What moved forward", description: "Recorded outcomes, not proof of verification or integration." },
+  { id: "resume", title: "Worth picking back up", description: "Errors and interruptions with context to help you resume." },
+];
+const groupActions: Record<BriefingGroup, string> = {
+  input: "Review request",
+  outcome: "View result",
+  resume: "Resume work",
+};
+const formatTime = (at: number) => new Date(at).toLocaleString(undefined, {
+  month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+});
 
-const MAX_RELEVANT_SESSIONS = 4;
-const SUMMARY_LIMIT = 220;
-
-function pendingReviewState(session: MobileSessionInfo): string {
-  if (session.reviewLifecycle?.acknowledgedAt != null) return "none";
-  return session.reviewLifecycle?.reviewState ?? "none";
-}
-
-function relevanceBucket(session: MobileSessionInfo): number {
-  if (session.workItemPresentation) {
-    if (needsAttention(session)) return Math.min(session.workItemPresentation.attentionRank, 3);
-    if (isActivityWorking(session)) return 4;
-    return 5;
-  }
-  const reviewState = pendingReviewState(session);
-  if (reviewState === "decision_needed") return 0;
-  if (
-    reviewState === "error_to_review" ||
-    reviewState === "interrupted_to_review" ||
-    session.status === "error"
-  ) return 1;
-  if (
-    reviewState === "completion_to_review" ||
-    session.reviewableChanges === true
-  ) return 2;
-  if (session.status === "waiting" || session.pendingAttention === true) return 3;
-  if (session.status === "running" || session.status === "creating") return 4;
-  if (session.status === "idle") return 5;
-  if (session.status === "completed") return 6;
-  return 7;
-}
-
-function relevanceTimestamp(session: MobileSessionInfo): number {
-  return session.reviewLifecycle?.terminalAt ?? session.lastActivityAt ?? 0;
-}
-
-/** Rank the small project-open dashboard by required action, live work, then recency. */
-export function selectRelevantSessions(
-  sessions: MobileSessionInfo[],
-  limit = MAX_RELEVANT_SESSIONS,
-): MobileSessionInfo[] {
-  return [...sessions]
-    .sort((a, b) => {
-      const bucketDelta = relevanceBucket(a) - relevanceBucket(b);
-      if (bucketDelta !== 0) return bucketDelta;
-      return (
-        relevanceTimestamp(b) - relevanceTimestamp(a) ||
-        sessionDisplayTitle(a).localeCompare(sessionDisplayTitle(b))
-      );
-    })
-    .slice(0, limit);
-}
-
-export function sessionRelevanceLabel(session: MobileSessionInfo): string {
-  if (session.workItemPresentation) return activityStatusLabel(session);
-  const reviewState = pendingReviewState(session);
-  if (reviewState === "decision_needed") return "Decision needed";
-  if (reviewState === "error_to_review" || session.status === "error") return "Needs recovery";
-  if (reviewState === "interrupted_to_review") {
-    return session.status === "inactive" ? "Inactive" : "Interrupted";
-  }
-  if (reviewState === "completion_to_review") return "Ready to review";
-  if (session.reviewableChanges === true) return "Changes ready";
-  if (session.status === "waiting" || session.pendingAttention === true) return "Waiting for you";
-  if (session.status === "running" || session.status === "creating") return "In progress";
-  if (session.status === "idle") return "Recently active";
-  if (session.status === "completed") return "Completed";
-  if (session.status === "stopped" || session.status === "disconnected") return "Stopped";
-  return "Recent session";
-}
-
-function isActiveTask(session: MobileSessionInfo): boolean {
-  const presentation = session.workItemPresentation;
-  // Monitor executing work only, not tasks paused for input or files.
-  // Canonical work-item state wins over a stale session transport status.
-  return presentation
-    ? presentation.badge === "active"
-    : session.status === "running" || session.status === "creating";
-}
-
-function sessionSummary(session: MobileSessionInfo): string {
-  const report = session.reviewLifecycle?.finalReport?.trim();
-  const activity = session.lastActivity?.trim();
-  const source = [
-    ...(isActiveTask(session) ? [activity, report] : [report, activity]),
-    session.reviewLifecycle?.reviewReason?.trim(),
-  ].find((candidate) => candidate && !isSessionTitleEcho(session, candidate));
-  if (!source) {
-    const label = sessionRelevanceLabel(session).toLocaleLowerCase();
-    return `This session is ${label}. Open it to review the latest context and continue the work.`;
-  }
-  const flat = agentMessagePreview(source).replace(/\s+/g, " ");
-  if (flat.length <= SUMMARY_LIMIT) return flat;
-  return `${flat.slice(0, SUMMARY_LIMIT - 1).trimEnd()}…`;
-}
-
-function sessionMeta(session: MobileSessionInfo): string {
-  const parts = [sessionRoleLabel(session)];
-  if (session.lastActivityAt) parts.push(timeAgo(session.lastActivityAt));
-  return parts.join(" · ");
-}
-
-function relevanceTone(session: MobileSessionInfo): string {
-  if (session.workItemPresentation) {
-    return needsAttention(session) ? attentionKind(session) : isActivityWorking(session) ? "active" : "recent";
-  }
-  const reviewState = pendingReviewState(session);
-  if (
-    reviewState !== "none" ||
-    session.reviewableChanges === true ||
-    session.status === "waiting" ||
-    session.status === "error"
-  ) {
-    return attentionKind(session);
-  }
-  if (session.status === "running" || session.status === "creating") return "active";
-  return "recent";
-}
-
-export function ActivitySessionHome({
-  sessions,
-  onOpenSession,
-  onLaunch,
-}: {
-  sessions: MobileSessionInfo[];
+export function ActivitySessionHome({ briefing, onOpenSession, onLaunch, canvasPreview }: {
+  canvasPreview?: ReactNode;
+  briefing: ActivityBriefing | null;
   onOpenSession: (sessionKey: string) => void;
   onLaunch: () => void;
 }) {
-  const active = selectRelevantSessions(sessions.filter(isActiveTask), sessions.length);
-  // This is history, not the sidebar's attention queue. Old decisions must not
-  // displace newer completed work, and every loaded entry stays reachable.
-  const recent = sessions.filter((session) => !isActiveTask(session))
-    .sort((a, b) => relevanceTimestamp(b) - relevanceTimestamp(a)
-      || sessionDisplayTitle(a).localeCompare(sessionDisplayTitle(b)));
-  const attentionCount = sessions.filter(needsAttention).length;
-  if (sessions.length === 0) return null;
-
+  const groups = sections.map(section => ({ ...section,
+    entries: briefing?.entries.filter(entry => entry.group === section.id) ?? [],
+  }));
+  const summary = groups.filter(group => group.entries.length > 0).map(group =>
+    `${group.entries.length} ${group.id === "input" ? "input request" : group.id === "outcome" ? "outcome" : "interruption"}${group.entries.length === 1 ? "" : "s"}`,
+  ).join(" · ");
   return (
-    <main className="act-session-home" aria-label="Session dashboard">
+    <main className="act-session-home act-return-briefing" aria-label="Activity return briefing">
       <div className="act-session-home__content">
         <header className="act-session-home__heading">
           <div>
-            <span>Activity overview</span>
-            <h2>{attentionCount > 0 ? "Your next step" : "Pick up your work"}</h2>
-            <p>
-              {attentionCount > 0
-                ? `${attentionCount} ${attentionCount === 1 ? "session needs" : "sessions need"} your attention.`
-                : "No decisions or reviews waiting on you."}
-            </p>
+            <span>Your return briefing</span>
+            <h2>Since your last visit</h2>
+            <p>What changed while you were away. Your full work list stays in the sidebar.</p>
           </div>
           <button className="act-session-home__new" type="button" onClick={onLaunch}>
-            <Plus size={14} strokeWidth={2.25} aria-hidden />
-            <span>New leader</span>
+            <Plus size={14} aria-hidden /><span>New leader</span>
           </button>
         </header>
-
-        {active.length > 0 && (
-          <section className="act-session-active" aria-labelledby="act-session-active-title">
-            <header className="act-session-active__heading">
-              <h3 id="act-session-active-title">Active tasks</h3>
-              <span>{active.length} active</span>
-            </header>
-            <div className="act-session-active__cards">
-              {active.map((session) => (
-                <article
-                  key={session.sessionKey}
-                  className={`act-session-feature act-session-feature--${relevanceTone(session)}`}
-                  aria-label={sessionDisplayTitle(session)}
-                >
-                  <div className="act-session-feature__heading">
-                    <span>{sessionRoleLabel(session)}</span>
-                    <span className={`act-pill act-pill--${activityStatusTone(session)}`}>
-                      {activityStatusLabel(session)}
-                    </span>
-                  </div>
-                  <div className="act-session-feature__body">
-                    <h4>{sessionDisplayTitle(session)}</h4>
-                    <p>{sessionSummary(session)}</p>
-                  </div>
-                  <footer className="act-session-feature__footer">
-                    <span>{sessionMeta(session)}</span>
-                    <button
-                      className="act-session-home__open"
-                      type="button"
-                      onClick={() => onOpenSession(session.sessionKey)}
-                    >
-                      <span>{needsAttention(session) ? attentionAction(session) : "Open session"}</span>
-                      <ArrowRight size={14} strokeWidth={2.25} aria-hidden />
-                    </button>
-                  </footer>
-                </article>
-              ))}
+        {canvasPreview}
+        {!briefing ? <p className="act-briefing-note">Loading your briefing…</p> : <>
+          <div className="act-briefing-window">
+            <div>
+              <p>{briefing.window === "week" ? "Latest recorded changes from the past 7 days"
+                : briefing.firstVisit ? "First visit on this browser · Latest recorded changes from the past 24 hours"
+                : "Changes since your last visit on this browser"}</p>
+              <p><time dateTime={new Date(briefing.since).toISOString()}>{formatTime(briefing.since)}</time>
+                {" — "}<time dateTime={new Date(briefing.capturedAt).toISOString()}>{formatTime(briefing.capturedAt)}</time></p>
             </div>
-          </section>
-        )}
-
-        {recent.length > 0 ? (
-          <section className="act-session-more" aria-labelledby="act-session-more-title">
-            <header className="act-session-more__heading">
-              <div>
-                <h3 id="act-session-more-title">Recent work</h3>
-                <p>Recently completed work and sessions ready for review.</p>
-              </div>
-              <span>{recent.length} {recent.length === 1 ? "session" : "sessions"}</span>
-            </header>
-            <div className="act-session-more__list">
-              {recent.map((session) => (
-                <button
-                  key={session.sessionKey}
-                  type="button"
-                  className="act-session-row"
-                  onClick={() => onOpenSession(session.sessionKey)}
-                >
-                  <span
-                    className={`act-session-row__signal act-session-row__signal--${relevanceTone(session)}`}
-                    aria-hidden
-                  />
+            <label>Look back
+              <select value={briefing.window} onChange={event => briefing.setWindow(event.target.value === "week" ? "week" : "visit")}>
+                <option value="visit">{briefing.firstVisit ? "Past 24 hours" : "Since last visit"}</option>
+                <option value="week">Past 7 days</option>
+              </select>
+            </label>
+          </div>
+          {!briefing.historyAvailable && <p className="act-briefing-note">Visit history is unavailable in this browser. Showing recent recorded changes instead.</p>}
+          <div className="act-briefing-updates" aria-live="polite">
+            {briefing.updateCount > 0 && <button type="button" className="act-session-home__open" onClick={briefing.refresh}>
+              <RefreshCw size={14} aria-hidden />{briefing.updateCount} new {briefing.updateCount === 1 ? "update" : "updates"} · Refresh briefing
+            </button>}
+          </div>
+          {summary ? <p className="act-briefing-summary">{summary}</p> : <div className="act-briefing-quiet">
+            <h3>{briefing.window === "visit" && !briefing.firstVisit ? "Nothing new since your last visit." : "No recorded changes in this window."}</h3>
+            <p>Your work is available in the sidebar.</p>
+          </div>}
+          {groups.filter(group => group.entries.length > 0).map(group => (
+            <section className="act-session-more" key={group.id} aria-labelledby={`briefing-${group.id}`}>
+              <header className="act-session-more__heading"><div>
+                <h3 id={`briefing-${group.id}`}>{group.title}</h3><p>{group.description}</p>
+              </div></header>
+              <div className="act-session-more__list">
+                {group.entries.map(entry => {
+                  const action = groupActions[group.id];
+                  const sourceLabel = entry.sourceAvailable === false ? "Source unavailable" : action;
+                  return <button type="button" className="act-session-row" key={entry.id}
+                  aria-label={`${sourceLabel}: ${entry.title}`}
+                  disabled={entry.sourceAvailable === false} onClick={() => onOpenSession(entry.sessionKey)}>
+                  <span className={`act-session-row__signal act-session-row__signal--${group.id === "input" ? "attention" : group.id === "outcome" ? "changes" : "error"}`} aria-hidden />
                   <span className="act-session-row__body">
-                    <span className="act-session-row__topline">
-                      <strong>{sessionDisplayTitle(session)}</strong>
-                      <span>{sessionRelevanceLabel(session)}</span>
+                    <span className="act-briefing-entry-heading">
+                      <span className="act-session-row__topline"><strong>{entry.title}</strong><span>{entry.label}</span></span>
+                      <span className="act-briefing-source">{sourceLabel}
+                        {entry.sourceAvailable !== false && <ArrowRight size={14} aria-hidden />}
+                      </span>
                     </span>
-                    <span className="act-session-row__summary">{sessionSummary(session)}</span>
-                    <span className="act-session-row__meta">{sessionMeta(session)}</span>
+                    {entry.detail && <span className="act-session-row__summary">Recorded context: {entry.detail}</span>}
+                    <span className="act-session-row__meta">
+                      {entry.changesAvailable ? "Changes available to review · " : ""}
+                      {entry.at ? formatTime(entry.at) : "Event time unavailable"}
+                      {entry.sourceAvailable === false && " · Source no longer in loaded activity"}
+                    </span>
                   </span>
-                  <ArrowRight
-                    className="act-session-row__arrow"
-                    size={15}
-                    strokeWidth={2}
-                    aria-hidden
-                  />
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : (
-          <section className="act-session-more" aria-labelledby="act-session-more-title">
-            <header className="act-session-more__heading">
-              <h3 id="act-session-more-title">Recent work</h3>
-            </header>
-            <p className="act-session-home__empty">No recently completed work to review yet.</p>
-          </section>
-        )}
+                </button>;
+                })}
+              </div>
+            </section>
+          ))}
+          <p className="act-briefing-note">A snapshot of the latest loaded state per work item, not a complete event history.
+            {" "}Opening this briefing does not acknowledge decisions or reviews.</p>
+        </>}
       </div>
     </main>
   );

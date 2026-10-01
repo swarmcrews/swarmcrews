@@ -104,50 +104,80 @@ export function SettingsScreen({ project }: SettingsScreenProps) {
 
       {!loading && !loadError ? (
         <>
-          <MobileMinionModelSettings
-            settings={settings}
-            harnesses={harnesses}
-            modelGroups={modelGroups}
-            saveSettings={saveSettings}
-          />
-
-          <section className="mob-settings-section" aria-labelledby="mob-role-system-heading">
-            <div className="mob-settings-section-heading">
-              <h2 id="mob-role-system-heading">Role System <small>Beta</small></h2>
-              <p>Applies adaptive expert role contracts to new Leader and Minion sessions.</p>
+          <section className="mob-settings-group" aria-labelledby="mob-project-defaults-heading">
+            <div className="mob-settings-group-heading">
+              <h2 id="mob-project-defaults-heading">Project defaults</h2>
+              <p>Choose how new Minion and role work starts in this project.</p>
             </div>
-            <label className="mob-settings-toggle">
-              <span>
-                <strong>Enable adaptive expert roles</strong>
-                <small>Agents infer a focused role or refine one supplied in the task.</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={settings.roleSystemBeta === true}
-                onChange={(event) =>
-                  saveSettings({ ...settings, roleSystemBeta: event.target.checked })
-                }
-              />
-            </label>
+            <MobileMinionModelSettings
+              settings={settings}
+              harnesses={harnesses}
+              modelGroups={modelGroups}
+              saveSettings={saveSettings}
+            />
+
+            <details className="mob-settings-disclosure">
+              <summary id="mob-role-system-heading">
+                <span className="mob-settings-disclosure-title">Role System <small>Beta</small></span>
+                <span className="mob-settings-disclosure-description">
+                  Apply adaptive expert role contracts to new Leader and Minion sessions.
+                </span>
+              </summary>
+              <div className="mob-settings-disclosure-content" aria-labelledby="mob-role-system-heading">
+                <label className="mob-settings-toggle">
+                  <span>
+                    <strong>Enable adaptive expert roles</strong>
+                    <small>Agents infer a focused role or refine one supplied in the task.</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.roleSystemBeta === true}
+                    onChange={(event) =>
+                      saveSettings({ ...settings, roleSystemBeta: event.target.checked })
+                    }
+                  />
+                </label>
+              </div>
+            </details>
           </section>
 
-          <ConnectionsPanel key={project.id} projectId={project.id} />
-
-          <section className="mob-settings-section mob-settings-section--danger" aria-labelledby="mob-server-heading">
-            <div className="mob-settings-section-heading">
-              <h2 id="mob-server-heading">Server</h2>
-              <p>Restart the active Swarmcrews backend to pick up newly changed code.</p>
+          <section className="mob-settings-group" aria-labelledby="mob-administration-heading">
+            <div className="mob-settings-group-heading">
+              <h2 id="mob-administration-heading">Connections & administration</h2>
+              <p>Manage project tools and the running Swarmcrews server.</p>
             </div>
-            <button
-              type="button"
-              className="mob-settings-danger-button"
-              onClick={() => {
-                setRestartError(null);
-                setRestartDialogOpen(true);
-              }}
-            >
-              Restart Server
-            </button>
+            <details className="mob-settings-disclosure">
+              <summary id="mob-connections-heading">
+                <span className="mob-settings-disclosure-title">Connections</span>
+                <span className="mob-settings-disclosure-description">
+                  Add and manage project tools available to your agents.
+                </span>
+              </summary>
+              <div className="mob-settings-disclosure-content" aria-labelledby="mob-connections-heading">
+                <ConnectionsPanel key={project.id} projectId={project.id} />
+              </div>
+            </details>
+
+            <details className="mob-settings-disclosure mob-settings-disclosure--danger">
+              <summary id="mob-server-heading">
+                <span className="mob-settings-disclosure-title">Server</span>
+                <span className="mob-settings-disclosure-description">
+                  Restart the active backend to pick up changed code.
+                </span>
+              </summary>
+              <div className="mob-settings-disclosure-content" aria-labelledby="mob-server-heading">
+                <button
+                  type="button"
+                  className="mob-settings-danger-button"
+                  onClick={() => {
+                    setRestartError(null);
+                    setRestartDialogOpen(true);
+                  }}
+                >
+                  Restart Server
+                </button>
+              </div>
+            </details>
           </section>
         </>
       ) : null}

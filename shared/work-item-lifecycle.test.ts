@@ -224,16 +224,18 @@ describe("canonical presentation selector", () => {
 
   it("distinguishes decision, file-conflict, and generic waits", () => {
     const waiting = workItemLifecycleSchema.parse({ ...initialWorkItemLifecycle(), runtimeState: "waiting" });
-    expect(selectWorkItemPresentation(waiting, { waitKind: "decision" }).label).toBe("Decision needed");
+    expect(selectWorkItemPresentation(waiting, { waitKind: "decision" })).toMatchObject({
+      label: "Decision needed", badge: "attention", needsAttention: true, availableActions: ["provide_input"],
+    });
     expect(selectWorkItemPresentation(waiting, { waitKind: "file_conflict" }).label).toBe("Waiting for files");
-    expect(selectWorkItemPresentation(waiting).label).toBe("Waiting");
+    expect(selectWorkItemPresentation(waiting)).toMatchObject({ label: "Active", badge: "active", needsAttention: false });
   });
 
   it("elevates a child file conflict while the primary remains working", () => {
     const state = workItemLifecycleSchema.parse({ ...initialWorkItemLifecycle(),
       runtimeState: "working", integrationState: "live_conflict_wait" });
     expect(selectWorkItemPresentation(state)).toMatchObject({
-      label: "Waiting for files", badge: "waiting", needsAttention: true,
+      label: "Waiting for files", badge: "attention", needsAttention: true,
     });
   });
 
@@ -270,6 +272,8 @@ describe("canonical presentation selector", () => {
 describe("legacy session lifecycle compatibility", () => {
   it.each([
     ["running", legacy(), "working", "none", "open", "Working"],
+    ["running", legacy({ reviewState: "decision_needed" }), "working", "none", "open", "Working"],
+    ["creating", legacy({ reviewState: "decision_needed" }), "starting", "none", "open", "Starting"],
     ["waiting", legacy({ reviewState: "decision_needed" }), "waiting", "none", "open", "Decision needed"],
     ["idle", legacy({ reviewState: "completion_to_review", terminalReason: "completed", finalReport: "Done" }), "inactive", "completed", "open", "Ready for review"],
     ["idle", legacy({ reviewState: "completion_to_review", terminalReason: "completed" }), "inactive", "completed", "open", "Ready for review"],

@@ -83,7 +83,9 @@ describe("SettingsScreen", () => {
       </HarnessListProvider>,
     );
 
-    const toggle = await screen.findByRole("checkbox", {
+    const roleSystem = await screen.findByText(/Role System/, { selector: "span" });
+    fireEvent.click(roleSystem.closest("summary")!);
+    const toggle = screen.getByRole("checkbox", {
       name: /adaptive expert roles/i,
     });
     expect(toggle).not.toBeChecked();
@@ -94,7 +96,7 @@ describe("SettingsScreen", () => {
     });
   });
 
-  it("places Connections below core project settings", async () => {
+  it("groups defaults separately from collapsed administration disclosures", async () => {
     vi.mocked(getProjectSettings).mockResolvedValue({});
     vi.mocked(updateProjectSettings).mockResolvedValue(undefined);
 
@@ -104,14 +106,41 @@ describe("SettingsScreen", () => {
       </HarnessListProvider>,
     );
 
-    const minion = await screen.findByRole("heading", { name: "Default Minion" });
-    const roleSystem = screen.getByRole("heading", { name: /Role System/i });
-    const connections = screen.getByRole("region", { name: "Connections" });
-    const server = screen.getByRole("heading", { name: "Server" });
+    const defaultMinion = await screen.findByText("Default Minion", { selector: "span" });
+    const defaultsGroup = screen.getByRole("region", { name: "Project defaults" });
+    const administrationGroup = screen.getByRole("region", { name: "Connections & administration" });
+    const roleSystem = screen.getByText(/Role System/, { selector: "span" });
+    const connections = screen.getByText("Connections", { selector: "span" });
+    const server = screen.getByText("Server", { selector: "span" });
 
-    expect(minion.compareDocumentPosition(roleSystem) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(roleSystem.compareDocumentPosition(connections) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
-    expect(connections.compareDocumentPosition(server) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(defaultMinion.closest("details")).toHaveAttribute("open");
+    expect(roleSystem.closest("details")).not.toHaveAttribute("open");
+    expect(connections.closest("details")).not.toHaveAttribute("open");
+    expect(server.closest("details")).not.toHaveAttribute("open");
+    expect(defaultsGroup.compareDocumentPosition(administrationGroup) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  });
+
+  it("keeps advanced controls available through their disclosures", async () => {
+    vi.mocked(getProjectSettings).mockResolvedValue({});
+    vi.mocked(updateProjectSettings).mockResolvedValue(undefined);
+
+    render(
+      <HarnessListProvider send={vi.fn()} subscribe={vi.fn()} connected={true}>
+        <SettingsScreen project={{ id: "proj", name: "Project", path: "/work/app" }} />
+      </HarnessListProvider>,
+    );
+
+    const roleSystem = await screen.findByText(/Role System/, { selector: "span" });
+    fireEvent.click(roleSystem.closest("summary")!);
+    expect(screen.getByRole("checkbox", { name: /adaptive expert roles/i })).toBeVisible();
+
+    const connections = screen.getByText("Connections", { selector: "span" });
+    fireEvent.click(connections.closest("summary")!);
+    expect(screen.getByRole("region", { name: "Connections" })).toBeVisible();
+
+    const server = screen.getByText("Server", { selector: "span" });
+    fireEvent.click(server.closest("summary")!);
+    expect(screen.getByRole("button", { name: "Restart Server" })).toBeVisible();
   });
 
 });

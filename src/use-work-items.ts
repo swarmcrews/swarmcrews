@@ -153,6 +153,7 @@ export function mergeCanonicalActivity(
       sessionId: base?.sessionId ?? null,
       workItemId: item.id,
       canonicalWorkItem: true,
+      workItemIteration: item.iteration,
       workItemPresentation: presentation,
       status: item.lifecycle.runtimeState === "working" ? "running"
         : item.lifecycle.runtimeState === "starting" ? "creating" : item.lifecycle.runtimeState,

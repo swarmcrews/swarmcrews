@@ -3,6 +3,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode }
 
 import type { DisplayMessage } from "../sdk-messages.ts";
 import { MessageTimestamp } from "./MessageTimestamp.tsx";
+import { withSessionModelContext } from "../session-model-context.ts";
 import {
   groupMessages,
   isHiddenTool,
@@ -26,7 +27,7 @@ export type TranscriptEntry = DisplayMessage | TranscriptBoundary;
 export function groupTranscript(entries: TranscriptEntry[]): (LeaderMessageGroup | TranscriptBoundary)[] {
   const groups: (LeaderMessageGroup | TranscriptBoundary)[] = [];
   let messages: DisplayMessage[] = [];
-  for (const entry of entries) {
+  for (const entry of withSessionModelContext(entries)) {
     if ("kind" in entry) {
       groups.push(...groupMessages(messages), entry);
       messages = [];

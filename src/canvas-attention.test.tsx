@@ -21,7 +21,7 @@ describe("Canvas attention destinations", () => {
     expect(items.map(item => item.title).sort()).toEqual(["error", "question"]);
     expect(items.find(item => item.title === "error")?.nodeId).toBe("error-node");
     expect(items.find(item => item.title === "question")?.nodeId).toBeNull();
-    expect(items.find(item => item.title === "question")?.reason).toBe("waiting for you");
+    expect(items.find(item => item.title === "question")?.reason).toBe("needs attention");
   });
   it("honors reviewed and dismissed lifecycle state and keeps fresh decisions first", () => {
     const items = canvasAttentionItems([

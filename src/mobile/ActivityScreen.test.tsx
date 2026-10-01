@@ -109,16 +109,31 @@ describe("ActivityScreen", () => {
     expect(load).toHaveBeenCalledWith("work-1", "next");
   });
 
-  it("gives an empty run-history disclosure a settled empty state", () => {
+  it("offers lazy history for a later iteration before any history page has loaded", () => {
     const load = vi.fn();
-    render(<ActivityScreen sessions={[session({ sessionKey: "run-1", workItemId: "work-1" })]}
+    render(<ActivityScreen sessions={[session({ sessionKey: "run-2", workItemId: "work-1", workItemIteration: 2 })]}
       onOpenSession={() => {}} onLoadRuns={load} />);
 
+    expect(screen.getByText("Run history")).toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Run history"));
     const history = screen.getByText("Run history").closest("details")!;
     history.open = true;
     fireEvent(history, new Event("toggle", { bubbles: true }));
-    expect(screen.getByText("No previous iterations loaded.")).toBeInTheDocument();
     expect(load).toHaveBeenCalledWith("work-1", undefined);
+  });
+
+  it("hides run history for a work item with only its current iteration", () => {
+    const load = vi.fn();
+    render(<ActivityScreen sessions={[session({ sessionKey: "run-1", workItemId: "work-1" })]}
+      onOpenSession={() => {}} onLoadRuns={load}
+      workItemRuns={{ "work-1": [{ runKey: "run-1", workItemId: "work-1", runKind: "primary",
+        parentRunKey: null, taskId: null, runNumber: 1, previousRunKey: null,
+        providerSessionId: null, outcome: "completed", startedAt: 1, endedAt: 2,
+        finalReport: null }] }} />);
+
+    expect(screen.queryByText("Run history")).not.toBeInTheDocument();
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("keeps non-dismissed completions visible and hides dismissed history", () => {
@@ -158,12 +173,12 @@ describe("ActivityScreen", () => {
     // which renders first; the calm sessions stay in their status buckets.
     const sections = screen.getAllByRole("region");
     expect(sections.map((s) => s.getAttribute("aria-label"))).toEqual([
-      "Needs you",
+      "Needs attention",
       "Active",
       "Stopped / Cleared",
     ]);
 
-    const triage = screen.getByRole("region", { name: "Needs you" });
+    const triage = screen.getByRole("region", { name: "Needs attention" });
     expect(within(triage).getByText("Needs answer")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Active" })).getByText("Working session")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Stopped / Cleared" })).getByText("Finished job")).toBeInTheDocument();
@@ -177,7 +192,7 @@ describe("ActivityScreen", () => {
       />,
     );
 
-    const triage = screen.getByRole("region", { name: "Needs you" });
+    const triage = screen.getByRole("region", { name: "Needs attention" });
     const row = within(triage).getByText("Crashed run").closest(".mob-triage-row");
     expect(row).toHaveClass("mob-triage-row--error");
     expect(within(triage).getByText("errored")).toBeInTheDocument();
@@ -372,20 +387,28 @@ describe("ActivityScreen", () => {
     }));
   });
 
-  it("summarizes needs-you, active, and waiting counts", () => {
+  it("summarizes needs attention and active without a waiting category", () => {
     const { container } = render(
       <ActivityScreen
         sessions={[
           session({ sessionKey: "wait", status: "waiting", taskName: "Blocked", reviewLifecycle: waitingLifecycle }),
           session({ sessionKey: "run", status: "running", taskName: "Busy" }),
+          session({ sessionKey: "leader", status: "waiting", role: "leader", taskName: "Delegating",
+            activeMinions: [{ taskId: "m", title: "Build", status: "running", sessionKey: "m-run" }] }),
         ]}
         onOpenSession={() => {}}
       />,
     );
     const summary = container.querySelector(".mob-activity-summary")!;
-    expect(within(summary as HTMLElement).getByText("needs you").previousSibling).toHaveTextContent("1");
-    expect(within(summary as HTMLElement).getByText("active").previousSibling).toHaveTextContent("1");
-    expect(within(summary as HTMLElement).getByText("waiting").previousSibling).toHaveTextContent("1");
+    expect(within(summary as HTMLElement).getByText("needs attention").previousSibling).toHaveTextContent("1");
+    expect(within(summary as HTMLElement).getByText("active").previousSibling).toHaveTextContent("2");
+    expect(within(summary as HTMLElement).queryByText("waiting")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /needs attention: 1\. filter activity/i }));
+    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.queryByText("Delegating")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /active: 2\. filter activity/i }));
+    expect(screen.getByText("Delegating")).toBeInTheDocument();
+    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
   });
 
   it("filters from the summary counts and clears the filter on a second tap", () => {
@@ -421,7 +444,7 @@ describe("ActivityScreen", () => {
       />,
     );
 
-    const waitingFilter = screen.getByRole("button", { name: /waiting: 0\. filter activity/i });
+    const waitingFilter = screen.getByRole("button", { name: /needs attention: 0\. filter activity/i });
     fireEvent.click(waitingFilter);
     expect(screen.getByText("No sessions match this activity filter.")).toBeInTheDocument();
     expect(waitingFilter).toBeInTheDocument();

@@ -172,6 +172,37 @@ describe("ActivityView", () => {
     expect(socketSend.mock.calls.some(([message]) => message.type === "acknowledge_session")).toBe(false);
   });
 
+  it("bounds a long latest-activity preview and opens the full conversation", () => {
+    const longActivity = "Completed the migration after checking every downstream integration. ".repeat(20);
+    render(<ActivityView sessions={[session({ sessionKey: "long-activity", taskName: "Long activity",
+      lastActivity: longActivity,
+    })]} nodes={[]} {...noop} />);
+
+    fireEvent.click(within(activityList()).getByRole("button", { name: /long activity/i }));
+    const inspector = screen.getByRole("complementary", { name: "Session details" });
+    const preview = inspector.querySelector(".act-latest-activity");
+    expect(preview).toHaveTextContent("Completed the migration after checking every downstream integration.");
+    expect(preview).toHaveClass("act-latest-activity--preview");
+    expect(preview?.textContent?.length).toBeLessThan(300);
+    expect(preview?.textContent).toMatch(/…$/);
+    const openConversation = within(inspector).getByRole("button", { name: "Open full conversation" });
+    fireEvent.click(openConversation);
+    expect(within(inspector).getByRole("button", { name: "Conversation" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(inspector).getByRole("region", { name: "Conversation messages" })).toHaveFocus();
+  });
+
+  it("keeps short activity readable and preserves the empty conversation state", () => {
+    render(<ActivityView sessions={[session({ sessionKey: "short-activity", taskName: "Short activity",
+      lastActivity: "Checks passed.",
+    })]} nodes={[]} {...noop} />);
+
+    fireEvent.click(within(activityList()).getByRole("button", { name: /short activity/i }));
+    const inspector = screen.getByRole("complementary", { name: "Session details" });
+    expect(inspector.querySelector(".act-latest-activity")).toHaveTextContent("Checks passed.");
+    expect(within(inspector).getByRole("heading", { name: "No conversation yet" })).toBeInTheDocument();
+    expect(within(inspector).getByRole("button", { name: "Open full conversation" })).toBeInTheDocument();
+  });
+
   it("routes Reply to a nested pending decision and submits through the existing form transport", async () => {
     const socketSend = vi.fn();
     const { subscribe } = makeSubscribe();
@@ -446,7 +477,7 @@ describe("ActivityView", () => {
     expect(within(inspector).queryByText("Leader work")).not.toBeInTheDocument();
   });
 
-  it("opens on an active-task dashboard instead of an instruction", () => {
+  it("opens on a return briefing and links recorded outcomes to their source", () => {
     const onLaunchLeader = vi.fn();
     render(
       <ActivityView
@@ -454,25 +485,43 @@ describe("ActivityView", () => {
           session({
             sessionKey: "current",
             taskName: "Continue the release",
-            status: "running",
+            status: "completed",
+            lastActivityAt: Date.now(),
             lastActivity: "The build is green and the release checklist is ready.",
           }),
         ]}
+        projectId="briefing-integration"
         nodes={[]}
         {...noop}
         onLaunchLeader={onLaunchLeader}
       />,
     );
 
-    const dashboard = screen.getByRole("main", { name: /session dashboard/i });
-    expect(within(dashboard).getByRole("region", { name: "Active tasks" })).toBeInTheDocument();
-    expect(within(dashboard).getByRole("heading", { name: "Continue the release" }))
+    const dashboard = screen.getByRole("main", { name: /Activity return briefing/i });
+    expect(within(dashboard).getByRole("region", { name: "What moved forward" })).toBeInTheDocument();
+    expect(within(dashboard).getByText("Continue the release"))
       .toBeInTheDocument();
     expect(within(dashboard).queryByText(/select a session/i)).not.toBeInTheDocument();
 
-    fireEvent.click(within(dashboard).getByRole("button", { name: /open session/i }));
+    fireEvent.click(within(dashboard).getByRole("button", { name: /view result: continue the release/i }));
     expect(screen.getByRole("complementary", { name: /session details/i }))
       .toHaveTextContent("Continue the release");
+  });
+
+  it("keeps the return briefing when opening a source and does not acknowledge work", () => {
+    const socketSend = vi.fn();
+    const entry = session({ sessionKey: "briefing-source", status: "waiting", taskName: "Choose rollout",
+      lastActivityAt: Date.now(), lastActivity: "Choose between phased and immediate rollout" });
+    const props = { ...noop, sessions: [entry], nodes: [], projectId: "briefing-source-test", socketSend };
+    const view = render(<ActivityView {...props} />);
+    const home = screen.getByRole("main", { name: "Activity return briefing" });
+    expect(within(home).getByText("Choose rollout")).toBeVisible();
+    expect(socketSend.mock.calls.some(([command]) => /acknowledge|dismiss|review/.test(command.type))).toBe(false);
+    fireEvent.click(within(home).getByRole("button", { name: /Choose rollout/ }));
+    expect(screen.queryByRole("main", { name: "Activity return briefing" })).not.toBeInTheDocument();
+    view.rerender(<ActivityView {...props} homeRequest={1} />);
+    expect(within(screen.getByRole("main", { name: "Activity return briefing" })).getByText("Choose rollout")).toBeVisible();
+    expect(socketSend.mock.calls.some(([command]) => /acknowledge|dismiss/.test(command.type))).toBe(false);
   });
 
   it("shows all non-dismissed sessions by default and exposes history filters", () => {
@@ -778,7 +827,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    // No inspector is open — the session sits in the Needs you triage lane.
+    // No inspector is open — the session sits in the Needs attention triage lane.
     expect(screen.queryByRole("complementary", { name: /session details/i })).not.toBeInTheDocument();
     const row = within(activityList()).getByText("Finished task")
       .closest(".act-triage-row") as HTMLElement;
@@ -1897,7 +1946,7 @@ describe("ActivityView", () => {
     );
 
     // A zero-result filter stays focused: no draft, composer, or recent-work cards.
-    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    fireEvent.click(screen.getByRole("button", { name: /active: 0\. filter activity/i }));
     expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /add an agent/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /recent agent work/i })).not.toBeInTheDocument();
@@ -1929,7 +1978,7 @@ describe("ActivityView", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: visibility.toLowerCase() } });
     expect(within(activityList()).getByRole("button", { name: new RegExp(activityName, "i") }))
       .toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    fireEvent.click(screen.getByRole("button", { name: /active: 0\. filter activity/i }));
     expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /^clear filter$/i }));
@@ -2109,7 +2158,46 @@ describe("ActivityView", () => {
       .toHaveTextContent("Checking production licenses");
   });
 
-  it("pins errors, waiting sessions, and reviewable changes in Needs you", () => {
+  it("does not repeat a triage reason as activity while retaining a distinct update", () => {
+    render(
+      <ActivityView
+        sessions={[
+          session({
+            sessionKey: "duplicate-triage-status",
+            status: "inactive",
+            taskName: "Review release",
+            lastActivity: "  ready FOR review ",
+            workItemPresentation: {
+              label: "Ready for review", badge: "success", attentionRank: 3,
+              needsAttention: true, availableActions: [],
+            },
+          }),
+          session({
+            sessionKey: "distinct-triage-activity",
+            status: "inactive",
+            taskName: "Review migration",
+            lastActivity: "Migration checks passed",
+            workItemPresentation: {
+              label: "Ready for review", badge: "success", attentionRank: 3,
+              needsAttention: true, availableActions: [],
+            },
+          }),
+        ]}
+        nodes={[]}
+        {...noop}
+      />,
+    );
+
+    const needsAttention = screen.getByRole("region", { name: "Needs attention" });
+    const duplicate = within(needsAttention).getByText("Review release").closest(".act-triage-row") as HTMLElement;
+    expect(within(duplicate).getByText("Ready for review")).toBeInTheDocument();
+    expect(duplicate.querySelector(".act-card-activity")).toBeNull();
+
+    const distinct = within(needsAttention).getByText("Review migration").closest(".act-triage-row") as HTMLElement;
+    expect(distinct.querySelector(".act-card-activity")).toHaveTextContent("Migration checks passed");
+  });
+
+  it("pins errors, waiting sessions, and reviewable changes in Needs attention", () => {
     render(
       <ActivityView
         sessions={[
@@ -2135,16 +2223,16 @@ describe("ActivityView", () => {
     );
 
     expect(within(activityList()).getAllByRole("region").map((s) => s.getAttribute("aria-label"))).toEqual([
-      "Needs you",
+      "Needs attention",
       "Active",
       "Idle",
     ]);
 
-    const needsYou = screen.getByRole("region", { name: /needs you/i });
+    const needsYou = screen.getByRole("region", { name: /needs attention/i });
     expect(within(needsYou).getByRole("button", { name: /errored task/i })).toBeInTheDocument();
     expect(within(needsYou).getByText("errored")).toBeInTheDocument();
     expect(within(needsYou).getByRole("button", { name: /needs reply/i })).toBeInTheDocument();
-    expect(within(needsYou).getByText("waiting for you")).toBeInTheDocument();
+    expect(within(needsYou).getByText("needs attention")).toBeInTheDocument();
     expect(within(needsYou).getByRole("button", { name: /changes ready/i })).toBeInTheDocument();
 
     const active = screen.getByRole("region", { name: /^active$/i });
@@ -2170,7 +2258,7 @@ describe("ActivityView", () => {
       />,
     );
 
-    const workingFilter = screen.getByRole("button", { name: /working: 1\. filter activity/i });
+    const workingFilter = screen.getByRole("button", { name: /active: 1\. filter activity/i });
     fireEvent.click(workingFilter);
     expect(workingFilter).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("combobox", { name: "Activity visibility" })).toHaveDisplayValue("Open · 3");
@@ -2184,7 +2272,7 @@ describe("ActivityView", () => {
     expect(within(activityList()).getByText("Taking a break")).toBeInTheDocument();
   });
 
-  it("supports distinct needs-you and ready summary filters and keeps zero-result controls available", () => {
+  it("supports needs-attention and active summary filters and keeps zero-result controls available", () => {
     render(
       <ActivityView
         sessions={[
@@ -2196,24 +2284,20 @@ describe("ActivityView", () => {
       />,
     );
 
-    const reviewFilter = screen.getByRole("button", { name: /needs you: 1\. filter activity/i });
+    const reviewFilter = screen.getByRole("button", { name: /needs attention: 1\. filter activity/i });
     fireEvent.click(reviewFilter);
     expect(within(activityList()).getByText("Needs reply")).toBeInTheDocument();
     expect(within(activityList()).queryByText("Taking a break")).not.toBeInTheDocument();
 
-    const waitingFilter = screen.getByRole("button", { name: /ready: 1\. filter activity/i });
-    fireEvent.click(waitingFilter);
-    expect(waitingFilter).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: /ready:.*filter activity/i })).not.toBeInTheDocument();
+    fireEvent.click(reviewFilter);
     expect(within(activityList()).getByText("Taking a break")).toBeInTheDocument();
+    expect(within(activityList()).getByText("Needs reply")).toBeInTheDocument();
 
-    expect(within(activityList()).queryByText("Needs reply")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Activity visibility" }), { target: { value: "all" } });
-    expect(waitingFilter).toHaveAttribute("aria-pressed", "false");
-
-    fireEvent.click(screen.getByRole("button", { name: /working: 0\. filter activity/i }));
+    fireEvent.click(screen.getByRole("button", { name: /active: 0\. filter activity/i }));
     expect(screen.getByText("No sessions match this activity filter")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /working: 0\. clear filter/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /active: 0\. clear filter/i })).toBeInTheDocument();
   });
 
   it("opens the inspector with metadata when a card is selected", () => {

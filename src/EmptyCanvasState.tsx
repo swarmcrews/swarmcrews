@@ -145,7 +145,8 @@ export function EmptyCanvasState({
               lineHeight: 1.4,
             }}
           >
-            The Leader will create and refresh the dashboard as it works.
+            Start Leader immediately with this context. The Leader will create
+            and refresh the dashboard as it works.
           </span>
           <button
             type="submit"
@@ -184,7 +185,8 @@ export function EmptyCanvasState({
               lineHeight: 1.4,
             }}
           >
-            Configure advanced settings before starting.
+            Add an unstarted Leader node to configure advanced settings before
+            it starts.
           </span>
           <button
             type="button"

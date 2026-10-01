@@ -55,6 +55,7 @@ export const UserMessageBubble = memo(function UserMessageBubble({
         </button>
       )}
       <div className="leader-message-meta">
+        {msg.suffix && <span className="leader-message-meta__suffix">{msg.suffix}</span>}
         <MessageTimestamp timestamp={msg.timestamp} />
         <CanvasDeliveryReceipt messageId={msg.id} />
       </div>

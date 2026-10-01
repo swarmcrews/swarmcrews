@@ -17,6 +17,7 @@ async function openWorkspace(page) {
     const json = path.endsWith('/auth/token') ? { token: 'layout-test' }
       : path === '/api/projects' ? [project]
       : path === '/api/readiness' ? { harnesses: [] }
+      : path.endsWith('/mcp-servers') ? { entries: [], invalid: [], statuses: {} }
       : path.includes('skills') ? [] : {};
     return route.fulfill({ json });
   });
@@ -26,7 +27,12 @@ async function openWorkspace(page) {
       const snapshot = createGraphFixture(10);
       socket.send(JSON.stringify({ topic: 'work-item:layout-work', type: 'task_graph_snapshot', cause: 'navigation-test', workItemId: 'layout-work', snapshot, runId: snapshot.graphRunId, revision: snapshot.revision, timestamp: 1 }));
     }
-    if (message.type === 'list_sessions') socket.send(JSON.stringify({ topic: 'global', type: 'session_list', sessions }));
+    if (message.type === 'list_sessions') socket.send(JSON.stringify({ topic: message.projectId ? `project:${message.projectId}` : 'global', type: 'session_list', sessions, includeArchived: message.includeArchived === true }));
+    if (message.type === 'sync_session') {
+      const session = sessions.find(item => item.sessionKey === message.sessionKey);
+      socket.send(JSON.stringify({ topic: `session:${message.sessionKey}`, type: 'sync_response',
+        ...session, sessionKey: message.sessionKey, found: !!session, events: [] }));
+    }
     if (message.type === 'list_work_items') socket.send(JSON.stringify({ topic: 'global', type: 'work_item_response', command: message.type, requestId: message.requestId, success: true, result: { projectId: project.id, items: [], nextCursor: null } }));
     if (message.type === 'list_harnesses') socket.send(JSON.stringify({ topic: 'global', type: 'harness_list', harnesses: [] }));
   }));
@@ -70,7 +76,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expectContained(page);
     await page.getByRole('button', { name: 'Back to activity', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(page.getByText('Loading settings...')).toBeHidden();
+    await expect(page.getByRole('heading', { name: 'Project defaults', exact: true })).toBeVisible();
     await expectContained(page);
     const fonts = await page.locator('.mob-settings select').evaluateAll(els => els.map(el => parseFloat(getComputedStyle(el).fontSize)));
     expect(fonts.length).toBeGreaterThan(0);

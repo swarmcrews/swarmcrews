@@ -36,6 +36,9 @@ import {
 } from "./attachments.ts";
 import { buildLaunchModelGroups, parseLaunchModelValue } from "./launch-models.ts";
 import type { WorkItemLaunchInput } from "../use-work-items.ts";
+import { LaunchPrompt } from "./LaunchPrompt.tsx";
+import { buildSlashCommands } from "../nodes/leader/prompt/slash-commands.ts";
+import { invokeContextAction } from "../../shared/context-actions.ts";
 import "./launch-screen.css";
 
 interface LaunchScreenProps {
@@ -73,6 +76,9 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const [projectSettings, setProjectSettings] = useState<ProjectSettings>({});
   const [thinkingOverride, setThinkingOverride] = useState<ThinkingConfig | null>(null);
   const [sandboxPolicyOverride, setSandboxPolicyOverride] = useState<SandboxPolicy | null>(null);
+  const [loadedSettingsProjectId, setLoadedSettingsProjectId] = useState<string | null>(null);
+  const [commandNotice, setCommandNotice] = useState<string | null>(null);
+  const slashCommands = useMemo(() => buildSlashCommands(projectSettings), [projectSettings]);
   const [launching, setLaunching] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const launchingRef = useRef(false);
@@ -117,6 +123,8 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   // Match desktop leader creation: initialize each project's launch controls
   // from its saved defaults. The controls remain editable for this launch.
   useEffect(() => {
+    setLoadedSettingsProjectId(null);
+    setCommandNotice(null);
     if (!targetProjectId) {
       setProjectSettings({});
       setModelValue("");
@@ -131,6 +139,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       .then((settings) => {
         if (cancelled) return;
         setProjectSettings(settings);
+        setLoadedSettingsProjectId(targetProjectId);
         setThinkingOverride(null);
         setSandboxPolicyOverride(null);
         const harness = settings.defaultLeaderHarness;
@@ -141,6 +150,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       .catch(() => {
         if (cancelled) return;
         setProjectSettings({});
+        setLoadedSettingsProjectId(targetProjectId);
         setModelValue("");
         setThinkingOverride(null);
         setSandboxPolicyOverride(null);
@@ -188,7 +198,19 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const trimmedPrompt = prompt.trim();
   const attachedFileCount = imageAttachments.length + textAttachments.length;
   const skillsReady = targetProjectId === loadedSkillsProjectId;
-  const canSubmit = skillsReady && targetPath !== null && (trimmedPrompt.length > 0 || attachedFileCount > 0);
+  const canSubmit = targetProjectId !== null
+    && skillsReady
+    && targetPath !== null
+    && (trimmedPrompt.length > 0 || attachedFileCount > 0);
+  const launchStatus = launching
+    ? "Launching leader…"
+    : targetProjectId === null || targetPath === null
+      ? "Choose a project before launch."
+      : !skillsReady
+        ? "Preparing project skills before launch."
+        : trimmedPrompt.length === 0 && attachedFileCount === 0
+          ? "Add a prompt or attach a file before launch."
+          : null;
   const selectedModel = parseLaunchModelValue(modelValue);
   const selectedModelGroup = selectedModel
     ? modelGroups.find((group) => group.harness === selectedModel.harness)
@@ -420,42 +442,21 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           </fieldset>
         )}
 
-        <div className="mob-launch-field mob-launch-prompt">
-          <div className="mob-launch-prompt-heading">
-            <label htmlFor="mob-launch-prompt">Prompt</label>
-            <span id="mob-launch-prompt-count">
-              {trimmedPrompt.length} characters
-            </span>
-          </div>
-          <div className="mob-launch-templates" aria-label="Prompt starters">
-            <button
-              type="button"
-              onClick={() => setPrompt("Review the recent changes, identify risks, and suggest the next safest action.")}
-            >
-              Review
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrompt("Investigate the failing workflow, isolate the cause, and make the smallest reliable fix.")}
-            >
-              Fix
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrompt("Implement the requested feature end to end, including focused verification.")}
-            >
-              Build
-            </button>
-          </div>
-          <textarea
-            id="mob-launch-prompt"
-            aria-describedby="mob-launch-prompt-count"
-            value={prompt}
-            onChange={(event) => setPrompt(event.currentTarget.value)}
-            rows={5}
-            placeholder="What should the leader do?"
-          />
-        </div>
+        <LaunchPrompt key={targetProjectId ?? "no-project"} value={prompt} onChange={setPrompt}
+          commands={slashCommands}
+          disabled={!skillsReady || loadedSettingsProjectId !== targetProjectId}
+          onSelect={(command) => {
+            const invocation = invokeContextAction(
+              { prompt: command.insertText, skillIds: command.skillIds ?? [] },
+              selectedSkillIds,
+              availableSkills.map((skill) => skill.id),
+            );
+            setSelectedSkillIds(invocation.skillIds);
+            setCommandNotice(invocation.missingSkillIds.length > 0
+              ? `Command inserted. Unavailable skills were not armed: ${invocation.missingSkillIds.join(", ")}.`
+              : null);
+          }} />
+        {commandNotice && <p className="mob-muted" role="status">{commandNotice}</p>}
 
         <details className="mob-launch-options" data-testid="launch-run-setup">
           <summary>
@@ -640,9 +641,11 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
             type="submit"
             disabled={!canSubmit || launching}
             aria-busy={launching || undefined}
+            aria-describedby={launchStatus ? "mob-launch-submit-status" : undefined}
           >
-            Launch leader
+            {launching ? "Launching leader…" : "Launch leader"}
           </button>
+          {launchStatus ? <p className="mob-launch-submit-help" id="mob-launch-submit-status">{launchStatus}</p> : null}
         </div>
       </form>
 
