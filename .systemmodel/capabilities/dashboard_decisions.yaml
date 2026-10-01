@@ -1,11 +1,11 @@
 id: capability.dashboard_decisions
 type: capability
 name: Dashboards and structured decisions
-summary: Agents can publish persistent structured dashboards and forms that users inspect and answer consistently across canvas, activity, and mobile.
+summary: Agents publish dashboards and server-owned forms across canvas, activity, and mobile. Static HTML supports host-owned target feedback, reversible text previews, browser-local revision captures, export, and receipt-aware session handoff; agent reports do not imply user verification.
 constraints: []
 decisions: [ decision.typed_event_bus, decision.role_gated_agent_tools ]
-suggested_files: [ shared/render-dsl.ts, server/render-tools.ts, src/nodes/RenderNode.tsx, src/nodes/render/DashboardSurface.tsx, server/commands/submit-form.ts ]
-suggested_tests: [ shared/render-dsl.test.ts, server/render-tools.test.ts, src/nodes/render/DashboardSurface.test.tsx, server/commands/submit-form.test.ts ]
+suggested_files: [ shared/render-dsl.ts, server/render-tools.ts, src/nodes/RenderNode.tsx, src/nodes/render/DashboardSurface.tsx, src/nodes/render/HtmlFeedbackReview.tsx, src/nodes/render/html-feedback.ts, src/nodes/render/use-html-feedback.ts, src/nodes/render/html-feedback-store.ts, server/commands/submit-form.ts ]
+suggested_tests: [ shared/render-dsl.test.ts, server/render-tools.test.ts, src/nodes/render/DashboardSurface.test.tsx, src/nodes/render/HtmlFeedbackReview.test.tsx, src/nodes/render/html-feedback-store.test.tsx, tests/contracts/html-feedback.test.ts, tests/e2e/html-feedback.spec.mjs, server/commands/submit-form.test.ts ]
 keywords: [ dashboard, render, form, decision, submit_form, component, artifact, html, patch, append, sync ]
 entry_points:
   - surface: surface.canvas

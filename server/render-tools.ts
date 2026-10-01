@@ -40,7 +40,7 @@ const DASHBOARD_COMPONENT_GUIDE = [
   "Cell-width types: metric(label,value), progress(label,value 0-100), status(label,state success|error|warning|running|pending), sparkline(data), kv(entries), checklist(items), tags(items).",
   "Full-width types: table(headers,rows), list(items), text(content), code(content), copyable(content), timeline(events), callout(variant,content), diff(before,after), separator.",
   "Rich types: form(fields) for user input, chart(series) for SVG charts, section(components) and tabs(tabs[].components) for layout, image(src,alt), file-preview(source). Image src must be an embedded PNG/JPEG/GIF/WebP data URL; external URLs are rejected. Path file previews are display/copy-only and cannot open or download arbitrary paths.",
-  "html-artifact(html,title?) shows a static, NON-FUNCTIONAL HTML visualization in a locked-down sandboxed iframe with click-to-expand. Prefer the dedicated `publish_html` tool to create one — it sanitizes the HTML and writes a session-scoped temp file. Never rely on scripts, forms, or network requests inside it.",
+  "html-artifact(html,title?) shows a static, NON-FUNCTIONAL HTML visualization in a locked-down sandboxed iframe with click-to-expand. Prefer the dedicated `publish_html` tool to create one — it sanitizes the HTML and writes a session-scoped temp file. Never rely on scripts, forms, or network requests inside it. Users can Review & annotate HTML, export notes, and send revision-linked feedback. Preserve the component id across revisions; use feedbackResponses:[{id,summary}] in render_patch to report addressed feedback IDs without claiming user verification.",
   "Use render_set for initial layout, then render_patch with stable ids for value/state updates.",
 ].join(" ");
 
@@ -207,29 +207,20 @@ export function createRenderToolsForLeader(opts: {
     inputSchema: renderPatchInputSchema,
     handler: async (input: unknown) => {
       const args = renderPatchInputSchema.parse(input);
-      // Security chokepoint: any patch that carries an `html` string (only
-      // `html-artifact` uses that field) is sanitized before it is applied to
-      // state OR broadcast — the patch envelope ships these updates verbatim.
-      const updates = args.updates.map((update) =>
-        typeof update["html"] === "string"
-          ? { ...update, html: sanitizeToSandboxDocument(update["html"]) }
-          : update,
-      );
-      // Apply patches to local state
-      for (const update of updates) {
-        const idx = renderState.components.findIndex(
-          (c) => c.id === update["id"],
-        );
-        if (idx !== -1) {
-          const existing = renderState.components[idx]!;
-          renderState.components[idx] = elideDefaults({
-            ...existing,
-            ...update,
-            id: existing.id,
-            type: existing.type,
-          } as RenderComponent);
-        }
+      // Validate and sanitize complete merged components before committing ANY
+      // patch. Broadcasting only validated values keeps live patches and full
+      // reconnect snapshots on the same shared DSL contract (including nested HTML).
+      const next = [...renderState.components];
+      const updates: RenderComponent[] = [];
+      for (const update of args.updates) {
+        const idx = next.findIndex(c => c.id === update.id);
+        if (idx === -1) continue;
+        const existing = next[idx]!;
+        const parsed = parseRenderComponent({ ...existing, ...update, id: existing.id, type: existing.type });
+        next[idx] = elideDefaults(parsed);
+        updates.push(parsed);
       }
+      renderState.components = next;
 
       bus.emitToSession(leaderSessionKey, {
         type: "render_update",

@@ -79,7 +79,11 @@ export function createPublishHtmlToolDef(opts: {
       "Publish a static, NON-FUNCTIONAL HTML visualization to the dashboard. " +
       "The HTML is sanitized server-side and rendered inside a locked-down " +
       "sandboxed iframe (no scripts, no forms, no network, no navigation), " +
-      "with a click-to-expand modal for a larger view. Use for rich visual " +
+      "with expand and Review & annotate actions. Users can select elements or regions, " +
+      "preview text, export revision-bound Markdown/JSON, and send feedback to the agent. " +
+      "Keep the same component id when revising HTML so notes remain connected. " +
+      "Report changes via render_patch feedbackResponses: [{id: 'F01', summary: 'What changed'}]; " +
+      "these are agent claims, not user verification. No live website browsing or screenshot capture. Use for rich visual " +
       "summaries (styled tables, diagrams, inline SVG charts) that the " +
       "structured DSL components cannot express. The temporary file is " +
       "cleaned up when the session is removed or cleared.",

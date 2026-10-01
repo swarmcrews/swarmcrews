@@ -10,9 +10,11 @@ applies_to:
     - server/path-guard.ts
     - server/render-html-tool.ts
     - server/html-sanitize.ts
+    - src/nodes/render/html-feedback.ts
+    - src/nodes/render/HtmlFeedbackReview.tsx
 severity: critical
-agent_instruction: Preserve bearer authentication and owned-root checks; strip executable or navigating HTML behavior and remove temporary artifacts on clear or remove.
-suggested_tests: [ src/api.test.ts, server/path-guard.test.ts, server/html-sanitize.test.ts, shared/render-artifacts.test.ts ]
+agent_instruction: Preserve bearer authentication and owned-root checks; strip executable or navigating HTML behavior and remove temporary artifacts on clear or remove. The host-owned HTML reviewer may inspect same-origin DOM only with scripts prohibited by sandbox and CSP; never pair allow-same-origin with allow-scripts. Keep network, forms, navigation, and artifact-authored handlers blocked.
+suggested_tests: [ src/api.test.ts, server/path-guard.test.ts, server/html-sanitize.test.ts, shared/render-artifacts.test.ts, src/nodes/render/html-feedback.test.ts, tests/e2e/html-feedback.spec.mjs ]
 evidence: [ decision.role_gated_agent_tools ]
 domain: domain.workspace
 scope: global

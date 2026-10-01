@@ -12,6 +12,9 @@ interface FormTransport {
 }
 const TransportContext = createContext<FormTransport | null>(null);
 
+/** Shared session transport for host-owned dashboard interactions, not artifact content. */
+export function useDashboardTransport() { return useContext(TransportContext); }
+
 /** Transport boundary only; decision lifetime is independent of any view. */
 export function FormSubmissionProvider({ children, ...transport }: FormTransport & { children: ReactNode }) {
   return <TransportContext.Provider value={transport}>{children}</TransportContext.Provider>;

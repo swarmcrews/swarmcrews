@@ -84,7 +84,8 @@ export type FilePreviewSource = z.infer<typeof filePreviewSourceSchema>;
  * `server/html-sanitize.ts`) before it is broadcast — no unsanitized HTML
  * ever reaches a client. On the client it is rendered inside an
  * empty-`sandbox` iframe (no scripts, no same-origin, no forms, no
- * top-navigation) as defense-in-depth. It is intended for static
+ * top-navigation) as defense-in-depth. The host-owned review workspace alone
+ * permits same-origin DOM inspection, never scripts; it adds its own CSP. It is intended for static
  * visualizations only: scripts, forms, event handlers, external resource
  * loads, and navigation are all stripped and/or blocked.
  */
@@ -107,6 +108,8 @@ export const htmlArtifactComponentSchema = z.object({
    * and lifecycle cleanup, not for rendering.
    */
   artifactId: z.string().optional(),
+  /** Agent claims only. User verification remains in the host-owned feedback UI. */
+  feedbackResponses: z.array(z.object({ id: z.string().max(100), summary: z.string().max(2000) })).max(100).optional(),
   span: spanSchema.optional(),
 });
 

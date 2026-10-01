@@ -7,8 +7,12 @@
  * dashboard node is rendered in the canvas.
  */
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArtifactLightbox } from "./ArtifactLightbox.tsx";
+import { HtmlFeedbackReview } from "./HtmlFeedbackReview.tsx";
+import { useHtmlFeedback } from "./use-html-feedback.ts";
+import { useDashboardTransport } from "./FormSubmissionProvider.tsx";
+import { reviewDocument } from "./html-feedback.ts";
 import type { ImageComponent, FilePreviewComponent, HtmlArtifactComponent } from "../../../shared/render-dsl.ts";
 import { isSafeModelGeneratedImageSrc, toSafeEmbeddedRasterDataUrl } from "../../../shared/render-artifacts.ts";
 import { copyText } from "../../components/CopyButton.tsx";
@@ -270,8 +274,17 @@ function ActionBtn({ label, onClick }: { label: string; onClick: () => void }) {
 // ── HtmlArtifactRenderer ─────────────────────────────────
 
 export function HtmlArtifactRenderer({ c }: { c: HtmlArtifactComponent }) {
+  const transport = useDashboardTransport();
+  return <HtmlArtifactCard key={JSON.stringify([transport?.sessionKey, c.id])} c={c} />;
+}
+
+function HtmlArtifactCard({ c }: { c: HtmlArtifactComponent }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const title = c.title ?? "HTML artifact";
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const reviewCloseGuard = useRef<(() => void) | null>(null);
+  const feedback = useHtmlFeedback(c.id, c.html);
+  const safeHtml = useMemo(() => reviewDocument(c.html), [c.html]);
 
 
 
@@ -302,13 +315,14 @@ export function HtmlArtifactRenderer({ c }: { c: HtmlArtifactComponent }) {
             </div>
           )}
           <div style={{ marginLeft: "auto" }}>
+            <ActionBtn label="Review & annotate" onClick={() => setReviewOpen(true)} />
             <ActionBtn label="Expand" onClick={() => setLightboxOpen(true)} />
           </div>
         </div>
         <div style={{ padding: 10 }}>
           <iframe
             sandbox=""
-            srcDoc={c.html}
+            srcDoc={safeHtml}
             referrerPolicy="no-referrer"
             title={title}
             loading="lazy"
@@ -323,9 +337,14 @@ export function HtmlArtifactRenderer({ c }: { c: HtmlArtifactComponent }) {
           />
         </div>
       </div>
+      {reviewOpen && (
+        <ArtifactLightbox label={`${title} feedback`} onClose={() => reviewCloseGuard.current?.()}>
+          <HtmlFeedbackReview c={c} feedback={feedback} closeGuard={reviewCloseGuard} onClose={() => setReviewOpen(false)} />
+        </ArtifactLightbox>
+      )}
       {lightboxOpen && (
         <ArtifactLightbox label={`${title} lightbox`} onClose={() => setLightboxOpen(false)}>
-          <iframe sandbox="" srcDoc={c.html} referrerPolicy="no-referrer" title={title}
+          <iframe sandbox="" srcDoc={safeHtml} referrerPolicy="no-referrer" title={title}
             className="dashboard-lightbox-html" />
         </ArtifactLightbox>
       )}
