@@ -38,6 +38,12 @@ Choose your host OS. From a checkout containing the installers:
 |---|---|---|
 | `bash install/linux.sh` | `bash install/macos.sh` | `powershell -NoProfile -File .\install\windows.ps1` |
 
+No checkout yet? Download the [Linux](https://raw.githubusercontent.com/swarmcrews/swarmcrews/main/install/linux.sh),
+[macOS](https://raw.githubusercontent.com/swarmcrews/swarmcrews/main/install/macos.sh), or
+[Windows](https://raw.githubusercontent.com/swarmcrews/swarmcrews/main/install/windows.ps1)
+script, inspect it, then follow the [standalone instructions](./docs/installing.md#without-an-existing-checkout).
+These install source from `main` by default; no GitHub Release is required.
+
 The branded terminal wizard has **no TUI dependencies**. It checks prerequisites,
 asks before provisioning tools, installs into an empty folder, guides agent login,
 and verifies the running app. It currently builds **from source**, not prebuilt
@@ -84,7 +90,7 @@ for a complete first-project walkthrough, screenshots, copyable prompts, and
 help with Swarmcrews, task graphs, dashboards, context, and reviewing changes.
 
 ```bash
-git clone https://github.com/hipsterusername/minions.git swarmcrews
+git clone https://github.com/swarmcrews/swarmcrews.git swarmcrews
 cd swarmcrews
 pnpm install
 pnpm preflight

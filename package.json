@@ -12,13 +12,13 @@
     "developer-tools",
     "orchestration"
   ],
-  "homepage": "https://github.com/hipsterusername/minions#readme",
+  "homepage": "https://github.com/swarmcrews/swarmcrews#readme",
   "bugs": {
-    "url": "https://github.com/hipsterusername/minions/issues"
+    "url": "https://github.com/swarmcrews/swarmcrews/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hipsterusername/minions.git"
+    "url": "git+https://github.com/swarmcrews/swarmcrews.git"
   },
   "type": "module",
   "engines": {

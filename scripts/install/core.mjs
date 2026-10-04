@@ -2,7 +2,7 @@ import { lstat, readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 export const AGENTS = ['claude', 'codex', 'copilot', 'opencode', 'pi', 'later'];
-export const REPOSITORY = 'https://github.com/hipsterusername/minions.git';
+export const REPOSITORY = 'https://github.com/swarmcrews/swarmcrews.git';
 export function parseArgs(argv) {
   const result = {};
   for (let i = 0; i < argv.length; i++) {

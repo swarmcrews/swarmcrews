@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { run, probe, npmCli, runtimeEnv } from './process.mjs';
-import { inspectDestination } from './core.mjs';
+import { inspectDestination, REPOSITORY } from './core.mjs';
 
 const scripts = dirname(fileURLToPath(import.meta.url));
 export async function readSource(source) {
@@ -27,7 +27,7 @@ export async function prepareCheckout(source, dir, metadata) {
   await run('git', ['clone', '--no-hardlinks', '--no-local', '--', source, dir]);
   // A failed clone is left visible, never recursively removed by setup.
   await run('git', ['checkout', '--detach', metadata.revision], { cwd: dir });
-  await run('git', ['remote', 'set-url', 'origin', 'https://github.com/hipsterusername/minions.git'], { cwd: dir });
+  await run('git', ['remote', 'set-url', 'origin', REPOSITORY], { cwd: dir });
   await saveState(dir, { ...metadata, phase: 'source' });
 }
 export async function assertManagedClean(dir, marker) {

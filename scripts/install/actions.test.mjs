@@ -35,7 +35,7 @@ test('source install pins committed revision and safely resumes with no real pac
     const metadata = await readSource(source);
     await prepareCheckout(source, dir, metadata);
     assert.equal(git(dir, ['rev-parse', 'HEAD']), metadata.revision);
-    assert.equal(git(dir, ['remote', 'get-url', 'origin']), 'https://github.com/hipsterusername/minions.git');
+    assert.equal(git(dir, ['remote', 'get-url', 'origin']), 'https://github.com/swarmcrews/swarmcrews.git');
     assert.equal((await inspectDestination(dir)).kind, 'managed');
     await file(dir, '.swarmcrews-install/tools/node_modules/pnpm/bin/pnpm.cjs', `if (process.argv[2] === '--version') console.log('10.15.1'); else if (process.argv.slice(2).join(' ') !== 'install --frozen-lockfile') process.exit(1);`);
     let text = ''; const output = new PassThrough(); output.on('data', value => { text += value; });

@@ -25,12 +25,12 @@ with a compatible runtime; this bootstrap does not provision a musl Node build.
 
 Download the appropriate standalone script from the repository's `install/`
 folder, inspect it, then run it in your terminal. It can obtain the rest of the
-source after confirmation. For example, once the installer files are available
-on the branch you choose:
+source after confirmation. No GitHub Release is required; the scripts are
+available directly from `main`. For example:
 
 ```bash
 # Linux; substitute macos.sh for macOS.
-curl --fail --location https://raw.githubusercontent.com/hipsterusername/minions/main/install/linux.sh -o swarmcrews-install.sh
+curl --fail --location https://raw.githubusercontent.com/swarmcrews/swarmcrews/main/install/linux.sh -o swarmcrews-install.sh
 # Inspect swarmcrews-install.sh before running it.
 bash swarmcrews-install.sh
 ```

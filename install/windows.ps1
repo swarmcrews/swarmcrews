@@ -3,7 +3,7 @@
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$InstallerArgs)
 $ErrorActionPreference = 'Stop'
 $NodeVersion = '22.22.0'
-$Repository = 'https://github.com/hipsterusername/minions.git'
+$Repository = 'https://github.com/swarmcrews/swarmcrews.git'
 $SourceRef = if ($env:SWARMCREWS_REF) { $env:SWARMCREWS_REF } else { 'main' }
 $UseColor = -not [Console]::IsOutputRedirected -and -not (Test-Path Env:NO_COLOR) -and $env:TERM -ne 'dumb'
 function Say([string]$Text) {

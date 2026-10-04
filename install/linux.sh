@@ -4,7 +4,7 @@
 set -euo pipefail
 PLATFORM='linux'
 NODE_VERSION='22.22.0'
-REPO='https://github.com/hipsterusername/minions.git'
+REPO='https://github.com/swarmcrews/swarmcrews.git'
 REF="${SWARMCREWS_REF:-main}"
 color='' reset=''
 if [[ -t 1 && "${TERM:-dumb}" != dumb && -z "${NO_COLOR+x}" ]]; then

@@ -93,7 +93,7 @@ five harnesses to get started.
 Run these commands in the directory where you keep development tools:
 
 ```bash
-git clone https://github.com/hipsterusername/minions.git swarmcrews
+git clone https://github.com/swarmcrews/swarmcrews.git swarmcrews
 cd swarmcrews
 pnpm install
 pnpm preflight
@@ -682,7 +682,7 @@ elicitation during calls aren't supported by this connection client yet.
 ### Ask for help effectively
 
 For reproducible bugs or documentation gaps, use the repository's
-[GitHub issues](https://github.com/hipsterusername/minions/issues). Search
+[GitHub issues](https://github.com/swarmcrews/swarmcrews/issues). Search
 existing reports first. A useful report includes:
 
 ```text
