@@ -53,7 +53,9 @@
   border-color: var(--border-default);
 }
 
+.project-switcher__copy { min-width: 0; }
 .project-switcher__name {
+  display: block;
   overflow: hidden;
   font: 600 var(--text-size-ui)/1.4 var(--font-sans);
   letter-spacing: -0.01em;
@@ -329,4 +331,9 @@
 }
 @media (max-width: 380px) {
   .project-header-logo { display: none; }
+  .project-header { gap: 0 !important; padding-inline: 4px !important; }
+  .project-switcher { min-width: 64px; }
+  /* Reserve the complete Settings control; compact tab gutters, not labels. */
+  .project-header > [role="tablist"] > [role="tab"] { padding-inline: 4px !important; }
+  .project-switcher__trigger { gap: 3px; padding-inline: 2px; }
 }

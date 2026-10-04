@@ -4,14 +4,10 @@ import { Brand } from "./components/Brand.tsx";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useProjectList } from "./use-project-list.ts";
 import {
-  checkProjectGit,
-  createProject,
-  openProject,
   deleteProject,
   getHarnessReadiness,
   type ProjectSummary,
   type HarnessReadinessSnapshot,
-  type ProjectGitAction,
 } from "./api.ts";
 import { browserLogger } from "./logging.ts";
 import type { ProjectActivitySummary } from "../shared/project-activity.ts";
@@ -29,25 +25,28 @@ import {
   Trash2,
 } from "lucide-react";
 import "./project-list.css";
+import { useProjectInitialization } from "./project-recovery/use-project-initialization.ts";
+import { useProjectOperation } from "./project-recovery/use-project-operation.ts";
+import { ProjectFeedback } from "./project-recovery/ProjectFeedback.tsx";
 
 const log = browserLogger.child("project-list");
 
 interface ProjectListProps {
-  onOpenProject: (id: string, projectPath: string) => void;
+  onOpenProject: (id: string, projectPath: string, acknowledgement?: string) => void;
 }
-
-type PendingGitDecision = { mode: "open" | "create"; path: string; name?: string };
 
 export function ProjectList({ onOpenProject }: ProjectListProps) {
   const [activity, setActivity] = useState<ProjectActivitySummary[]>([]);
   const { projects, setProjects, loading, error: projectsLoadFailed, reload: loadProjects } = useProjectList();
   const [folderPath, setFolderPath] = useState("");
-  const [creating, setCreating] = useState(false);
+  const initialization = useProjectInitialization(onOpenProject);
+  const { creating, gitDecision: pendingGitDecision } = initialization;
+  const removal = useProjectOperation();
+  const [removalTarget, setRemovalTarget] = useState<ProjectSummary | null>(null);
   const [mode, setMode] = useState<"open" | "create">("open");
   const [newName, setNewName] = useState("");
   const [readiness, setReadiness] = useState<HarnessReadinessSnapshot | null>(null);
   const [checkingReadiness, setCheckingReadiness] = useState(false);
-  const [pendingGitDecision, setPendingGitDecision] = useState<PendingGitDecision | null>(null);
   const [projectToRemove, setProjectToRemove] = useState<ProjectSummary | null>(null);
 
   useEffect(() => {
@@ -78,64 +77,18 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
     [activity],
   );
 
-  const finishProjectInitialization = async (decision: PendingGitDecision, gitAction?: ProjectGitAction) => {
-    setCreating(true);
-    try {
-      const project = decision.mode === "open"
-        ? await (gitAction ? openProject(decision.path, gitAction) : openProject(decision.path))
-        : await (gitAction
-          ? createProject(decision.name ?? "Untitled", decision.path, gitAction)
-          : createProject(decision.name ?? "Untitled", decision.path));
-      onOpenProject(project.id, project.path);
-    } catch (err) {
-      const action = decision.mode === "open" ? "open" : "create";
-      log.error(`project_${action}_failed`, { error: err });
-      alert(`Failed to ${action} project: ${err}`);
-    } finally {
-      setCreating(false);
-    }
+  const handleInitialize = () => {
+    const path = folderPath.trim();
+    if (!path || creating || readiness?.ready === false) return;
+    void initialization.initialize({ mode, path, ...(newName.trim() ? { name: newName.trim() } : {}) });
   };
 
-  const preflightProjectInitialization = async (decision: PendingGitDecision) => {
-    setCreating(true);
-    setPendingGitDecision(null);
-    try {
-      const status = await checkProjectGit(decision.path);
-      if (!status.isRepository) {
-        setPendingGitDecision(decision);
-        return;
-      }
-      await finishProjectInitialization(decision);
-    } catch (err) {
-      const action = decision.mode === "open" ? "open" : "create";
-      log.error(`project_${action}_preflight_failed`, { error: err });
-      alert(`Failed to check project Git status: ${err}`);
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleOpen = async () => {
-    const p = folderPath.trim();
-    if (!p) return;
-    await preflightProjectInitialization({ mode: "open", path: p });
-  };
-
-  const handleCreate = async () => {
-    const p = folderPath.trim();
-    if (!p) return;
-    const name = newName.trim() || undefined;
-    await preflightProjectInitialization({ mode: "create", path: p, ...(name ? { name } : {}) });
-  };
-
-  const handleRemoveRecent = async (id: string) => {
+  const handleRemoveRecent = async (project: ProjectSummary) => {
+    if (removal.pending) return;
     setProjectToRemove(null);
-    try {
-      await deleteProject(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-    } catch (err) {
-      log.error("project_remove_failed", { error: err });
-    }
+    setRemovalTarget(project);
+    const result = await removal.run(() => deleteProject(project.id));
+    if (result) setProjects((prev) => prev.filter((p) => p.id !== project.id));
   };
 
   const formatDate = (dateStr: string) => {
@@ -192,10 +145,11 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
             <div className="project-list-mode" role="group" aria-label="Project action">
               <button
                 type="button"
+                disabled={creating}
                 aria-pressed={mode === "open"}
                 onClick={() => {
                   setMode("open");
-                  setPendingGitDecision(null);
+                  initialization.clear();
                 }}
               >
                 <FolderOpen size={13} aria-hidden="true" />
@@ -203,10 +157,11 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
               </button>
               <button
                 type="button"
+                disabled={creating}
                 aria-pressed={mode === "create"}
                 onClick={() => {
                   setMode("create");
-                  setPendingGitDecision(null);
+                  initialization.clear();
                 }}
               >
                 <Plus size={13} aria-hidden="true" />
@@ -222,20 +177,21 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                 placeholder={mode === "open" ? "/path/to/existing/project..." : "/path/to/new/project..."}
                 onChange={(path) => {
                   setFolderPath(path);
-                  setPendingGitDecision(null);
+                  initialization.clear();
                 }}
-                onSubmit={() => { if (!projectActionDisabled) void (mode === "open" ? handleOpen() : handleCreate()); }}
+                onSubmit={handleInitialize}
               />
               {mode === "create" && (
                 <label className="project-list-field">
                   <span>Project name</span>
                   <input
                     type="text"
+                    disabled={creating}
                     placeholder="Project name (optional, defaults to folder name)"
                     value={newName}
                     onChange={(e) => {
                       setNewName(e.target.value);
-                      setPendingGitDecision(null);
+                      initialization.clear();
                     }}
                   />
                 </label>
@@ -243,20 +199,27 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
               <button
                 type="button"
                 className="project-list-primary-action"
-                onClick={() => void (mode === "open" ? handleOpen() : handleCreate())}
+                onClick={handleInitialize}
                 disabled={projectActionDisabled}
               >
-                {creating ? "Opening..." : mode === "open" ? "Open" : "Create"}
+                {creating ? (mode === "open" ? "Opening..." : "Registering...") : mode === "open" ? "Open" : "Create"}
                 {!creating && <ArrowRight size={14} aria-hidden="true" />}
               </button>
             </div>
+
+            {initialization.state.status === "error" && <ProjectFeedback error focusAction actions={<>
+              <button type="button" onClick={initialization.retry}>Retry</button>
+              <button type="button" onClick={initialization.clear}>Cancel</button>
+            </>}>
+              Couldn’t {mode === "open" ? "open" : "register"} repository. Your path and name are preserved. {initialization.state.error}
+            </ProjectFeedback>}
 
             {pendingGitDecision && (
               <ProjectGitWarning
                 busy={creating}
                 variant="desktop"
-                onContinue={() => void finishProjectInitialization(pendingGitDecision, "continue_without_git")}
-                onInitialize={() => void finishProjectInitialization(pendingGitDecision, "initialize")}
+                onContinue={() => void initialization.initialize(pendingGitDecision, "continue_without_git")}
+                onInitialize={() => void initialization.initialize(pendingGitDecision, "initialize")}
               />
             )}
 
@@ -293,6 +256,12 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
           </div>
 
           <div className="project-list-card__body">
+            {removalTarget && removal.state.status !== "idle" && <ProjectFeedback focusAction={removal.state.status !== "pending"} error={removal.state.status === "error"} actions={removal.state.status === "error" ? <>
+              <button type="button" onClick={() => setProjectToRemove(removalTarget)}>Retry removal</button>
+              <button type="button" onClick={removal.clear}>Dismiss</button>
+            </> : removal.state.status === "success" ? <button type="button" onClick={removal.clear}>Dismiss</button> : undefined}>
+              {removal.state.status === "pending" ? `Removing “${removalTarget.name}”…` : removal.state.status === "error" ? <>Couldn’t remove “{removalTarget.name}”. The recent-project entry is unchanged. {removal.state.error}</> : `Removed “${removalTarget.name}” from recent projects. Your files remain on disk.`}
+            </ProjectFeedback>}
             {loading ? (
               <div className="project-list-state project-list-state--loading">Loading...</div>
             ) : projectsLoadFailed ? (
@@ -332,6 +301,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                         className="project-list-recent__open"
                         type="button"
                         aria-label={`Open ${p.name}`}
+                        disabled={removal.pending && removalTarget?.id === p.id}
                         onClick={() => onOpenProject(p.id, p.path)}
                       >
                       <span
@@ -370,6 +340,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
                       <button
                         type="button"
                         className="project-list-remove"
+                        disabled={removal.pending}
                         aria-label="Remove"
                         title="Remove from recent projects"
                         onClick={(e) => {
@@ -396,7 +367,7 @@ export function ProjectList({ onOpenProject }: ProjectListProps) {
           actions={[{
             label: "Remove project",
             variant: "danger",
-            onClick: () => void handleRemoveRecent(projectToRemove.id),
+            onClick: () => void handleRemoveRecent(projectToRemove),
           }]}
         />
       )}

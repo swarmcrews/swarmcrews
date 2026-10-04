@@ -22,7 +22,9 @@ import { useAutosave } from "./use-autosave.ts";
 import { ProjectList } from "./ProjectList.tsx";
 import { ProjectHeader, type ActiveView } from "./ProjectHeader.tsx";
 import { ProjectPanel } from "./ProjectPanel.tsx";
-import { getProject, updateProject, updateProjectSettings } from "./api.ts";
+import { updateProject, updateProjectSettings, type ProjectWithNodes } from "./api.ts";
+import { useProjectLoad } from "./project-recovery/use-project-load.ts";
+import { ProjectLoadError } from "./project-recovery/ProjectFeedback.tsx";
 import type { ProjectSettings } from "./api.ts";
 import { canvasReducer, generateId } from "./canvas-state.ts";
 import { viewportCenter, findNonOverlappingPosition } from "./canvas-utils.ts";
@@ -45,6 +47,7 @@ import { reconcileLegacyCanvasLeaders } from "./canvas-work-item-reconcile.ts";
 import { detachSessionCanvasNodes } from "./activity-canvas-detach.ts";
 import { sessionBelongsToProject, needsAttention } from "./mobile/mobile-selectors.ts";
 import { requestLeaderFullscreen } from "./leader-fullscreen-request.ts";
+import { useLeaderDraftLifetimes } from "./nodes/leader/prompt/leader-drafts.ts";
 import { McpServersBrowser } from "./McpServersBrowser.tsx";
 import { SkillsBrowser } from "./SkillsBrowser.tsx";
 import { DockProvider, DockBar, SkillsNavButton, ConnectionsNavButton } from "./BottomRightDock.tsx";
@@ -56,15 +59,11 @@ import { themes, themeMap, applyTheme, DEFAULT_THEME_ID } from "./themes.ts";
 import { ThemeContext, loadPersistedThemeId, persistThemeId } from "./use-theme.ts";
 import { usePreventBrowserZoom } from "./use-prevent-browser-zoom.ts";
 import { buildWsUrl } from "./ws-url.ts";
-import { browserLogger } from "./logging.ts";
 import { DEFAULT_SANDBOX_POLICY } from "../shared/workspace-contracts.ts";
 import type { SettingsSaveState } from "./ContextActionsSettings.tsx";
-
 const WS_URL = buildWsUrl();
-const log = browserLogger.child("app");
 const PROJECT_HEADER_HEIGHT = 44;
 const DEFAULT_DOCUMENT_TITLE = "Swarmcrews";
-
 const SkillEditor = lazy(() =>
   import("./SkillEditor.tsx").then(({ SkillEditor: Component }) => ({ default: Component })),
 );
@@ -155,11 +154,13 @@ function sanitizePersistedNodes(nodes: CanvasNode[]): CanvasNode[] {
 function ProjectView({
   projectId,
   projectPath,
+  acknowledgement = "",
   onClose,
   onSwitchProject,
 }: {
   projectId: string;
   projectPath: string;
+  acknowledgement?: string;
   onClose: () => void;
   onSwitchProject: (id: string, path: string) => void;
 }) {
@@ -179,7 +180,6 @@ function ProjectView({
   const settingsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const settingsSaveRevisionRef = useRef(0);
   const failedSettingsRef = useRef<ProjectSettings | null>(null);
-  const [loaded, setLoaded] = useState(false);
   // Fade the shared loading screen away as soon as project data is ready.
   const [loaderUnmounted, setLoaderUnmounted] = useState(false);
   const [activeView, setActiveView] = useState<ActiveView>("activity");
@@ -213,29 +213,17 @@ function ProjectView({
     };
   }, [projectName]);
 
-  // Load project from API
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const project = await getProject(projectId);
-        if (cancelled) return;
-        setProjectName(project.name);
-        setTransform(project.transform);
-        setProjectSettings(project.settings ?? {});
-        loadProjectSkillsFromData(projectId, project.skills ?? []);
-        setSkillsRefreshKey((k) => k + 1);
-        dispatch({ type: "SET_NODES", nodes: sanitizePersistedNodes(project.nodes) });
-        graphDispatch({ type: "SET_EDGES", edges: project.graph?.edges ?? [] });
-        setLoaded(true);
-      } catch (err) {
-        log.error("project_load_failed", { error: err });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const hydrateProject = useCallback((project: ProjectWithNodes) => {
+    setProjectName(project.name);
+    setTransform(project.transform);
+    setProjectSettings(project.settings ?? {});
+    loadProjectSkillsFromData(projectId, project.skills ?? []);
+    setSkillsRefreshKey((k) => k + 1);
+    dispatch({ type: "SET_NODES", nodes: sanitizePersistedNodes(project.nodes) });
+    graphDispatch({ type: "SET_EDGES", edges: project.graph?.edges ?? [] });
   }, [projectId]);
+  const { loaded, error: loadError, retry: retryLoad } = useProjectLoad(projectId, hydrateProject);
+  useLeaderDraftLifetimes(projectId, nodes, loaded);
 
   // Auto-save
   const { status: saveStatus, lastSaved, retryCount, retry } = useAutosave(
@@ -246,9 +234,9 @@ function ProjectView({
   );
 
   const handleRename = useCallback(
-    (name: string) => {
+    async (name: string) => {
+      await updateProject(projectId, { name });
       setProjectName(name);
-      void updateProject(projectId, { name });
     },
     [projectId],
   );
@@ -673,6 +661,8 @@ function ProjectView({
     setSkillEditorOpen(true);
   }, []);
 
+  if (loadError && !loaded) return <ProjectLoadError error={loadError} path={projectPath} onRetry={retryLoad} onProjects={onClose} acknowledgement={acknowledgement} />;
+
   const loaderFadingOut = loaded;
 
   const loaderOverlay = !loaderUnmounted ? (
@@ -867,7 +857,7 @@ function ProjectView({
 }
 
 export default function App() {
-  const [currentProject, setCurrentProject] = useState<{ id: string; path: string } | null>(null);
+  const [currentProject, setCurrentProject] = useState<{ id: string; path: string; acknowledgement?: string } | null>(null);
   const [themeId, setThemeIdState] = useState(() => loadPersistedThemeId());
   usePreventBrowserZoom();
 
@@ -896,7 +886,7 @@ export default function App() {
     return (
       <ThemeContext.Provider value={themeCtx}>
         <ProjectList
-          onOpenProject={(id, projectPath) => setCurrentProject({ id, path: projectPath })}
+          onOpenProject={(id, projectPath, acknowledgement) => setCurrentProject({ id, path: projectPath, acknowledgement: acknowledgement ?? "" })}
         />
         <DebugModeAffordance />
       </ThemeContext.Provider>
@@ -909,6 +899,7 @@ export default function App() {
         key={currentProject.id}
         projectId={currentProject.id}
         projectPath={currentProject.path}
+        acknowledgement={currentProject.acknowledgement ?? ""}
         onClose={() => setCurrentProject(null)}
         onSwitchProject={(id, projectPath) => setCurrentProject({ id, path: projectPath })}
       />

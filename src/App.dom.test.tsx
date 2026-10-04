@@ -221,7 +221,7 @@ describe("App document title", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Rename Project" }));
-    expect(document.title).toBe("Beta Project (Swarmcrews)");
+    await waitFor(() => expect(document.title).toBe("Beta Project (Swarmcrews)"));
     expect(updateProject).toHaveBeenCalledWith("project-1", {
       name: "Beta Project",
     });

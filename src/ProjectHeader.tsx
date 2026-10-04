@@ -11,6 +11,7 @@ import type { SessionInfo, SocketSubscribe } from "./use-socket.ts";
 import { sessionBelongsToProject, sessionDisplayTitle } from "./mobile/mobile-selectors.ts";
 import type { SettingsSaveState } from "./ContextActionsSettings.tsx";
 import "./project-header.css";
+import { ProjectRename } from "./project-recovery/ProjectRename.tsx";
 
 export type ActiveView = "activity" | "canvas";
 
@@ -60,7 +61,7 @@ interface ProjectHeaderProps {
   name: string;
   saveStatus: SaveStatus;
   lastSaved: Date | null;
-  onRename: (name: string) => void;
+  onRename: (name: string) => void | Promise<void>;
   onBack: () => void;
   onSwitchProject: (id: string, path: string) => void;
   /** Live sessions across all workspaces, including delegated minions. */
@@ -106,19 +107,15 @@ export function ProjectHeader({
   actions,
 }: ProjectHeaderProps) {
   const [editing, setEditing] = useState(false);
-  const [editValue, setEditValue] = useState(name);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
   const switcherButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (editing) {
-      inputRef.current?.select();
-    }
+    if (!editing) switcherButtonRef.current?.focus();
   }, [editing]);
 
   useEffect(() => {
@@ -164,16 +161,6 @@ export function ProjectHeader({
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [switcherOpen]);
-
-  const commitRename = () => {
-    const trimmed = editValue.trim();
-    if (trimmed && trimmed !== name) {
-      onRename(trimmed);
-    } else {
-      setEditValue(name);
-    }
-    setEditing(false);
-  };
 
   const statusLabel = () => {
     switch (saveStatus) {
@@ -242,120 +229,99 @@ export function ProjectHeader({
         <Brand decorative />
       </button>
 
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commitRename();
-            if (e.key === "Escape") {
-              setEditValue(name);
-              setEditing(false);
-            }
-          }}
-          style={{
-            fontSize: 14,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            background: "var(--bg-surface)",
-            border: "1px solid var(--accent)",
-            borderRadius: 4,
-            padding: "2px 8px",
-            fontFamily: "var(--font-sans)",
-            outline: "none",
-            minWidth: 120,
-          }}
-        />
-      ) : (
-        <div className="project-switcher" ref={switcherRef}>
-          <button
-            ref={switcherButtonRef}
-            type="button"
-            className="project-switcher__trigger"
-            aria-haspopup="menu"
-            aria-expanded={switcherOpen}
-            onClick={() => setSwitcherOpen((open) => !open)}
-          >
+      <div className="project-switcher" ref={switcherRef}>
+        <button
+          ref={switcherButtonRef}
+          type="button"
+          className="project-switcher__trigger"
+          disabled={editing}
+          aria-label={name}
+          title={name}
+          aria-haspopup="menu"
+          aria-expanded={switcherOpen}
+          onClick={() => setSwitcherOpen((open) => !open)}
+        >
+          <span className="project-switcher__copy">
             <span className="project-switcher__name">{name}</span>
-            <ChevronDown
-              className="project-switcher__chevron"
-              data-open={switcherOpen || undefined}
-              size={14}
-              strokeWidth={1.8}
-              aria-hidden="true"
-            />
-          </button>
+          </span>
+          <ChevronDown
+            className="project-switcher__chevron"
+            data-open={switcherOpen || undefined}
+            size={14}
+            strokeWidth={1.8}
+            aria-hidden="true"
+          />
+        </button>
 
-          {switcherOpen ? (
-            <div className="project-switcher__menu" role="menu" aria-label="Switch project">
-              <div className="project-switcher__label">Projects</div>
-              <div className="project-switcher__list">
-                {projectsLoading && projects.length === 0 ? (
-                  <div className="project-switcher__state" role="status">Loading projects…</div>
-                ) : null}
-                {projectsError ? (
-                  <div className="project-switcher__state" role="alert">Couldn’t load projects</div>
-                ) : null}
-                {!projectsLoading && !projectsError && projects.length === 0 ? (
-                  <div className="project-switcher__state">No other projects</div>
-                ) : null}
-                {projects.map((project) => {
-                  const current = project.id === projectId;
-                  return (
-                    <button
-                      key={project.id}
-                      type="button"
-                      className="project-switcher__project"
-                      role="menuitemradio"
-                      aria-checked={current}
-                      title={project.path}
-                      onClick={() => {
-                        setSwitcherOpen(false);
-                        if (!current) onSwitchProject(project.id, project.path);
-                      }}
-                    >
-                      <span className="project-switcher__project-icon" aria-hidden="true">
-                        <Folder size={16} strokeWidth={1.75} />
+        {switcherOpen ? (
+          <div className="project-switcher__menu" role="menu" aria-label="Switch project">
+            <div className="project-switcher__label">Projects</div>
+            <div className="project-switcher__list">
+              {projectsLoading && projects.length === 0 ? (
+                <div className="project-switcher__state" role="status">Loading projects…</div>
+              ) : null}
+              {projectsError ? (
+                <div className="project-switcher__state" role="alert">Couldn’t load projects</div>
+              ) : null}
+              {!projectsLoading && !projectsError && projects.length === 0 ? (
+                <div className="project-switcher__state">No other projects</div>
+              ) : null}
+              {projects.map((project) => {
+                const current = project.id === projectId;
+                return (
+                  <button
+                    key={project.id}
+                    type="button"
+                    className="project-switcher__project"
+                    role="menuitemradio"
+                    aria-checked={current}
+                    title={project.path}
+                    onClick={() => {
+                      setSwitcherOpen(false);
+                      if (!current) onSwitchProject(project.id, project.path);
+                    }}
+                  >
+                    <span className="project-switcher__project-icon" aria-hidden="true">
+                      <Folder size={16} strokeWidth={1.75} />
+                    </span>
+                    <span className="project-switcher__project-copy">
+                      <span className="project-switcher__project-name">
+                        {current ? name : project.name}
                       </span>
-                      <span className="project-switcher__project-copy">
-                        <span className="project-switcher__project-name">
-                          {current ? name : project.name}
-                        </span>
-                        <span className="project-switcher__project-path">{project.path}</span>
-                        <ProjectAgentPreview project={project} sessions={sessions} />
-                      </span>
-                      <span className="project-switcher__project-check" aria-hidden="true">
-                        {current ? <Check size={14} strokeWidth={2} /> : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="project-switcher__actions">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setSwitcherOpen(false);
-                    setEditValue(name);
-                    setEditing(true);
-                  }}
-                >
-                  <Pencil size={13} aria-hidden="true" />
-                  Rename project
-                </button>
-                <button type="button" role="menuitem" onClick={onBack}>
-                  <FolderKanban size={13} aria-hidden="true" />
-                  View all projects
-                </button>
-              </div>
+                      <span className="project-switcher__project-path">{project.path}</span>
+                      <ProjectAgentPreview project={project} sessions={sessions} />
+                    </span>
+                    <span className="project-switcher__project-check" aria-hidden="true">
+                      {current ? <Check size={14} strokeWidth={2} /> : null}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-          ) : null}
-        </div>
-      )}
+
+            <div className="project-switcher__actions">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSwitcherOpen(false);
+                  setEditing(true);
+                }}
+              >
+                <Pencil size={13} aria-hidden="true" />
+                Rename project
+              </button>
+              <button type="button" role="menuitem" onClick={onBack}>
+                <FolderKanban size={13} aria-hidden="true" />
+                View all projects
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {editing && <ProjectRename name={name} onRename={onRename} onClose={() => {
+        setEditing(false);
+      }} />}
 
       <div
         style={{

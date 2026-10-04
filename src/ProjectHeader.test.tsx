@@ -41,6 +41,17 @@ describe("ProjectHeader project navigation", () => {
     vi.mocked(listProjects).mockResolvedValue(projects);
   });
 
+  it("shows only the project identity without opening subtext in the switcher", async () => {
+    renderHeader();
+    const trigger = screen.getByRole("button", { name: "Alpha" });
+    expect(trigger).toHaveAttribute("title", "Alpha");
+    expect(trigger).toHaveTextContent(/^Alpha$/);
+    expect(within(trigger).queryByRole("status")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    const menu = await screen.findByRole("menu", { name: "Switch project" });
+    expect(within(menu).queryByText(/opened/i)).not.toBeInTheDocument();
+  });
+
   it("uses the Swarmcrews logo to return to all projects", () => {
     const props = renderHeader();
 
