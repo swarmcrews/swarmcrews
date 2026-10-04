@@ -140,17 +140,6 @@
   word-break: break-word;
 }
 
-.act-tx-thinking {
-  font-size: var(--text-size-ui);
-  line-height: var(--leading-body);
-  color: var(--text-muted);
-  font-style: italic;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 4px 10px;
-  border-left: 2px solid var(--border-default);
-}
-
 /* Tool chip */
 .act-tx-toolchip {
   display: flex;

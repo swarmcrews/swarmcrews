@@ -119,3 +119,16 @@ it("shows the startup model as user context when there is no iteration header", 
   expect(screen.getByText("Model: model-one").closest(".act-tx-msg--user")).toBeInTheDocument();
   expect(screen.queryByText("Session on model-one")).not.toBeInTheDocument();
 });
+
+it("renders the explicit thinking preview separately from assistant text and the generic waiting state", () => {
+  const { rerender } = render(<SessionTranscript messages={[]} streamingText="Answer"
+    streamingThinkingText="Continuous thought" thinking />);
+  expect(screen.getByLabelText("Streaming thinking")).toHaveTextContent("Continuous thought");
+  expect(screen.getByText("Answer")).toBeInTheDocument();
+  expect(screen.queryByText("Leader is thinking…")).not.toBeInTheDocument();
+  rerender(<SessionTranscript messages={[
+    { id: "thought", role: "thinking", content: "Continuous thought", timestamp: 1 },
+  ]} streamingText="" streamingThinkingText="" />);
+  expect(screen.queryByLabelText("Streaming thinking")).not.toBeInTheDocument();
+  expect(screen.getAllByText("Continuous thought")).toHaveLength(1);
+});

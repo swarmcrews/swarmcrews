@@ -1,4 +1,7 @@
+import { ThinkingGroup } from "./ThinkingGroup.tsx";
+import { ThinkingStream } from "./ThinkingStream.tsx";
 import { AgentMessageText } from "./AgentMessageText.tsx";
+import { sessionHistoryLink, SessionHistoryNavigation } from "./SessionHistoryNavigation.tsx";
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { DisplayMessage } from "../sdk-messages.ts";
@@ -116,11 +119,13 @@ export function SessionTranscript({
   messages,
   streamingText,
   thinking = false,
+  streamingThinkingText = "",
   autoFollow = true,
 }: {
   messages: TranscriptEntry[];
   streamingText: string;
   thinking?: boolean | undefined;
+  streamingThinkingText?: string | undefined;
   autoFollow?: boolean;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -142,11 +147,11 @@ export function SessionTranscript({
     if (autoFollow && wasAtBottomRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages.length, streamingText, thinking, autoFollow]);
+  }, [messages.length, streamingText, streamingThinkingText, thinking, autoFollow]);
 
   const groups = useMemo(() => groupTranscript(messages), [messages]);
   const boundaries = groups.filter((group) => group.kind === "run-boundary");
-  const hasContent = groups.length > 0 || streamingText.length > 0 || thinking;
+  const hasContent = groups.length > 0 || streamingText.length > 0 || streamingThinkingText.length > 0 || thinking;
 
   return (
     <div className="act-tx" ref={scrollRef}>
@@ -182,13 +187,11 @@ export function SessionTranscript({
         if (group.kind === "thinking-group") {
           const text = group.msgs.map((m) => m.content).join("\n").trim();
           if (!text) return null;
-          return (
-            <div key={`think-${i}`} className="act-tx-thinking">
-              {text}
-            </div>
-          );
+          return <ThinkingGroup key={`think-${i}`} msgs={group.msgs} />;
         }
         const msg = group.msg;
+        const historyLink = sessionHistoryLink(msg);
+        if (historyLink) return <SessionHistoryNavigation key={msg.id} link={historyLink} />;
         if (!msg.content.trim() && msg.role !== "result") return null;
         return (
           <div key={msg.id} className={`act-tx-msg act-tx-msg--${msg.role}`}>
@@ -204,6 +207,7 @@ export function SessionTranscript({
           </div>
         );
       })}
+      {streamingThinkingText && <ThinkingStream text={streamingThinkingText} />}
       {streamingText && (
         <div className="act-tx-msg act-tx-msg--assistant act-tx-msg--streaming">
           <div className="act-tx-msg-head">
@@ -213,7 +217,7 @@ export function SessionTranscript({
           <div className="act-tx-msg-body"><AgentMessageText text={streamingText} /></div>
         </div>
       )}
-      {thinking && !streamingText && (
+      {thinking && !streamingText && !streamingThinkingText && (
         <div className="act-tx-msg act-tx-msg--assistant act-tx-msg--streaming"
           role="status" aria-live="polite">
           <div className="act-tx-msg-head">

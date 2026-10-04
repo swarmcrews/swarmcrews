@@ -14,6 +14,7 @@ const EFFORT_LABELS: Record<EffortLevel, string> = {
 };
 
 interface MobileLeaderRuntimeControlsProps {
+  section?: "all" | "model" | "reasoning";
   harnesses: ReadonlyArray<HarnessInfo>;
   modelGroups: LaunchModelGroup[];
   modelValue: string;
@@ -24,6 +25,7 @@ interface MobileLeaderRuntimeControlsProps {
 }
 
 export function MobileLeaderRuntimeControls({
+  section = "all",
   harnesses,
   modelGroups,
   modelValue,
@@ -49,11 +51,11 @@ export function MobileLeaderRuntimeControls({
   };
 
   return (
-    <section className="mob-leader-runtime" aria-labelledby="mob-leader-runtime-heading">
-      <div className="mob-leader-runtime-heading">
+    <section className="mob-leader-runtime" aria-label={section === "model" ? "Model setup" : section === "reasoning" ? "Reasoning setup" : "Model & reasoning"}>
+      {section !== "model" && <div className="mob-leader-runtime-heading">
         <div>
           <span>Run setup</span>
-          <h2 id="mob-leader-runtime-heading">Model &amp; reasoning</h2>
+          <h2>{section === "reasoning" ? "Reasoning" : "Model & reasoning"}</h2>
         </div>
         <span className="mob-runtime-badge">
           {thinkingOverride === null
@@ -62,8 +64,9 @@ export function MobileLeaderRuntimeControls({
               ? EFFORT_LABELS[thinkingOverride.effort]
               : "Off"}
         </span>
-      </div>
+      </div>}
 
+      {section !== "reasoning" && <>
       <label className="mob-launch-field">
         <span>Model</span>
         <select value={modelValue} onChange={(event) => onModelChange(event.currentTarget.value)}>
@@ -85,7 +88,9 @@ export function MobileLeaderRuntimeControls({
           : "Uses the model saved for this project."}
       </p>
 
-      <fieldset className="mob-reasoning-control">
+      </>}
+
+      {section !== "model" && <fieldset className="mob-reasoning-control">
         <legend>Reasoning</legend>
         {!selection ? (
           <p className="mob-control-help">
@@ -156,7 +161,7 @@ export function MobileLeaderRuntimeControls({
             This model does not expose reasoning controls. Reasoning will be disabled for this run.
           </p>
         )}
-      </fieldset>
+      </fieldset>}
     </section>
   );
 }

@@ -1,3 +1,4 @@
+import { EMPTY_THINKING_STREAM } from "./thinking-stream.ts";
 import type { GraphEdge } from "./graph.ts";
 import type { LeaderData } from "./nodes/LeaderNode.tsx";
 import { DEFAULT_THINKING_CONFIG } from "./types.ts";
@@ -7,7 +8,7 @@ export function cloneLeaderSetupData(source: LeaderData): LeaderData {
     sessionKey: null,
     status: "disconnected",
     messages: [],
-    streamingText: "",
+    ...EMPTY_THINKING_STREAM, streamingText: "",
     streamingBlockIndex: null,
     totalCost: 0,
     turns: 0,

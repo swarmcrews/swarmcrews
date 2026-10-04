@@ -13,6 +13,7 @@ import { subscribeSocketTopic, type ServerMessage } from "../use-socket.ts";
 import { useStatusBanners, StatusBannerStack } from "../components/StatusBanner.tsx";
 import { preserveOptimisticUserMessages, type SessionStreamState } from "../session-stream.ts";
 import { useSessionStream } from "../use-session-stream.ts";
+import { useLeaderSessionSync } from "./leader/session-sync.ts";
 import { SessionToolbar } from "../components/SessionToolbar.tsx";
 import type { PermissionMode } from "../components/SessionToolbar.tsx";
 import { getSkill } from "../skills/registry.ts";
@@ -79,7 +80,7 @@ import { TaskPlanPanel } from "./leader/TaskPlanPanel.tsx";
 import { SkillFlyout } from "./leader/skills/SkillFlyout.tsx";
 
 import { ConfigFooter } from "./leader/ConfigFooter.tsx";
-
+import { leaderDraftScope, useLeaderDraftField } from "./leader/prompt/leader-drafts.ts";
 import { HeaderMenu } from "./leader/HeaderMenu.tsx";
 import { LeaderStatusIcon } from "./leader/LeaderStatusIcon.tsx";
 import { PromptAttachmentsContext, usePromptAttachments } from "./leader/prompt/use-prompt-attachments.ts";
@@ -136,8 +137,8 @@ export function LeaderNodeRenderer({
     socketSubscribe,
   });
 
-  const [input, setInput] = useState("");
-  const promptAttachments = usePromptAttachments();
+  const draftScope = leaderDraftScope(projectId, node.id, data), [input, setInput] = useLeaderDraftField(draftScope, "text", "");
+  const promptAttachments = usePromptAttachments(draftScope);
   const submittedAttachmentIds = useRef<string[]>([]);
   const [tasksExpanded, setTasksExpanded] = useState(false);
   const [skillFlyoutOpen, setSkillFlyoutOpen] = useState(false);
@@ -231,7 +232,7 @@ export function LeaderNodeRenderer({
   }), [history, data.sessionKey, data.messages]);
   const groupedMessages = useMemo(() => groupTranscript(transcript), [transcript]);
   const chatFollow = useChatFollow(data.sessionKey ?? "new-leader",
-    `${transcript.length}:${data.streamingText}`, !isFullscreen);
+    `${transcript.length}:${data.streamingText}:${data.streamingThinkingText ?? ""}`, !isFullscreen);
   const minionTasks = useMemo(
     () => (data.taskPlan ?? []).filter((task) => task.executor === "minion"),
     [data.taskPlan],
@@ -292,9 +293,9 @@ export function LeaderNodeRenderer({
         return;
       }
       if (e.key === "Escape" && isFullscreen && !e.defaultPrevented
-        && !document.querySelector('[role="dialog"]:not([data-testid="leader-fullscreen-overlay"]), [role="menu"]')) {
-        e.preventDefault();
-        exitFullscreen();
+        && !Array.from(document.querySelectorAll('[role="dialog"]:not([data-testid="leader-fullscreen-overlay"]), [role="menu"]'))
+          .some(overlay => !overlay.closest('.canvas-node-card, .leader-node, [inert], [hidden]'))) {
+        e.preventDefault(); exitFullscreen();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -385,8 +386,8 @@ export function LeaderNodeRenderer({
   // reactions to session_status (clearing waitUntil when the session
   // resumes) are layered into applyCoreUpdate. All other node-specific
   // events — session_task_name, wait_state, worktree_*, approval_*,
-  // and the extra worktree/taskName/approval fields on sync_response
-  // — live in the secondary subscription below.
+  // live in the secondary subscription below. Node-only sync hydration
+  // attaches first, before the shared hook requests recovery.
   const applyCoreUpdate = useCallback(
     (next: SessionStreamState) => {
       const current = dataRef.current;
@@ -415,6 +416,8 @@ export function LeaderNodeRenderer({
     },
     [emitUpdate],
   );
+
+  const runConfiguration = useLeaderSessionSync({ sessionKey: data.sessionKey, dataRef, emitUpdate, socketSubscribe });
 
   useSessionStream({
     socketSend,
@@ -453,81 +456,6 @@ export function LeaderNodeRenderer({
           if (current.status !== "idle") {
             emitUpdate({ ...dataRef.current, status: "idle" });
           }
-        }
-        return;
-      }
-
-      // sync_response found: restore worktree/taskName/approval fields
-      // that the shared reducer doesn't know about.
-      if (
-        serverMsg.type === "sync_response" &&
-        serverMsg.sessionKey === current.sessionKey &&
-        serverMsg.found
-      ) {
-        const syncData: Partial<LeaderData> = {};
-
-        if (serverMsg.worktree) {
-          const wt = serverMsg.worktree;
-          syncData.worktreePath = wt.path;
-          syncData.worktreeBranch = wt.branch;
-          syncData.worktreeStatus = "active";
-        }
-        if (serverMsg.taskName) {
-          syncData.taskName = serverMsg.taskName;
-        }
-        if (serverMsg.lastErrorFull !== undefined) {
-          syncData.fullError = serverMsg.lastErrorFull ?? null;
-        }
-        if (serverMsg.harness) syncData.harness = serverMsg.harness;
-        if (serverMsg.sandboxPolicy) {
-          syncData.sandboxPolicy = serverMsg.sandboxPolicy.requested;
-          syncData.effectiveSandboxPolicy = serverMsg.sandboxPolicy;
-        }
-        if (Array.isArray(serverMsg.taskPlan)) {
-          const existingMap = new Map(
-            (current.taskPlan ?? []).map((task) => [task.taskId, task]),
-          );
-          syncData.taskPlan = serverMsg.taskPlan.map((task) => {
-            const existing = existingMap.get(task.taskId);
-            return {
-              taskId: task.taskId,
-              title: task.title,
-              description: task.description,
-              priority: task.priority,
-              status: task.status as TaskPlanItem["status"],
-              executor: task.executor,
-              minionSessionKey: task.minionSessionKey,
-              result: task.result,
-              cost: existing?.cost ?? 0,
-              createdAt: task.createdAt,
-              completedAt: task.completedAt,
-              sessionSummary: existing?.sessionSummary ?? "",
-              activeStep:
-                task.status === "running" || task.status === "starting"
-                  ? (existing?.activeStep ?? null)
-                  : null,
-              progress: existing?.progress ?? [],
-            };
-          });
-        }
-        const syncApproval = serverMsg.approval as
-          | {
-              requested?: boolean;
-              summary?: string;
-              diff?: LeaderData["approvalDiff"];
-            }
-          | null
-          | undefined;
-        if (syncApproval?.requested && selectCanvasChangeMode(current) === "worktree") {
-          syncData.approvalPending = true;
-          syncData.approvalSummary = syncApproval.summary ?? null;
-          syncData.approvalDiff = syncApproval.diff ?? null;
-        } else {
-          syncData.approvalPending = false;
-        }
-
-        if (Object.keys(syncData).length > 0) {
-          emitUpdate({ ...current, ...syncData });
         }
         return;
       }
@@ -904,6 +832,7 @@ export function LeaderNodeRenderer({
   );
 
   const resetSession = useCallback(() => {
+    setInput(""); promptAttachments.remove(promptAttachments.drafts.map(draft => draft.id));
     if (socketSend && data.sessionKey) {
       socketSend({ type: "stop_session", sessionKey: data.sessionKey });
     }
@@ -920,13 +849,12 @@ export function LeaderNodeRenderer({
       thinkingConfig: data.thinkingConfig ?? DEFAULT_THINKING_CONFIG,
       worktreeIsolation: data.worktreeIsolation,
     });
-  }, [socketSend, data, emitUpdate]);
+  }, [socketSend, data, emitUpdate, setInput, promptAttachments]);
 
   const handleReset = useCallback(() => {
     setResetConfirmOpen(true);
   }, []);
 
-  // New Session handler — preserves conversation context for continuity.
   // If the user has typed a prompt in the input, it becomes the autoStartPrompt
   // for the new session so they don't have to click "Start" again.
   const handleNewSession = useCallback(() => {
@@ -1044,6 +972,27 @@ export function LeaderNodeRenderer({
     onPolicyChange={sandboxPolicy => onUpdateData({ ...dataRef.current, sandboxPolicy })} />;
   const taggedSkillCount = (data.skillIds ?? []).length;
 
+  const recorded = !data.sessionKey || Boolean(runConfiguration?.model && runConfiguration.harness && runConfiguration.permissionMode);
+  const toolbarSkills = <div ref={skillAnchorRef} className="leader-node__skills">
+    {connectionsPicker}<SkillsPill skillIds={data.skillIds ?? []} open={skillFlyoutOpen}
+      onOpen={() => setSkillFlyoutOpen(true)} />
+  </div>;
+  const runtimeToolbar = (fullscreen = false) => recorded ? <SessionToolbar
+    {...(fullscreen ? {} : { className: "leader-session-toolbar" })} sessionKey={data.sessionKey} status={displayStatus}
+    model={data.model} permissionMode={data.permissionMode} active={fullscreen || !isFullscreen}
+    onModelChange={handleModelChange} onPermissionModeChange={handlePermissionModeChange}
+    thinkingConfig={data.thinkingConfig ?? DEFAULT_THINKING_CONFIG} onThinkingConfigChange={handleThinkingConfigChange}
+    harness={data.harness ?? "claude"} onHarnessChange={handleHarnessChange}
+    accent="var(--accent)" skillsContent={fullscreen ? connectionsPicker : toolbarSkills} /> : <div className="session-toolbar" aria-live="polite">
+      {runConfiguration ? `Model: ${runConfiguration.model ?? "Not recorded"} · Harness: ${runConfiguration.harness ?? "Not recorded"} · Permissions: ${runConfiguration.permissionMode ?? "Not recorded"}` : "Loading run configuration…"}
+      {fullscreen ? connectionsPicker : toolbarSkills}
+    </div>;
+  // Fullscreen's header/drawer only display these fields. Never persist their
+  // unknown sentinels or send them as runtime settings through its callbacks.
+  const fullscreenData = data.sessionKey ? { ...data, model: runConfiguration?.model ? data.model : "Not recorded",
+    harness: runConfiguration?.harness ? data.harness ?? "Not recorded" : "Not recorded",
+    permissionMode: (runConfiguration?.permissionMode ? data.permissionMode : "Not recorded") as PermissionMode } : data;
+
   if (launchMode) {
     return (
       <FormSubmissionProvider key={data.sessionKey} sessionKey={data.sessionKey ?? ""} socketSend={socketSend} socketSubscribe={socketSubscribe}><CanvasDeliveryContext.Provider value={delivery}><PromptAttachmentsContext.Provider value={promptAttachments}><LeaderSlashCommandsProvider commands={slashCommands} onSelect={handleContextActionSelect}><LeaderPromptSkillsContext.Provider value={handleSkillSelect}>
@@ -1156,33 +1105,7 @@ export function LeaderNodeRenderer({
         </div>
       </header>
 
-      <SessionToolbar
-        className="leader-session-toolbar"
-        sessionKey={data.sessionKey}
-        status={displayStatus}
-        model={data.model ?? "opus"}
-        permissionMode={data.permissionMode ?? "auto"}
-        onModelChange={handleModelChange}
-        onPermissionModeChange={handlePermissionModeChange}
-        thinkingConfig={data.thinkingConfig ?? DEFAULT_THINKING_CONFIG}
-        onThinkingConfigChange={handleThinkingConfigChange}
-        harness={data.harness ?? "claude"}
-        onHarnessChange={handleHarnessChange}
-        accent="var(--accent)"
-        skillsContent={
-          <div
-            ref={skillAnchorRef}
-            className="leader-node__skills"
-          >
-            {connectionsPicker}
-            <SkillsPill
-              skillIds={data.skillIds ?? []}
-              open={skillFlyoutOpen}
-              onOpen={() => setSkillFlyoutOpen(true)}
-            />
-          </div>
-        }
-      />
+      {runtimeToolbar()}
 
       <StatusBannerStack banners={banners} onDismiss={dismissBanner} />
       {launchNotice ? <div role="status" style={{ padding: "6px 10px", fontSize: 11, background: "var(--warning-bg)", color: "var(--text-primary)" }}>{launchNotice}</div> : null}
@@ -1296,11 +1219,14 @@ export function LeaderNodeRenderer({
 
       {isFullscreen && (
         <LeaderFullscreen
-          data={data}
+          data={fullscreenData}
           transcript={transcript}
           historyLoading={history.loading}
           isWorking={displayStatus === "running"}
-          onUpdateData={(next) => emitUpdate(next)}
+          onUpdateData={(next) => {
+            const { model: _model, permissionMode: _permission, harness: _harness, ...update } = next;
+            emitUpdate({ ...dataRef.current, ...update });
+          }}
           onExit={exitFullscreen}
           input={input}
           onInputChange={setInput}
@@ -1340,22 +1266,7 @@ export function LeaderNodeRenderer({
           contextItems={getContextForNode?.()}
           dashboardSlot={<DashboardSurface renderState={data.renderState ?? emptyRenderState()} payloadError={renderPayloadError}
             onSubmitForm={handleSubmitForm} onAddContentNode={onAddContentNode} />}
-          toolbarSlot={
-            <SessionToolbar
-              sessionKey={data.sessionKey}
-              status={displayStatus}
-              model={data.model ?? "opus"}
-              permissionMode={data.permissionMode ?? "auto"}
-                    onModelChange={handleModelChange}
-              onPermissionModeChange={handlePermissionModeChange}
-              thinkingConfig={data.thinkingConfig ?? DEFAULT_THINKING_CONFIG}
-              onThinkingConfigChange={handleThinkingConfigChange}
-              harness={data.harness ?? "claude"}
-              onHarnessChange={handleHarnessChange}
-              accent="var(--accent)"
-              skillsContent={connectionsPicker}
-            />
-          }
+          toolbarSlot={runtimeToolbar(true)}
           bannerSlot={
             <>
               <StatusBannerStack banners={banners} onDismiss={dismissBanner} />

@@ -69,13 +69,35 @@ export function HeaderMenu({
 
   useEffect(() => {
     if (!open) return;
+    // BODY portals do not inherit their Canvas owner's inert/hidden state.
+    // Retire the portal on foreground handoff without restoring background focus.
+    const retireBackgroundPortal = () => {
+      const trigger = triggerRef.current;
+      if (!trigger || trigger.closest("[inert], [hidden]")
+        || (document.querySelector(".leader-fullscreen-overlay")
+          && !trigger.closest(".leader-fullscreen-overlay"))) close();
+    };
+    const observer = new MutationObserver(retireBackgroundPortal);
+    observer.observe(document.body, { childList: true, subtree: true,
+      attributes: true, attributeFilter: ["hidden", "inert"] });
+    retireBackgroundPortal();
     const closeOnWheel = () => close();
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close(true);
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const trigger = triggerRef.current;
+      if (!trigger || trigger.closest("[inert], [hidden]")) return;
+      const surface = event.target instanceof Element
+        ? event.target.closest('[role="dialog"], [role="menu"]') : null;
+      if (surface && surface !== popoverRef.current && !surface.contains(trigger)) return;
+      // Consume this nested dismissal before the outer cockpit observes the now-closed menu.
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
     };
     window.addEventListener("wheel", closeOnWheel, { passive: true, once: true });
     document.addEventListener("keydown", closeOnEscape);
     return () => {
+      observer.disconnect();
       window.removeEventListener("wheel", closeOnWheel);
       document.removeEventListener("keydown", closeOnEscape);
     };
@@ -83,45 +105,57 @@ export function HeaderMenu({
 
   useLayoutEffect(() => {
     if (!open) return;
-    const trigger = triggerRef.current;
-    const popover = popoverRef.current;
-    if (!trigger || !popover) return;
+    const position = () => {
+      const trigger = triggerRef.current;
+      const popover = popoverRef.current;
+      if (!trigger || !popover) return;
 
-    const viewportPadding = 10;
-    const gap = 7;
-    const triggerRect = trigger.getBoundingClientRect();
-    const leaderRect = trigger.closest(".leader-node")?.getBoundingClientRect();
-    const width = Math.min(
-      248,
-      Math.max(200, (leaderRect?.width ?? 268) - 20),
-      window.innerWidth - viewportPadding * 2,
-    );
-    const left = Math.min(
-      window.innerWidth - width - viewportPadding,
-      Math.max(viewportPadding, triggerRect.right - width),
-    );
-    const availableBelow =
-      window.innerHeight - triggerRect.bottom - gap - viewportPadding;
-    const availableAbove = triggerRect.top - gap - viewportPadding;
-    const measuredHeight = popover.scrollHeight;
-    const openAbove =
-      measuredHeight > availableBelow && availableAbove > availableBelow;
-    const maxHeight = Math.max(120, openAbove ? availableAbove : availableBelow);
-    const top = openAbove
-      ? Math.max(viewportPadding, triggerRect.top - gap - Math.min(measuredHeight, maxHeight))
-      : triggerRect.bottom + gap;
+      const viewportPadding = 10;
+      const preferredWidth = 15.5 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const gap = 7;
+      const triggerRect = trigger.getBoundingClientRect();
+      const leaderRect = trigger.closest(".leader-node")?.getBoundingClientRect();
+      const width = Math.min(
+        preferredWidth,
+        Math.max(200, (leaderRect?.width ?? preferredWidth + 20) - 20),
+        window.innerWidth - viewportPadding * 2,
+      );
+      const left = Math.min(
+        window.innerWidth - width - viewportPadding,
+        Math.max(viewportPadding, triggerRect.right - width),
+      );
+      const availableBelow =
+        window.innerHeight - triggerRect.bottom - gap - viewportPadding;
+      const availableAbove = triggerRect.top - gap - viewportPadding;
+      const measuredHeight = popover.scrollHeight;
+      const openAbove =
+        measuredHeight > availableBelow && availableAbove > availableBelow;
+      const maxHeight = Math.max(120, openAbove ? availableAbove : availableBelow);
+      const top = openAbove
+        ? Math.max(viewportPadding, triggerRect.top - gap - Math.min(measuredHeight, maxHeight))
+        : triggerRect.bottom + gap;
 
-    setPopoverPosition({ left, maxHeight, top, width });
+      setPopoverPosition({ left, maxHeight, top, width });
+    };
+    position();
+    window.addEventListener("resize", position);
+    const rootObserver = new MutationObserver(position);
+    rootObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    const sizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(position);
+    if (popoverRef.current) sizeObserver?.observe(popoverRef.current);
+    return () => {
+      window.removeEventListener("resize", position);
+      rootObserver.disconnect(); sizeObserver?.disconnect();
+    };
   }, [open, saveFormOpen]);
 
-  useEffect(() => {
-    if (!open) return;
-    window.requestAnimationFrame(() => {
-      popoverRef.current
-        ?.querySelector<HTMLElement>('[role="menuitem"]')
-        ?.focus();
-    });
-  }, [open]);
+  const positioned = popoverPosition !== null;
+  useLayoutEffect(() => {
+    if (!open || !positioned) return;
+    // The first commit is visibility:hidden for measurement. Focus only its visible commit,
+    // not an animation frame that may precede readiness; subsequent resize must retain input focus.
+    popoverRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+  }, [open, positioned]);
 
   const overlay = open ? (
     <>

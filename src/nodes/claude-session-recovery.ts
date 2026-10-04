@@ -4,9 +4,10 @@ import { deliveredHistoryCursor } from "../session-recovery.ts";
 import { sessionStreamReducer, type SessionStreamState } from "../session-stream.ts";
 
 // Claude's status banners own these events, unlike the Leader transcript.
-const bannerKinds = new Set(["thinking", "api_retry", "rate_limit"]);
+const bannerKinds = new Set(["api_retry", "rate_limit"]);
 export function reduceClaudeSession(current: ClaudeSessionData, message: ServerMessage): ClaudeSessionData {
-  if (message.type === "sdk_event" && bannerKinds.has(message.event.kind)) return current;
+  if (message.type === "sdk_event" && (bannerKinds.has(message.event.kind)
+    || message.event.kind === "thinking" && !current.streamingThinkingText && current.streamingThinkingBlockIndex == null)) return current;
   const state: SessionStreamState = { ...current, streamingBlockIndex: current.streamingBlockIndex ?? null };
   const replay = message.type === "sync_response" ? { ...message,
     events: (message.events ?? []).filter(event => event.type !== "sdk_event" || !event.event || !bannerKinds.has(event.event.kind)),
@@ -14,6 +15,8 @@ export function reduceClaudeSession(current: ClaudeSessionData, message: ServerM
   const next = sessionStreamReducer(state, replay, "claude");
   if (next === state) return current;
   return { ...current, ...next,
+    messages: next.messages.some(message => message.role === "thinking")
+      ? next.messages.filter(message => message.role !== "thinking") : next.messages,
     sessionKey: next.sessionKey ?? current.sessionKey,
     status: message.type === "sdk_event" && message.event.kind === "done" ? "idle"
       : next.status === "completed" ? "idle" : next.status,

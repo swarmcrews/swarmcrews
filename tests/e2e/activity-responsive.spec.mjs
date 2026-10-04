@@ -112,6 +112,7 @@ test("keeps Launch visible while prompt and all settings remain reachable", asyn
     await page.setViewportSize({ width, height });
     await expectContained(launch, width, height);
     const settings = panel.getByRole('complementary', { name: 'Run setup' });
+    await settings.locator('.leader-launch-advanced > summary').click();
     const lastSetting = settings.getByRole('checkbox').last();
     await lastSetting.scrollIntoViewIfNeeded();
     await expect(lastSetting).toBeInViewport();

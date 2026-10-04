@@ -8,6 +8,7 @@ import { applyCanvasWorkItemSnapshot, canonicalPromptCommand, detailFromWorkItem
   errorFromWorkItemResponse, WorkItemCommandError } from "./work-item.ts";
 import { reduceLiveEditAwareness } from "../../../shared/live-edit-coordination.ts";
 import { randomUuid } from "../../random-id.ts";
+import { carryLeaderLaunchDraft, leaderDraftScope } from "./prompt/leader-drafts.ts";
 import { decideConflictRecovery } from "../../work-item-retry-policy.ts";
 
 interface Input {
@@ -200,6 +201,11 @@ export function useCanvasWorkItem(input: Input) {
   const begin = useCallback(async (run: { userPrompt: string; prompt: string;
     systemPrompt: string; attachments: unknown[]; contextItems: ContextItem[] }) => {
     if (!input.projectId) throw new Error("Canonical workspace identity is unavailable");
+    const emitLaunchData = (next: LeaderData) => {
+      carryLeaderLaunchDraft(leaderDraftScope(input.projectId, input.nodeId, input.dataRef.current),
+        leaderDraftScope(input.projectId, input.nodeId, next));
+      input.emitUpdate(next);
+    };
     let item = input.dataRef.current.workItemSnapshot ?? null;
     if (!item) {
       const created = await request({ type: "create_work_item", requestId: randomUuid(),
@@ -208,13 +214,13 @@ export function useCanvasWorkItem(input: Input) {
         changeMode: input.dataRef.current.worktreeIsolation ? "worktree" : "live",
       });
       item = created.workItem;
-      input.emitUpdate(applyCanvasWorkItemSnapshot(input.dataRef.current, item));
+      emitLaunchData(applyCanvasWorkItemSnapshot(input.dataRef.current, item));
       const attached = await requestMutation({ type: "attach_work_item_surface", requestId: randomUuid(),
         workItemId: item.id, surface: "canvas", bindingId: input.nodeId,
         expectedLifecycleRevision: item.lifecycle.lifecycleRevision,
         expectedCurrentRunKey: item.currentRunKey });
       item = attached.workItem;
-      input.emitUpdate(applyCanvasWorkItemSnapshot(input.dataRef.current, item));
+      emitLaunchData(applyCanvasWorkItemSnapshot(input.dataRef.current, item));
     }
     const promptResult = await sendCanonicalPrompt(item, run.prompt, {
       displayPrompt: run.userPrompt, systemPrompt: run.systemPrompt, connectionIds: input.dataRef.current.connectionIds, skillIds: input.dataRef.current.skillIds ?? [],
@@ -228,7 +234,7 @@ export function useCanvasWorkItem(input: Input) {
       ...(run.attachments.length > 0 ? { attachments: run.attachments } : {}) });
     const started = promptResult.detail;
     const next = applyCanvasWorkItemSnapshot(input.dataRef.current, started.workItem);
-    input.emitUpdate({ ...next, sessionKey: next.currentRunKey,
+    emitLaunchData({ ...next, sessionKey: next.currentRunKey,
       currentRunKey: next.currentRunKey });
     if (started.workItem.currentRunKey) input.publishCanvasContext(
       started.workItem.currentRunKey, run.contextItems, null);

@@ -189,39 +189,36 @@ describe("LaunchScreen", () => {
     expect(screen.queryByRole("option", { name: /First command/ })).not.toBeInTheDocument();
   });
 
-  it("keeps run setup collapsed behind a native, truthful disclosure", async () => {
+  it("keeps task, workspace and model/access visible before optional settings without changing defaults or the draft", async () => {
     vi.mocked(getProjectSettings).mockResolvedValue({
       defaultWorktreeIsolation: true,
-      defaultSandboxPolicy: {
-        filesystemScope: "read-only",
-        approvalPolicy: "on-request",
-      },
+      defaultSandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" },
     });
-
-    render(
-      <LaunchScreen
-        canonicalLaunch={vi.fn()}
-        onLaunched={vi.fn()}
-        lockedProject={{ id: "compact", path: "/work/compact", name: "Compact" }}
-      />,
-    );
-
+    const launch = vi.fn();
+    render(<LaunchScreen canonicalLaunch={launch} onLaunched={vi.fn()}
+      lockedProject={{ id: "compact", path: "/work/compact", name: "Compact" }} />);
+    await waitFor(() => expect(screen.getByLabelText("Prompt")).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Preserve this exact draft" } });
+    const before = (first: Element, second: Element) => expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    before(screen.getByLabelText("Prompt"), screen.getByLabelText("Project"));
+    before(screen.getByLabelText("Project"), screen.getByLabelText("Worktree isolation"));
+    before(screen.getByLabelText("Worktree isolation"), screen.getByLabelText("Model"));
     const disclosure = screen.getByTestId("launch-run-setup");
     expect(disclosure).not.toHaveAttribute("open");
-    expect(within(disclosure).getByText("Model · Project default")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(within(disclosure).getByText(/Read only · Worktree · No files · No skills/)).toBeInTheDocument();
-    });
-
-    const summary = disclosure.querySelector("summary");
-    expect(summary).not.toBeNull();
-    summary!.focus();
+    expect(disclosure).not.toContainElement(screen.getByLabelText("Model"));
+    expect(disclosure).not.toContainElement(screen.getByLabelText("Read only"));
+    expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Read only");
+    expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Resolved when the session starts");
+    const summary = disclosure.querySelector("summary")!;
+    summary.focus();
     expect(summary).toHaveFocus();
-    fireEvent.click(summary!);
+    fireEvent.click(summary);
     expect(disclosure).toHaveAttribute("open");
-    expect(within(disclosure).getByLabelText("Model")).toBeInTheDocument();
-    expect(within(disclosure).getByLabelText("Worktree isolation")).toBeChecked();
-    expect(within(disclosure).getByLabelText("Read only")).toBeChecked();
+    fireEvent.click(summary);
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Preserve this exact draft");
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ prompt: "Preserve this exact draft", changeMode: "worktree",
+      options: expect.objectContaining({ orchestrationMode: "auto", sandboxPolicy: { filesystemScope: "read-only", approvalPolicy: "on-request" } }) }), expect.any(Function), expect.any(Function));
   });
 
   it("separates the prompt label from its live character counter", () => {
@@ -632,7 +629,7 @@ describe("LaunchScreen", () => {
       subscriber?.({ type: "harness_list", harnesses: [NO_REASONING_HARNESS] });
     });
     await waitFor(() => {
-      expect(screen.getByText("Default · high")).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Default · high");
     });
 
     fireEvent.change(screen.getByLabelText("Model"), {
@@ -640,7 +637,8 @@ describe("LaunchScreen", () => {
     });
     expect(screen.getByRole("status")).toHaveTextContent(/does not expose reasoning controls/i);
     expect(screen.getByText("Unmanaged by the selected harness")).toBeInTheDocument();
-    expect(screen.getByText("Workspace · unmanaged")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Workspace write");
+    expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Resolved when the session starts");
     fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Run safely" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));

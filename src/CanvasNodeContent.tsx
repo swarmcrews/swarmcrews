@@ -1,5 +1,6 @@
 import { memo, type ComponentType } from "react";
 import type { NodeRenderProps } from "./types.ts";
+import { CanvasPresentationProvider } from "./canvas/CanvasPresentation.tsx";
 
 type Props = NodeRenderProps & {
   renderer: ComponentType<NodeRenderProps>;
@@ -10,7 +11,9 @@ type Props = NodeRenderProps & {
 export const CanvasNodeContent = memo(function CanvasNodeContent({
   renderer: Renderer, hiddenForDrag: _hiddenForDrag, ...props
 }: Props) {
-  return <Renderer {...props} />;
+  return <CanvasPresentationProvider selected={props.isSelected}>
+    <Renderer {...props} />
+  </CanvasPresentationProvider>;
 }, (previous, next) => {
   for (const key of Object.keys(next) as (keyof Props)[]) {
     if (key === "node" && previous.hiddenForDrag && next.hiddenForDrag) {

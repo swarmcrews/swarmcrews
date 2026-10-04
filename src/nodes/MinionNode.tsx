@@ -1,3 +1,7 @@
+import { ThinkingGroup } from "../components/ThinkingGroup.tsx";
+import { ThinkingStream } from "../components/ThinkingStream.tsx";
+import { EMPTY_THINKING_STREAM, thinkingStreamPatch } from "../thinking-stream.ts";
+import type { ThinkingStreamState } from "../thinking-stream.ts";
 import { SwarmcrewsIcon, type SwarmcrewsIconName } from "../components/SwarmcrewsIcon.tsx";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import type { NodeRenderProps, ThinkingConfig } from "../types.ts";
@@ -44,7 +48,7 @@ export interface MinionTaskState {
   result: string | null;
 }
 
-export interface MinionData {
+export interface MinionData extends ThinkingStreamState {
   sessionKey: string | null;
   historyHighWater?: number | undefined;
   highestLiveHistoryId?: number | undefined;
@@ -97,6 +101,7 @@ function extractCore(d: MinionData): SessionStreamState {
     highestLiveHistoryId: d.highestLiveHistoryId,
     status,
     messages: d.messages,
+    ...thinkingStreamPatch(d),
     streamingText: d.streamingText,
     streamingBlockIndex: d.streamingBlockIndex ?? null,
     totalCost: d.totalCost,
@@ -141,7 +146,11 @@ const MINION_LOG_ROLE: Record<
   },
 };
 
-function MinionLogEntry({
+function MinionLogEntry(props: { msg: MinionMessage; onAddContentNode?: ((content: string) => void) | undefined }) {
+  return props.msg.role === "thinking" ? <ThinkingGroup msgs={[props.msg]} density="compact" /> : <MinionTextLogEntry {...props} />;
+}
+
+function MinionTextLogEntry({
   msg,
   onAddContentNode,
 }: {
@@ -289,7 +298,7 @@ export function MinionNodeRenderer({
     if (outputRef.current) {
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
-  }, [data.messages.length]);
+  }, [data.messages.length, data.streamingThinkingText, data.streamingText]);
 
   // Native wheel listener on the log output: keep scroll gestures inside the
   // log from reaching the canvas container's native pan/zoom handler.
@@ -317,6 +326,7 @@ export function MinionNodeRenderer({
       onUpdateData({
         ...data,
         status: "idle",
+        ...EMPTY_THINKING_STREAM,
         streamingText: "",
         streamingBlockIndex: null,
         activeTaskIndex: -1,
@@ -1188,9 +1198,10 @@ export function MinionNodeRenderer({
                 onAddContentNode={onAddContentNode}
               />
             ))}
+            {data.streamingThinkingText && <ThinkingStream text={data.streamingThinkingText} density="compact" />}
             {data.streamingText ? (
               <StreamingBubble text={data.streamingText} role="assistant" density="compact" />
-            ) : data.status === "running" ? (
+            ) : !data.streamingThinkingText && data.status === "running" ? (
               <StreamingIndicator label="Working..." />
             ) : null}
             {debugEnabled && data.sessionKey && (
@@ -1297,6 +1308,7 @@ export const MINION_DEFAULT_DATA: MinionData = {
   taskQueue: [],
   activeTaskIndex: -1,
   messages: [],
+  ...EMPTY_THINKING_STREAM,
   streamingText: "",
   streamingBlockIndex: null,
   totalCost: 0,

@@ -1,3 +1,4 @@
+import { ThinkingStream } from "../components/ThinkingStream.tsx";
 import { useMobileCommandPicker } from "./use-mobile-command-picker.tsx";
 import { useIterationCommands, type IterationCommandSkills } from "./use-iteration-commands.tsx";
 import { ChatLinkScope } from "../components/ChatLink.tsx";
@@ -55,7 +56,7 @@ import {
 } from "./mobile-selectors.ts";
 
 /** Statuses where the leader is actively doing work right now. */
-const LEADER_LIVE_STATUSES = new Set(["running", "creating", "waiting"]);
+const LEADER_LIVE_STATUSES = new Set(["running", "creating"]);
 
 import type { SessionView } from "./use-mobile-navigation.ts";
 import type { PendingApproval } from "./mobile-approvals.ts";
@@ -325,7 +326,7 @@ function SessionCallout({ session }: { session?: MobileSessionInfo | undefined }
 }
 
 function EmptyChatState({ session }: { session?: MobileSessionInfo | undefined }) {
-  const active = !session || LEADER_LIVE_STATUSES.has(session.status);
+  const active = !session || (LEADER_LIVE_STATUSES.has(session.status) && !session.workItemPresentation?.needsAttention);
 
   if (active) {
     const connecting = !session;
@@ -342,10 +343,13 @@ function EmptyChatState({ session }: { session?: MobileSessionInfo | undefined }
     );
   }
 
+  const waiting = session?.status === "waiting" || session?.workItemPresentation?.needsAttention;
+  const crewWorking = session?.status === "waiting" && !session.workItemPresentation?.needsAttention
+    && activeMinionSummary(session).running > 0;
   return (
     <div className="mob-empty mob-empty--chat">
-      <h2>Ready</h2>
-      <p>No messages yet.</p>
+      <h2>{waiting ? crewWorking ? "Waiting for crew" : "Needs attention" : "Ready"}</h2>
+      <p>{waiting ? crewWorking ? "Minions are working. The leader is waiting for their updates." : "Check the task and reply when ready." : "No messages yet."}</p>
     </div>
   );
 }
@@ -766,7 +770,7 @@ function SessionChatContent({
   const groupedMessages = useMemo(() => groupMobileMessages(transcript), [transcript]);
   const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
   const boundaryRefs = useRef(new Map<string, HTMLElement>());
-  const follow = useChatFollow(sessionKey, `${transcript.length}:${state.streamingText}`, activeTab === "chat" && !unavailable && !loading, reading);
+  const follow = useChatFollow(sessionKey, `${transcript.length}:${state.streamingText}:${state.streamingThinkingText ?? ""}`, activeTab === "chat" && !unavailable && !loading, reading);
   function jumpToIteration(boundary: TranscriptBoundary) {
     const target = boundaryRefs.current.get(boundary.id);
     target?.scrollIntoView({ block: "start" });
@@ -983,7 +987,7 @@ function SessionChatContent({
             <div className="mob-chat-content" ref={follow.contentRef}>
             {isLeader ? null : <SessionCallout session={session} />}
             {history.loading ? <div role="status">Loading iteration history…</div> : null}
-            {transcript.length === 0 && !state.streamingText && !history.loading ? (
+            {transcript.length === 0 && !state.streamingText && !state.streamingThinkingText && !history.loading ? (
               <EmptyChatState session={session} />
             ) : null}
             {groupedMessages.map((group) => {
@@ -1011,6 +1015,7 @@ function SessionChatContent({
                 <MessageBubble key={group.message.id} message={group.message} />
               );
             })}
+            {state.streamingThinkingText && <ThinkingStream text={state.streamingThinkingText} density="compact" />}
             {state.streamingText ? (
               <article
                 className="mob-message mob-message--assistant mob-message--streaming"
@@ -1024,8 +1029,8 @@ function SessionChatContent({
                 <div className="mob-message-content"><AgentMessageText text={state.streamingText} /></div>
               </article>
             ) : null}
-            {session && LEADER_LIVE_STATUSES.has(session.status) &&
-            (state.messages.length > 0 || Boolean(state.streamingText)) ? (
+            {!state.streamingThinkingText && (Boolean(state.streamingText) ||
+              (session && LEADER_LIVE_STATUSES.has(session.status) && !session.workItemPresentation?.needsAttention && state.messages.length > 0)) ? (
               <ActiveThinkingIndicator />
             ) : null}
             </div>

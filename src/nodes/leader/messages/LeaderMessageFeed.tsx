@@ -1,3 +1,4 @@
+import { deferCanvasPresentation } from "../../../canvas/CanvasPresentation.tsx";
 /**
  * LeaderMessageFeed — the scrollable conversation feed for the Leader node.
  * Purely presentational: it renders grouped messages, the streaming
@@ -11,11 +12,13 @@ import { MessageSquare, Sparkles } from "lucide-react";
 import "../leader-body.css";
 import { StreamingBubble } from "../../../components/StreamingBubble.tsx";
 import { MessageTimestamp } from "../../../components/MessageTimestamp.tsx";
+import { sessionHistoryLink, SessionHistoryNavigation } from "../../../components/SessionHistoryNavigation.tsx";
 import { chatRoleStyle } from "../../../chat-bubble-style.ts";
 import { DebugInspector } from "../../../components/DebugInspector.tsx";
 import { WaitCountdown } from "../WaitCountdown.tsx";
 import { LeaderToolGroup } from "./ToolItem.tsx";
-import { LeaderThinkingGroup } from "./ThinkingGroup.tsx";
+import { ThinkingGroup } from "../../../components/ThinkingGroup.tsx";
+import { ThinkingStream } from "../../../components/ThinkingStream.tsx";
 import { UserMessageBubble } from "./UserMessageBubble.tsx";
 import { SelectableMessageBubble } from "./SelectableMessageBubble.tsx";
 import { LeaderWorkingIndicator } from "./LeaderWorkingIndicator.tsx";
@@ -38,9 +41,19 @@ export interface LeaderMessageFeedProps {
   isWorking: boolean;
 }
 
-export function LeaderMessageFeed({
-  outputRef,
-  contentRef,
+// Keep scroll refs/geometry mounted so useChatFollow can observe the deferred
+// body's growth and follow the latest response on first hydration.
+export function LeaderMessageFeed(props: LeaderMessageFeedProps) {
+  return <div ref={props.outputRef} onMouseDown={e => e.stopPropagation()}
+    className="leader-message-feed" data-selection-viewport="canvas"
+    onScroll={props.onScroll} tabIndex={-1} aria-label="Conversation messages">
+    <div className="leader-message-feed-content" ref={props.contentRef}>
+      <LeaderMessages {...props} />
+    </div>
+  </div>;
+}
+
+const LeaderMessages = deferCanvasPresentation(function LeaderMessages({
   data,
   groupedMessages,
   historyLoading = false,
@@ -56,18 +69,9 @@ export function LeaderMessageFeed({
   const scope = useId();
   const boundaries = groupedMessages.filter((group) => group.kind === "run-boundary");
   return (
-    <div
-      ref={outputRef}
-      onMouseDown={(e) => e.stopPropagation()}
-      className="leader-message-feed"
-      data-selection-viewport="canvas"
-      onScroll={onScroll}
-      tabIndex={-1}
-      aria-label="Conversation messages"
-    >
-      <div className="leader-message-feed-content" ref={contentRef}>
+    <>
       {historyLoading && <div role="status">Loading iteration history…</div>}
-      {groupedMessages.length === 0 && !historyLoading && !data.streamingText && !isWorking && (
+      {groupedMessages.length === 0 && !historyLoading && !data.streamingText && !data.streamingThinkingText && !isWorking && (
         <div className="leader-conversation-empty">
           <div className="leader-conversation-empty__icon" aria-hidden="true">
             {data.sessionKey ? <MessageSquare size={20} strokeWidth={1.5} /> : <Sparkles size={20} strokeWidth={1.5} />}
@@ -88,7 +92,7 @@ export function LeaderMessageFeed({
         }
         if (group.kind === "thinking-group") {
           return (
-            <LeaderThinkingGroup
+            <ThinkingGroup
               key={`thg-${gi}`}
               msgs={group.msgs}
               effort={data.thinkingConfig?.effort}
@@ -96,6 +100,8 @@ export function LeaderMessageFeed({
           );
         }
         const msg = group.msg;
+        const historyLink = sessionHistoryLink(msg);
+        if (historyLink) return <SessionHistoryNavigation key={msg.id} link={historyLink} />;
 
         if (msg.role === "user") {
           return <UserMessageBubble key={msg.id} msg={msg} />;
@@ -103,7 +109,7 @@ export function LeaderMessageFeed({
 
         if (msg.role === "thinking") {
           return (
-            <LeaderThinkingGroup
+            <ThinkingGroup
               key={msg.id}
               msgs={[msg]}
               effort={data.thinkingConfig?.effort}
@@ -138,6 +144,7 @@ export function LeaderMessageFeed({
           </div>
         );
       })}
+      {data.streamingThinkingText && <ThinkingStream text={data.streamingThinkingText} effort={data.thinkingConfig?.effort} />}
       {data.streamingText ? (
         <StreamingBubble text={data.streamingText.replace(/<!--task-name:.+?-->\s*/g, "")} role="assistant" />
       ) : null}
@@ -154,7 +161,6 @@ export function LeaderMessageFeed({
       {data.waitUntil && data.waitUntil > Date.now() && (
         <WaitCountdown waitUntil={data.waitUntil} reason={data.waitReason ?? "Waiting..."} />
       )}
-      </div>
-    </div>
+    </>
   );
-}
+});

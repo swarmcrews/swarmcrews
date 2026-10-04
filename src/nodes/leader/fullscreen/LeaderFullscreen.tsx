@@ -1,5 +1,7 @@
+import { CanvasPresentationContext } from "../../../canvas/CanvasPresentation.tsx";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useId,
   type CSSProperties,
@@ -24,7 +26,8 @@ import { EditableTitle } from "../EditableTitle.tsx";
 import { LeaderStatusIcon } from "../LeaderStatusIcon.tsx";
 import { WaitCountdown } from "../WaitCountdown.tsx";
 import { LeaderToolGroup } from "../messages/ToolItem.tsx";
-import { LeaderThinkingGroup } from "../messages/ThinkingGroup.tsx";
+import { ThinkingGroup } from "../../../components/ThinkingGroup.tsx";
+import { ThinkingStream } from "../../../components/ThinkingStream.tsx";
 import { UserMessageBubble } from "../messages/UserMessageBubble.tsx";
 import { SelectableMessageBubble } from "../messages/SelectableMessageBubble.tsx";
 import { LeaderWorkingIndicator } from "../messages/LeaderWorkingIndicator.tsx";
@@ -91,6 +94,14 @@ export interface LeaderFullscreenProps {
   bannerSlot: ReactNode;
 }
 
+function revealWorkspaceTab(tab: HTMLElement) {
+  const nav = tab.parentElement;
+  if (!nav || !tab.matches(".leader-fs-view-tab")) return;
+  const rail = nav.getBoundingClientRect(), control = tab.getBoundingClientRect();
+  if (control.left < rail.left) nav.scrollLeft += control.left - rail.left;
+  else if (control.right > rail.right) nav.scrollLeft += control.right - rail.right;
+}
+
 export function LeaderFullscreen(props: LeaderFullscreenProps) {
   const { data, isWorking, onUpdateData, onExit, input, onInputChange,
     onPromptSubmit, onPromptKeyDown, promptPlaceholder, promptSubmitLabel,
@@ -120,8 +131,27 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
   const minionCount = data.taskPlan.filter(t => t.executor === "minion").length;
   const selectedView = view === "dashboard" && !hasDashboard ? "conversation"
     : view === "minions" && !minionsSlot ? "conversation" : view;
+  const workspaceTabs = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const nav = workspaceTabs.current;
+    if (!nav) return;
+    const revealCurrentTab = () => {
+      const focused = document.activeElement;
+      const tab = focused instanceof HTMLElement && focused.parentElement === nav
+        ? focused : nav.querySelector<HTMLElement>('[aria-current="page"]');
+      if (tab) revealWorkspaceTab(tab);
+    };
+    // Focus takes priority; attention-driven selection must remain visible without taking focus.
+    revealCurrentTab();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(revealCurrentTab);
+    observer.observe(nav);
+    // Fonts/selection weight can resize a tab after layout without resizing the rail.
+    for (const tab of nav.children) observer.observe(tab);
+    return () => observer.disconnect();
+  }, [selectedView]);
   const approvalPending = selectCanvasChangeMode(data) === "worktree" && data.approvalPending;
-  const chatFollow = useChatFollow(data.sessionKey ?? "new-leader", `${transcript.length}:${data.streamingText}`, selectedView === "conversation");
+  const chatFollow = useChatFollow(data.sessionKey ?? "new-leader", `${transcript.length}:${data.streamingText}:${data.streamingThinkingText ?? ""}`, selectedView === "conversation");
   const executionHidden = compact ? side !== "activity" : (leftHidden ?? !(data.taskPlan.length || graphProjection));
   const contextHidden = compact ? side !== "context" : rightHidden;
 
@@ -176,7 +206,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
   };
 
   return createPortal(
-    <div ref={rootRef} className="leader-fullscreen-overlay" data-testid="leader-fullscreen-overlay"
+    <CanvasPresentationContext.Provider value={true}><div ref={rootRef} className="leader-fullscreen-overlay" data-testid="leader-fullscreen-overlay"
       role="dialog" aria-modal="true" aria-label="Leader fullscreen cockpit" data-scroll-capture
       onKeyDown={trapFocus} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onWheel={e => e.stopPropagation()}>
       <header className="leader-fs-header">
@@ -211,7 +241,8 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
         <main className="leader-fs-main">
           <div className="leader-fs-workspace-nav">
             <button ref={executionToggle} className="leader-fs-icon" title="Execution plan and progress" aria-expanded={!executionHidden} aria-label="Toggle execution panel" aria-controls="leader-fs-activity" onClick={() => toggleSide("activity")}><PanelLeft size={16} /></button>
-            <nav aria-label="Leader workspace" className="leader-fs-view-tabs">
+            <nav ref={workspaceTabs} aria-label="Leader workspace" className="leader-fs-view-tabs"
+              onFocusCapture={e => { if (e.target instanceof HTMLElement) revealWorkspaceTab(e.target); }}>
               <button className="leader-fs-view-tab" aria-current={selectedView === "conversation" ? "page" : undefined} onClick={() => setView("conversation")}><MessageSquare size={14} />Conversation</button>
               <button className="leader-fs-view-tab" aria-current={selectedView === "dashboard" ? "page" : undefined} disabled={!hasDashboard} title={hasDashboard ? "Open leader dashboard and decisions" : "Dashboard appears when the leader shares an artifact or question"} onClick={() => { setView("dashboard"); setSide(null); }}><LayoutDashboard size={14} />Dashboard{hasDashboard && <span className="leader-fs-dot" />}</button>
               {minionsSlot && <button className="leader-fs-view-tab" aria-current={selectedView === "minions" ? "page" : undefined} onClick={() => { setView("minions"); setSide(null); }}><Bot size={14} />Minions <span>{minionCount}</span></button>}
@@ -227,7 +258,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
               onScroll={chatFollow.onScroll} tabIndex={0} role="region" aria-label="Conversation messages">
               <div ref={chatFollow.contentRef} className="leader-fs-message-content">
               {props.historyLoading && <div role="status">Loading iteration history…</div>}
-              {transcript.length === 0 && !props.historyLoading && !isWorking && !data.streamingText && <div className="leader-fs-empty"><MessageSquare size={28} strokeWidth={1.3} /><h2>{data.sessionKey ? "Continue the conversation" : "What would you like to accomplish?"}</h2><p>{data.sessionKey ? "Send a message to steer the next step." : "Describe your goal. Your leader can investigate, build, delegate work, and bring decisions back to you."}</p><span>Use / for commands · Inspect connected sources in Context</span></div>}
+              {transcript.length === 0 && !props.historyLoading && !isWorking && !data.streamingText && !data.streamingThinkingText && <div className="leader-fs-empty"><MessageSquare size={28} strokeWidth={1.3} /><h2>{data.sessionKey ? "Continue the conversation" : "What would you like to accomplish?"}</h2><p>{data.sessionKey ? "Send a message to steer the next step." : "Describe your goal. Your leader can investigate, build, delegate work, and bring decisions back to you."}</p><span>Use / for commands · Inspect connected sources in Context</span></div>}
             {groupedMessages.map((group, gi) => {
               if (group.kind === "run-boundary") {
                 return <IterationBoundary key={group.id} boundary={group} boundaries={boundaries}
@@ -238,7 +269,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
               }
               if (group.kind === "thinking-group") {
                 return (
-                  <LeaderThinkingGroup
+                  <ThinkingGroup
                     key={`thg-${gi}`}
                     msgs={group.msgs}
                     effort={thinkingEffort}
@@ -251,7 +282,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
               }
               if (msg.role === "thinking") {
                 return (
-                  <LeaderThinkingGroup
+                  <ThinkingGroup
                     key={msg.id}
                     msgs={[msg]}
                     effort={thinkingEffort}
@@ -277,6 +308,7 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
                 </div>
               );
             })}
+            {data.streamingThinkingText && <ThinkingStream text={data.streamingThinkingText} effort={thinkingEffort} />}
             {data.streamingText ? (
               <StreamingBubble
                 text={data.streamingText.replace(
@@ -312,6 +344,6 @@ export function LeaderFullscreen(props: LeaderFullscreenProps) {
             configSlot={configSlot} changesSlot={contextHidden ? null : props.changesSlot} contextItems={contextItems} reviewRequest={reviewRequest} />
         </div>
       </div>
-    </div>, document.body,
+    </div></CanvasPresentationContext.Provider>, document.body,
   );
 }

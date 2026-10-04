@@ -155,3 +155,49 @@
     transition: none;
   }
 }
+
+/* Keep the decision-bearing run settings visible; only optional setup folds. */
+.mob-launch-options-copy strong, .mob-launch-options-copy small {
+  white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere;
+}
+.mob-launch-options-copy strong { font-size: .8125rem; }
+.mob-launch-options-copy small { font-size: .75rem; line-height: 1.5; }
+.mob-launch-options > summary { min-height: 44px; }
+.mob-launch-options > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.mob-launch .mob-launch-project strong, .mob-launch .mob-launch-project small { overflow-wrap: anywhere; }
+
+.mob-launch { width: 100%; max-width: 48rem; margin-inline: auto; }
+.mob-launch .mob-screen-header h1 { font-size: 1.5rem; }
+.mob-launch .mob-screen-intro,
+.mob-launch .mob-launch-prompt-heading,
+.mob-launch .mob-launch-field > span,
+.mob-launch .mob-launch-project span,
+.mob-launch .mob-launch-checkbox strong,
+.mob-launch .mob-sandbox-access-options strong,
+.mob-launch .mob-reasoning-control legend,
+.mob-launch .mob-reasoning-output > span { font-size: .8125rem; }
+.mob-app .mob-launch .mob-launch-field select,
+.mob-app .mob-launch .mob-launch-field textarea { font-size: 1rem; }
+.mob-launch .mob-control-help,
+.mob-launch .mob-muted,
+.mob-launch .mob-launch-prompt-heading > span,
+.mob-launch .mob-launch-project small,
+.mob-launch .mob-launch-checkbox small,
+.mob-launch .mob-sandbox-access-options small,
+.mob-launch .mob-sandbox-unmanaged,
+.mob-launch .mob-launch-submit-help { font-size: .75rem; line-height: 1.5; }
+.mob-launch .mob-launch-file-button,
+.mob-launch .mob-launch-templates button,
+.mob-launch .mob-reasoning-options button,
+.mob-launch .mob-reasoning-output button { min-height: 44px; font-size: .8125rem; padding-block: 8px; overflow-wrap: anywhere; }
+.mob-launch .mob-sandbox-access legend { font-size: .875rem; }
+.mob-launch .mob-leader-runtime-heading h2 { font-size: 1.125rem; }
+.mob-launch .mob-leader-runtime-heading > div > span { font-size: .75rem; }
+.mob-launch .mob-runtime-badge { font-size: .75rem; white-space: normal; overflow-wrap: anywhere; }
+.mob-launch .mob-launch-submit { font-size: .875rem; padding-block: 12px; }
+.mob-launch .mob-sandbox-access-options label:focus-within,
+.mob-launch .mob-launch-checkbox:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Keep the shared mobile native-control floor while honoring enlarged text. */
+.mob-app .mob-screen.mob-launch :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+  font-size: max(16px, 1rem);
+}

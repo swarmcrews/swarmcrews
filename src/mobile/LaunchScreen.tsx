@@ -1,4 +1,5 @@
 import { ConnectionsPicker } from "../mcp-connections/ConnectionsPicker.tsx";
+import { LaunchRunSummary } from "../components/LaunchRunSummary.tsx";
 import { SkillIcon } from "../components/SkillIcon.tsx";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
@@ -194,7 +195,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   }, [targetProjectId]);
 
   const targetPath = lockedProject?.path ?? selectedProject?.path ?? null;
-  const targetName = lockedProject?.name ?? selectedProject?.name ?? null;
   const trimmedPrompt = prompt.trim();
   const attachedFileCount = imageAttachments.length + textAttachments.length;
   const skillsReady = targetProjectId === loadedSkillsProjectId;
@@ -249,17 +249,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const sandboxSupport = harnessesLoaded
     ? activeHarness?.capabilities.sandboxEnforcement ?? null
     : undefined;
-  const requestedAccessLabel = launchSandboxPolicy.filesystemScope === "unrestricted"
-    ? "Full host"
-    : launchSandboxPolicy.filesystemScope === "workspace-write"
-      ? "Workspace"
-      : "Read only";
-  const sandboxScopeUnmanaged = sandboxSupport !== undefined
-    && (sandboxSupport === null
-      || !sandboxSupport.filesystem.includes(launchSandboxPolicy.filesystemScope));
-  const accessLabel = sandboxScopeUnmanaged
-    ? `${requestedAccessLabel} · unmanaged`
-    : requestedAccessLabel;
   const selectedSkills = useMemo(
     () =>
       selectedSkillIds
@@ -412,36 +401,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       {error ? <div className="mob-launch-error" role="alert">{error}</div> : null}
 
       <form className="mob-launch-form" onSubmit={handleSubmit}>
-        {lockedProject ? (
-          <div className="mob-launch-project" aria-label="Project">
-            <span>Project</span>
-            <strong>{lockedProject.name}</strong>
-            <small>{lockedProject.path}</small>
-          </div>
-        ) : (
-          <fieldset className="mob-project-picker" disabled={loading}>
-            <legend>Recent projects</legend>
-            {projects.length === 0 && !loading ? (
-              <p className="mob-muted">No recent projects found.</p>
-            ) : null}
-            {projects.map((project) => (
-              <label className="mob-project-row" key={project.id}>
-                <input
-                  type="radio"
-                  name="launch-project"
-                  value={project.id}
-                  checked={selectedProjectId === project.id}
-                  onChange={() => setSelectedProjectId(project.id)}
-                />
-                <span>
-                  <strong>{project.name}</strong>
-                  <small>{project.path}</small>
-                </span>
-              </label>
-            ))}
-          </fieldset>
-        )}
-
         <LaunchPrompt key={targetProjectId ?? "no-project"} value={prompt} onChange={setPrompt}
           commands={slashCommands}
           disabled={!skillsReady || loadedSettingsProjectId !== targetProjectId}
@@ -457,58 +416,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
               : null);
           }} />
         {commandNotice && <p className="mob-muted" role="status">{commandNotice}</p>}
-
-        <details className="mob-launch-options" data-testid="launch-run-setup">
-          <summary>
-            <span className="mob-launch-options-copy">
-              <strong>Run setup</strong>
-              <small>Model · {modelLabel}</small>
-              <small>Reasoning · {reasoningLabel}</small>
-              <small>
-                {accessLabel} · {worktreeIsolation ? "Worktree" : "Live"} · {attachedFileCount > 0
-                  ? `${attachedFileCount} ${attachedFileCount === 1 ? "file" : "files"}`
-                  : "No files"} · {selectedSkills.length > 0
-                    ? `${selectedSkills.length} ${selectedSkills.length === 1 ? "skill" : "skills"}`
-                    : "No skills"}
-              </small>
-            </span>
-            <span className="mob-launch-options-chevron" aria-hidden="true">⌄</span>
-          </summary>
-
-          <div className="mob-launch-options-body">
-          <MobileLeaderRuntimeControls
-          harnesses={harnesses}
-          modelGroups={modelGroups}
-          modelValue={modelValue}
-          projectThinkingConfig={projectSettings.defaultLeaderThinkingConfig}
-          thinkingOverride={thinkingOverride}
-          onModelChange={handleModelChange}
-          onThinkingOverrideChange={setThinkingOverride}
-        />
-
-        <ConnectionsPicker key={targetProjectId} projectId={targetProjectId}
-          connectionIds={connectionSelection?.project === targetProjectId ? connectionSelection?.ids : undefined}
-          onChange={ids => { if (targetProjectId) setConnectionSelection({ project: targetProjectId, ids }); }}
-          policy={launchSandboxPolicy} onPolicyChange={setSandboxPolicyOverride} harness={selectedModel?.harness} />
-
-        <MobileSandboxAccessControl
-          policy={launchSandboxPolicy}
-          support={sandboxSupport}
-          onChange={setSandboxPolicyOverride}
-        />
-
-        <label className="mob-launch-checkbox">
-          <input
-            type="checkbox"
-            aria-label="Worktree isolation"
-            checked={worktreeIsolation}
-            onChange={(event) => setWorktreeIsolation(event.currentTarget.checked)}
-          />
-          <span>
-            <strong>Worktree isolation</strong>
-            <small>Keep this run's changes separate until review.</small>
-          </span>
-        </label>
 
         <section className="mob-launch-files" aria-label="Launch attachments">
           <div className="mob-launch-files-head">
@@ -567,6 +474,86 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           {attachmentError ? <div className="mob-launch-error" role="alert">{attachmentError}</div> : null}
         </section>
 
+        {lockedProject ? (
+          <div className="mob-launch-project" aria-label="Project">
+            <span>Project</span>
+            <strong>{lockedProject.name}</strong>
+            <small>{lockedProject.path}</small>
+          </div>
+        ) : (
+          <fieldset className="mob-project-picker" disabled={loading}>
+            <legend>Recent projects</legend>
+            {projects.length === 0 && !loading ? (
+              <p className="mob-muted">No recent projects found.</p>
+            ) : null}
+            {projects.map((project) => (
+              <label className="mob-project-row" key={project.id}>
+                <input
+                  type="radio"
+                  name="launch-project"
+                  value={project.id}
+                  checked={selectedProjectId === project.id}
+                  onChange={() => setSelectedProjectId(project.id)}
+                />
+                <span>
+                  <strong>{project.name}</strong>
+                  <small>{project.path}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+
+        <label className="mob-launch-checkbox">
+          <input
+            type="checkbox"
+            aria-label="Worktree isolation"
+            checked={worktreeIsolation}
+            onChange={(event) => setWorktreeIsolation(event.currentTarget.checked)}
+          />
+          <span>
+            <strong>Worktree isolation</strong>
+            <small>Keep this run's changes separate until review.</small>
+          </span>
+        </label>
+
+        <MobileLeaderRuntimeControls section="model"
+          harnesses={harnesses} modelGroups={modelGroups} modelValue={modelValue}
+          projectThinkingConfig={projectSettings.defaultLeaderThinkingConfig} thinkingOverride={thinkingOverride}
+          onModelChange={handleModelChange} onThinkingOverrideChange={setThinkingOverride} />
+        <MobileSandboxAccessControl
+          policy={launchSandboxPolicy}
+          support={sandboxSupport}
+          onChange={setSandboxPolicyOverride}
+        />
+
+        <LaunchRunSummary model={modelLabel} changeMode={worktreeIsolation ? "worktree" : "live"}
+          policy={launchSandboxPolicy} orchestration="Graph — auto-start safe work"
+          reasoning={reasoningLabel} skills={selectedSkills.length} />
+
+        <details className="mob-launch-options" data-testid="launch-run-setup">
+          <summary>
+            <span className="mob-launch-options-copy"><strong>Orchestration, reasoning &amp; skills</strong>
+              <small>Optional setup · {selectedSkills.length} skills</small></span>
+            <span className="mob-launch-options-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div className="mob-launch-options-body">
+          <p className="mob-control-help">Graph — auto-start safe work. The Leader uses graphs when useful.</p>
+          <MobileLeaderRuntimeControls section="reasoning"
+          harnesses={harnesses}
+          modelGroups={modelGroups}
+          modelValue={modelValue}
+          projectThinkingConfig={projectSettings.defaultLeaderThinkingConfig}
+          thinkingOverride={thinkingOverride}
+          onModelChange={handleModelChange}
+          onThinkingOverrideChange={setThinkingOverride}
+        />
+
+        <ConnectionsPicker key={targetProjectId} projectId={targetProjectId}
+          connectionIds={connectionSelection?.project === targetProjectId ? connectionSelection?.ids : undefined}
+          onChange={ids => { if (targetProjectId) setConnectionSelection({ project: targetProjectId, ids }); }}
+          policy={launchSandboxPolicy} onPolicyChange={setSandboxPolicyOverride} harness={selectedModel?.harness} />
+
         <section className="mob-launch-skills" aria-label="Launch skills">
           <div className="mob-launch-skills-head">
             <span>Skills</span>
@@ -602,36 +589,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           )}
         </section>
 
-        <section className="mob-launch-review" aria-label="Launch summary">
-          <div>
-            <span>Target</span>
-            <strong>{targetName ? "Selected project" : "Choose a project"}</strong>
-          </div>
-          <div>
-            <span>Model</span>
-            <strong>{modelLabel}</strong>
-          </div>
-          <div>
-            <span>Reasoning</span>
-            <strong>{reasoningLabel}</strong>
-          </div>
-          <div>
-            <span>Isolation</span>
-            <strong>{worktreeIsolation ? "Worktree" : "Live"}</strong>
-          </div>
-          <div>
-            <span>Access</span>
-            <strong>{accessLabel}</strong>
-          </div>
-          <div>
-            <span>Files</span>
-            <strong>{attachedFileCount > 0 ? `${attachedFileCount} attached` : "None"}</strong>
-          </div>
-          <div>
-            <span>Skills</span>
-            <strong>{selectedSkills.length > 0 ? `${selectedSkills.length} armed` : "None"}</strong>
-          </div>
-        </section>
           </div>
         </details>
 

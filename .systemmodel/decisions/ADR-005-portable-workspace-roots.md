@@ -20,7 +20,7 @@ On first registration, one unambiguous UUID from a legacy workspace descriptor o
 
 Modern launch and WorkItem creation commands carry only the opaque workspace UUID. The server resolves the current source root. Repository moves use an explicit rebind operation. Copies receive a new UUID by default; an explicit attachment may select an existing UUID and retires the copy's automatic binding without deleting either central state directory. Editable nicknames are registry metadata and do not participate in authorization.
 
-Git change mode and process sandbox policy remain separate. Sandbox requests always specify filesystem scope, approval policy, and network access. Plan mode forces read-only; ordinary authorized roots default to workspace-write; unrestricted access requires an explicit request. Codex enforces all three axes. Other harnesses report axes they cannot enforce as `unmanaged` rather than inheriting or implying a guarantee.
+Git change mode and process sandbox policy remain separate. Sandbox policy has two independent requested axes: filesystem scope and approval policy. An explicit policy takes precedence over legacy permission mode; legacy plan mode resolves to read-only only when no explicit policy is supplied. Filesystem scope otherwise defaults to workspace-write; unrestricted access requires an explicit request. Codex maps the requested axes to its native filesystem and approval policy. Effective policy reports unsupported harness axes as `unmanaged` rather than implying a guarantee. Network isolation is not represented or certified by this contract; native enforcement claims require backend verification, not merely a requested policy or mocked mapping test.
 
 ## Consequences and tradeoffs
 

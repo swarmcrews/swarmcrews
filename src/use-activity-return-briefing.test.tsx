@@ -108,12 +108,16 @@ describe("Activity visit ownership", () => {
   });
 
   it("degrades safely when browser storage is unavailable", () => {
-    const read = vi.spyOn(localStorage, "getItem").mockImplementation(() => { throw new Error("blocked"); });
-    const write = vi.spyOn(localStorage, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    // jsdom Storage is a proxy: spying on instance methods does not replace them.
+    const read = vi.fn(() => { throw new Error("blocked"); });
+    const write = vi.fn(() => { throw new Error("blocked"); });
+    vi.stubGlobal("localStorage", { getItem: read, setItem: write });
     try {
       const { result } = renderHook(() => useBriefing({ sessions: [session({ status: "completed" })] }));
       expect(result.current?.historyAvailable).toBe(false);
       expect(result.current?.entries).toHaveLength(1);
-    } finally { read.mockRestore(); write.mockRestore(); }
+      expect(read).toHaveBeenCalled();
+      expect(write).toHaveBeenCalled();
+    } finally { vi.unstubAllGlobals(); }
   });
 });

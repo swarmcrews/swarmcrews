@@ -753,7 +753,9 @@ function Inspector({
   const streamingText = conversationMatches && conversation.streamingText
     ? conversation.streamingText
     : leader?.data.streamingText ?? "";
-  const chatFollow = useChatFollow(session.sessionKey, streamingText || transcriptMessages.at(-1));
+  const streamingThinkingText = conversationMatches
+    ? conversation.streamingThinkingText ?? "" : leader?.data.streamingThinkingText ?? "";
+  const chatFollow = useChatFollow(session.sessionKey, streamingText || streamingThinkingText || transcriptMessages.at(-1));
   useEffect(() => {
     if (!awaitingResponse) return;
     const hasNewResponse = transcriptMessages.some((message) =>
@@ -1005,7 +1007,7 @@ function Inspector({
           <div className="act-conversation-scroll" ref={chatFollow.feedRef} onScroll={chatFollow.onScroll}
             tabIndex={0} role="region" aria-label="Conversation messages">
             <section ref={chatFollow.contentRef} className="act-conversation" aria-label="Conversation history" data-activity-target="conversation" tabIndex={-1}>
-              {transcriptMessages.length > 0 || streamingText || workItemHistory.orderedRuns.length > 0 ? (
+              {transcriptMessages.length > 0 || streamingText || streamingThinkingText || workItemHistory.orderedRuns.length > 0 ? (
                 <ActivityTranscript unified={Boolean(session.workItemId)} history={workItemHistory}
                   graphNodes={taskGraphController.snapshot?.nodes}
                   taskPlan={leader?.data.taskPlan}
@@ -1015,7 +1017,7 @@ function Inspector({
                     taskGraphController.inspectNode(nodeId);
                   }}
                   currentRunKey={session.sessionKey} currentMessages={transcriptMessages}
-                  currentStreamingText={streamingText} thinking={Boolean(awaitingResponse)} />
+                  currentStreamingText={streamingText} currentStreamingThinkingText={streamingThinkingText} thinking={Boolean(awaitingResponse)} />
               ) : (
                 <div className="act-inspector-fallback">
                   <span className="act-fallback-icon" aria-hidden>

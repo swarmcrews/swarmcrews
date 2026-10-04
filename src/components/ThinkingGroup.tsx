@@ -1,21 +1,24 @@
-import { memo, useCallback, useMemo, useState } from "react";
-import { chatRoleStyle } from "../../../chat-bubble-style.ts";
-import type { ThinkingConfig } from "../../../types.ts";
-import type { LeaderMessage } from "../types.ts";
+import { memo, useCallback, useId, useMemo, useState } from "react";
+import { chatRoleStyle } from "../chat-bubble-style.ts";
+import type { ThinkingConfig } from "../types.ts";
+import type { DisplayMessage } from "../sdk-messages.ts";
 
 /**
  * Collapsible cluster of consecutive `thinking` blocks emitted by the
  * assistant. Shows an estimated token count and the configured effort
  * badge; expanding reveals the raw extended-thinking text.
  */
-export const LeaderThinkingGroup = memo(function LeaderThinkingGroup({
+export const ThinkingGroup = memo(function ThinkingGroup({
   msgs,
   effort,
+  density = "default",
 }: {
-  msgs: LeaderMessage[];
+  msgs: DisplayMessage[];
+  density?: "default" | "compact";
   effort?: ThinkingConfig["effort"];
 }) {
   const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
   const tokenLabel = useMemo(() => {
     const totalLen = msgs.reduce((sum, m) => sum + m.content.length, 0);
     const estTokens = Math.round(totalLen / 4);
@@ -26,8 +29,11 @@ export const LeaderThinkingGroup = memo(function LeaderThinkingGroup({
   const handleToggle = useCallback(() => setExpanded((value) => !value), []);
 
   return (
-    <div style={{ marginBlock: 2 }}>
+    <div style={{ marginBlock: 2, minWidth: 0, width: "100%" }}>
       <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={contentId}
         onClick={handleToggle}
         onMouseDown={(e) => e.stopPropagation()}
         style={{
@@ -104,6 +110,8 @@ export const LeaderThinkingGroup = memo(function LeaderThinkingGroup({
       </button>
 
       <div
+        id={contentId}
+        aria-hidden={!expanded}
         style={{
           display: "grid",
           gridTemplateRows: expanded ? "1fr" : "0fr",
@@ -113,7 +121,7 @@ export const LeaderThinkingGroup = memo(function LeaderThinkingGroup({
         <div style={{ overflow: "hidden" }}>
           <div
             style={{
-              ...chatRoleStyle("thinking"),
+              ...chatRoleStyle("thinking", { density }),
               maxHeight: 200,
               overflowY: "auto",
             }}

@@ -1,0 +1,15 @@
+/* Decision-critical copy shares the audited safety disclosure role. */
+.leader-selected-setting,
+.leader-launch-field > .leader-selected-setting {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-secondary);
+  font: 400 var(--text-size-label)/var(--leading-body) var(--font-sans);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.leader-selected-setting strong { font-weight: 600; }

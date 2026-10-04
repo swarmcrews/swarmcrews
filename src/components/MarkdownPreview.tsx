@@ -1,3 +1,4 @@
+import { deferCanvasPresentation } from "../canvas/CanvasPresentation.tsx";
 import {
   createElement,
   memo,
@@ -181,7 +182,7 @@ export interface MarkdownPreviewProps
   idPrefix?: string;
 }
 
-export const MarkdownPreview = memo(function MarkdownPreview({
+export const MarkdownPreview = memo(deferCanvasPresentation(function MarkdownPreview({
   content,
   className = "md-preview",
   headingOffset = 2,
@@ -203,4 +204,4 @@ export const MarkdownPreview = memo(function MarkdownPreview({
       {blocks.map((block) => renderBlock(block, { headingOffset, standaloneHeadings, idPrefix }))}
     </div>
   );
-});
+}));

@@ -1,22 +1,23 @@
 import { SkillIcon } from "../../components/SkillIcon.tsx";
-import { useContext, useMemo, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useContext, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   Settings2,
   Sparkles,
 } from "lucide-react";
-import { DEFAULT_THINKING_CONFIG, type ThinkingConfig } from "../../types.ts";
+import { DEFAULT_THINKING_CONFIG } from "../../types.ts";
 import { findHarness } from "../../harness-list.ts";
 import { getModelCapability } from "../../model-meta.ts";
-import { buildLaunchModelGroups, parseLaunchModelValue } from "../../mobile/launch-models.ts";
 import { getPickableSkills, getSkill } from "../../skills/registry.ts";
 import type { SkillTemplate } from "../../skills/types.ts";
 import { useHarnessList } from "../../use-harness-list.tsx";
-import type { PermissionMode } from "../../components/SessionToolbar.tsx";
+import { ModelSelectionMenu, type PermissionMode } from "../../components/SessionToolbar.tsx";
 import { PromptAttachmentsContext } from "./prompt/use-prompt-attachments.ts";
 import { LeaderPromptBar } from "./prompt/LeaderPromptBar.tsx";
 import type { SlashCommand } from "./prompt/slash-commands.ts";
 import type { LeaderData } from "./types.ts";
 import { SandboxPolicyControls } from "./SandboxPolicyControls.tsx";
+import { LaunchRunSummary } from "../../components/LaunchRunSummary.tsx";
+import { SelectedSetting } from "./SelectedSetting.tsx";
 
 const PERMISSIONS: Array<{ value: PermissionMode; label: string; description: string }> = [
   { value: "auto", label: "Auto", description: "Approve safe operations" },
@@ -124,11 +125,10 @@ export function ActivityLaunchForm({
   onUpdate: (patch: Partial<LeaderData>) => void;
 }) {
   const { harnesses, loaded: harnessesLoaded } = useHarnessList();
-  const modelGroups = useMemo(() => buildLaunchModelGroups(harnesses), [harnesses]);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const activeHarnessName = data.harness ?? "claude";
   const activeModel = data.model ?? "opus";
   const activeHarness = findHarness(harnesses, activeHarnessName);
-  const modelValue = `${activeHarnessName}::${activeModel}`;
   const capability = getModelCapability(activeModel, activeHarness);
   const availableSkills = getPickableSkills();
   const selectedSkills = (data.skillIds ?? [])
@@ -140,10 +140,11 @@ export function ActivityLaunchForm({
   const permissionOptions = activeHarnessName === "codex"
     || (activeHarness !== undefined && !activeHarness.capabilities.permissionPrompts)
     ? [] : PERMISSIONS;
-  const selectedModel = modelGroups
-    .flatMap((group) => group.options)
-    .find((option) => option.value === modelValue);
-  const reasoningEffort = (data.thinkingConfig ?? DEFAULT_THINKING_CONFIG).effort;
+  const selectedPermission = permissionOptions.find((option) => option.value === (data.permissionMode ?? "auto"));
+  const orchestrationMeaning = data.orchestrationMode === "plan"
+    ? "Graph — review before start" : "Graph — auto-start safe work";
+  const selectedModel = activeHarness?.models.find((model) => model.id === activeModel);
+  const thinkingConfig = data.thinkingConfig ?? DEFAULT_THINKING_CONFIG;
   const missingVariable = selectedSkills.some((skill) => skill.variables.some((variable) =>
     variable.required && !(data.skillValues?.[skill.id]?.[variable.name]
       ?? variable.defaultValue ?? "").trim()));
@@ -242,50 +243,61 @@ export function ActivityLaunchForm({
                 </span>
                 <span>
                   <strong>Run configuration</strong>
-                  <small>Adjust each setting in place</small>
+                  <small>Workspace, model and access first</small>
                 </span>
               </span>
+            </div>
+
+            <section className="leader-launch-workspace-section" aria-label="Workspace and isolation">
               {workspaceControl}
+            <label className="leader-launch-toggle">
+              <input
+                type="checkbox"
+                aria-label="Isolated worktree"
+                checked={data.worktreeIsolation ?? false}
+                onChange={(event) => onUpdate({ worktreeIsolation: event.target.checked })}
+              />
+              <span>
+                <strong>Isolated worktree</strong>
+                <small>Keep this task's edits separate until review.</small>
+              </span>
+            </label>
+
+            </section>
+
+            <div className="leader-launch-field">
+              <span>Model</span>
+              <ModelSelectionMenu
+                model={activeModel}
+                activeHarnessName={activeHarnessName}
+                activeHarness={activeHarness}
+                harnesses={harnesses.filter((harness) => harness.models.length > 0)}
+                modelOptions={activeHarness?.models.map((model) => model.id) ?? []}
+                modelLabels={Object.fromEntries(activeHarness?.models.map((model) => [model.id, model.label]) ?? [])}
+                capability={capability}
+                thinkingConfig={thinkingConfig}
+                onModelChange={(model) => onUpdate({ harness: activeHarnessName, model })}
+                onHarnessChange={(harness, model) => {
+                  if (model) onUpdate({ harness, model });
+                }}
+                onThinkingConfigChange={(config) => onUpdate({ thinkingConfig: config })}
+                hasSession={false}
+                open={modelPickerOpen}
+                onToggle={() => setModelPickerOpen((open) => !open)}
+                layout="inline"
+                fullWidth
+                triggerLabel="Model"
+                showThinkingToggle
+              />
             </div>
 
             <div className="leader-launch-config-grid">
-              <label className="leader-launch-field">
-                <span>Model</span>
-                <select
-                  aria-label="Model"
-                  value={modelValue}
-                  onChange={(event) => {
-                    const selection = parseLaunchModelValue(event.target.value);
-                    if (selection) onUpdate({ harness: selection.harness, model: selection.model });
-                  }}
-                >
-                  {!selectedModel ? <option value={modelValue}>{activeModel}</option> : null}
-                  {modelGroups.map((group) => (
-                    <optgroup key={group.harness} label={group.label}>
-                      {group.options.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </label>
-
-              <label className="leader-launch-field">
-                <span>Orchestration</span>
-                <select aria-label="Orchestration"
-                  value={data.orchestrationMode === "plan" ? "plan" : "auto"}
-                  onChange={(event) => onUpdate({ orchestrationMode:
-                    event.target.value as NonNullable<LeaderData["orchestrationMode"]> })}>
-                  <option value="auto">Graph — auto-start safe work</option>
-                  <option value="plan">Graph — review before start</option>
-                </select>
-              </label>
-
               {permissionOptions.length > 0 ? (
                 <label className="leader-launch-field">
                   <span>Permissions</span>
                   <select
                     aria-label="Permissions"
+                    aria-describedby={`leader-permission-meaning-${nodeId}`}
                     value={data.permissionMode ?? "auto"}
                     onChange={(event) => onUpdate({ permissionMode: event.target.value as PermissionMode })}
                   >
@@ -295,42 +307,12 @@ export function ActivityLaunchForm({
                       </option>
                     ))}
                   </select>
+                  {selectedPermission ? <SelectedSetting id={`leader-permission-meaning-${nodeId}`}
+                    value={`${selectedPermission.label} — ${selectedPermission.description}`} /> : null}
                 </label>
               ) : null}
 
-              {capability.supportsAdaptiveThinking ? (
-                <label className="leader-launch-field">
-                  <span>Reasoning</span>
-                  <select
-                    aria-label="Reasoning effort"
-                    value={reasoningEffort}
-                    onChange={(event) => onUpdate({
-                      thinkingConfig: {
-                        ...(data.thinkingConfig ?? DEFAULT_THINKING_CONFIG),
-                        enabled: true,
-                        effort: event.target.value as ThinkingConfig["effort"],
-                      },
-                    })}
-                  >
-                    {capability.supportedEffortLevels.map((effort) => (
-                      <option key={effort} value={effort}>{effort === "xhigh" ? "Extra high" : effort[0]?.toUpperCase() + effort.slice(1)}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
             </div>
-
-            <label className="leader-launch-toggle">
-              <input
-                type="checkbox"
-                checked={data.worktreeIsolation ?? false}
-                onChange={(event) => onUpdate({ worktreeIsolation: event.target.checked })}
-              />
-              <span>
-                <strong>Isolated worktree</strong>
-                <small>Keep this task's edits separate until review.</small>
-              </span>
-            </label>
 
             <SandboxPolicyControls
               mcpAvailable={(data.connectionIds?.length ?? 0) > 0}
@@ -342,6 +324,29 @@ export function ActivityLaunchForm({
               onChange={(sandboxPolicy) => onUpdate({ sandboxPolicy })}
             />
 
+            <LaunchRunSummary model={`${selectedModel?.label ?? activeModel} · ${activeHarnessName}`}
+              changeMode={data.worktreeIsolation ? "worktree" : "live"} policy={data.sandboxPolicy}
+              effective={data.effectiveSandboxPolicy} orchestration={orchestrationMeaning} skills={selectedSkills.length}
+              reasoning={capability.supportsAdaptiveThinking ? (thinkingConfig.enabled ? thinkingConfig.effort : "Off") : "Unavailable"} />
+
+            <details className="leader-launch-advanced">
+              <summary>Orchestration &amp; skills</summary>
+              <div className="leader-launch-advanced-body">
+                <div className="leader-launch-config-grid">
+              <label className="leader-launch-field">
+                <span>Orchestration</span>
+                <select aria-label="Orchestration"
+                  aria-describedby={`leader-orchestration-meaning-${nodeId}`}
+                  value={data.orchestrationMode === "plan" ? "plan" : "auto"}
+                  onChange={(event) => onUpdate({ orchestrationMode:
+                    event.target.value as NonNullable<LeaderData["orchestrationMode"]> })}>
+                  <option value="auto">Graph — auto-start safe work</option>
+                  <option value="plan">Graph — review before start</option>
+                </select>
+                <SelectedSetting id={`leader-orchestration-meaning-${nodeId}`} value={orchestrationMeaning} />
+              </label>
+
+                </div>
             <section className="leader-launch-skills" aria-labelledby={`leader-launch-skills-${nodeId}`}>
               <div className="leader-launch-skills-head">
                 <span>
@@ -386,6 +391,8 @@ export function ActivityLaunchForm({
                 </div>
               )}
             </section>
+              </div>
+            </details>
           </aside>
         </section>
       </div>

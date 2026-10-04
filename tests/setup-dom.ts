@@ -10,6 +10,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach } from "vitest";
+import { forgetLeaderDrafts } from "../src/nodes/leader/prompt/leader-drafts.ts";
 import { cleanup } from "@testing-library/react";
 
 function createMemoryStorage(): Storage {
@@ -52,4 +53,5 @@ if (typeof window !== "undefined" && window.localStorage === undefined) {
 
 afterEach(() => {
   cleanup();
+  forgetLeaderDrafts();
 });

@@ -209,4 +209,15 @@ describe("Leader pasted context", () => {
     expect(screen.getByRole("img", { name: "shot.png" })).toBeInTheDocument();
     expect(screen.getByText("Select a project before starting a Leader.")).toBeInTheDocument();
   });
+  it("explicit confirmed reset clears both text and attachments instead of restoring them", async () => {
+    setup({ sessionKey: "run-1", status: "idle" }, false, false);
+    paste(); await readyImage();
+    fireEvent.change(screen.getByLabelText("Leader prompt"), { target: { value: "Reset this unsent text" } });
+    fireEvent.click(screen.getByRole("button", { name: "More leader actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Reset session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByLabelText("Leader prompt")).toHaveValue("");
+    expect(screen.queryByRole("img", { name: "shot.png" })).toBeNull();
+  });
+
 });

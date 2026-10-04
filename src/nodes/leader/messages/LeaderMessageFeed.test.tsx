@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { LeaderData } from "../types.ts";
+import { LEADER_DEFAULT_DATA, type LeaderData } from "../types.ts";
 import { LeaderMessageFeed } from "./LeaderMessageFeed.tsx";
 
 function renderEmptyFeed(isWorking: boolean, streamingText = "", contentRef = { current: null as HTMLDivElement | null }) {
@@ -46,4 +46,14 @@ describe("Leader conversation empty state", () => {
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
     expect(screen.getByText("Reviewing the application")).toBeInTheDocument();
   });
+});
+
+it("renders streaming thinking as a continuous prose block without a disclosure", () => {
+  const { container } = render(<LeaderMessageFeed outputRef={{ current: null }}
+    data={{ ...LEADER_DEFAULT_DATA, sessionKey: "s", streamingThinkingText: "A continuous thought" }}
+    groupedMessages={[]} messageContextSelection={null} onActivateMessageSelection={vi.fn()}
+    onMessageSelectionChange={vi.fn()} onExitMessageSelection={vi.fn()} debugEnabled={false} isWorking />);
+  expect(screen.getByLabelText("Streaming thinking")).toHaveTextContent("A continuous thought");
+  expect(screen.queryByRole("button", { name: /Thinking/ })).not.toBeInTheDocument();
+  expect(container.querySelector(".leader-conversation-empty")).not.toBeInTheDocument();
 });

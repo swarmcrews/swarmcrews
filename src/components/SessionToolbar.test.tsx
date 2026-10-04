@@ -155,6 +155,12 @@ describe("SessionToolbar — model selection picker", () => {
     expect(props.onModelChange).toHaveBeenCalledWith(id);
   });
 
+  it("uses scalable operational type for model and permission controls", () => {
+    renderWithHarnesses([CLAUDE_ENTRY]);
+    expect(screen.getByTitle("Model selection").style.fontSize).toBe("0.75rem");
+    expect(screen.getByRole("button", { name: /Auto/ }).style.fontSize).toBe("0.75rem");
+  });
+
   it("reserves model menu scrolling for the list rather than the canvas", () => {
     renderWithHarnesses([CLAUDE_ENTRY]);
     fireEvent.click(screen.getByTitle("Model selection"));
@@ -354,6 +360,29 @@ describe("SessionToolbar — capability gating", () => {
 });
 
 describe("SessionToolbar — harness-aware models", () => {
+  it.each(["minimal", "low", "medium", "high", "xhigh", "max"] as const)(
+    "offers and selects native Codex reasoning effort %s", effort => {
+      const codex: HarnessListEntry = { ...CODEX_ENTRY, models: [{
+        id: "native-codex", label: "Native Codex", source: "dynamic", supportsReasoning: true,
+        supportedEffortLevels: [effort], defaultEffortLevel: effort,
+      }] };
+      const props = renderWithHarnesses([codex], { harness: "codex", model: "native-codex" });
+      fireEvent.click(screen.getByTitle("Model selection"));
+      expect(screen.getByText("Reasoning")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${effort}$`, "i") }));
+      expect(props.onThinkingConfigChange).toHaveBeenCalledWith({ ...DEFAULT_THINKING, effort });
+      const absentEffort = effort === "high" ? "Low" : "High";
+      expect(screen.queryByRole("button", { name: absentEffort })).not.toBeInTheDocument();
+    },
+  );
+
+  it("does not invent Codex effort choices when native discovery lacks metadata", () => {
+    renderWithHarnesses([{ ...CODEX_ENTRY, models: [{ id: "gpt-6-astra", label: "Astra", source: "dynamic" }] }],
+      { harness: "codex", model: "gpt-6-astra" });
+    fireEvent.click(screen.getByTitle("Model selection"));
+    expect(screen.queryByText("Reasoning")).not.toBeInTheDocument();
+  });
+
   it.each(["minimal", "low", "medium", "high", "xhigh", "max"] as const)(
     "offers and selects Pi Astra reasoning effort %s",
     (effort) => {

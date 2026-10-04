@@ -1215,3 +1215,62 @@ describe("LeaderNode: Canvas form receipts", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Try after capacity frees");
   });
 });
+
+
+describe("LeaderNode: authoritative run configuration", () => {
+  it("hydrates model, permissions and harness on sync and reconnect without changing thinking or history", async () => {
+    const { socket, replay } = createReplaySocket();
+    const states: LeaderData[] = [];
+    render(<Probe socket={socket} initial={makeInitialData()} onState={state => states.push(state)} />);
+    const snapshot: ServerMessage = { type: "sync_response", sessionKey: "leader-1", found: true,
+      model: "gpt-6", harness: "codex", permissionMode: "default", taskName: "Codex task" };
+    await pump(replay, [{ message: snapshot }]);
+    expect(states.at(-1)).toMatchObject({ model: "gpt-6", harness: "codex", permissionMode: "default",
+      taskName: "Codex task" });
+    await pump(replay, [{ message: { ...snapshot, sessionKey: "other-run", model: "sonnet" } }]);
+    expect(states.at(-1)?.model).toBe("gpt-6");
+    await pump(replay, [{ message: snapshot }]);
+    expect(states.at(-1)?.model).toBe("gpt-6");
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(screen.getByTestId("leader-fullscreen-overlay")).toHaveTextContent("codex · gpt-6");
+    expect(screen.getByTestId("leader-fullscreen-overlay")).not.toHaveTextContent("Opus 4.8");
+  });
+
+  it("hydrates metadata when sync replies synchronously during subscription setup", () => {
+    const { socket, replay } = createReplaySocket();
+    const states: LeaderData[] = [];
+    const send = (command: unknown) => {
+      const msg = command as { type: string; sessionKey: string };
+      if (msg.type === "sync_session") void replay([{ message: { type: "sync_response", sessionKey: msg.sessionKey,
+        found: true, model: "gpt-6", permissionMode: "plan", harness: "codex" } }]);
+    };
+    render(<Probe socket={socket} socketSend={send} initial={makeInitialData()} onState={state => states.push(state)} />);
+    expect(states.at(-1)).toMatchObject({ model: "gpt-6", permissionMode: "plan", harness: "codex" });
+  });
+});
+
+describe("LeaderNode: unknown run configuration is not a launch default", () => {
+  it("does not present Opus or Auto as recorded metadata before sync, or when sync lacks configuration", async () => {
+    const { socket, replay } = createReplaySocket();
+    const states: LeaderData[] = [];
+    render(<Probe socket={socket} initial={makeInitialData({ permissionMode: "auto" })} onState={state => states.push(state)} />);
+    expect(screen.getByText("Loading run configuration…")).toBeInTheDocument();
+    expect(screen.queryByText("Opus 4.8")).not.toBeInTheDocument();
+    await pump(replay, [{ message: { type: "sync_response", sessionKey: "leader-1", found: true } }]);
+    expect(screen.getByText(/Model: Not recorded/)).toBeInTheDocument();
+    expect(screen.queryByText("Opus 4.8")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    const overlay = screen.getByTestId("leader-fullscreen-overlay");
+    expect(overlay).toHaveTextContent("Not recorded · Not recorded");
+    expect(overlay).not.toHaveTextContent("Opus 4.8");
+    fireEvent.click(within(overlay).getByRole("button", { name: "Toggle context panel" }));
+    const panel = within(overlay).getByTestId("drawer-panel-overview");
+    expect(panel).toHaveTextContent("PermissionNot recorded");
+    fireEvent.doubleClick(within(overlay).getByTitle("Leader (double-click to rename)"));
+    const title = overlay.querySelector<HTMLInputElement>(".leader-editable-title__input")!;
+    fireEvent.change(title, { target: { value: "Renamed safely" } });
+    fireEvent.keyDown(title, { key: "Enter" });
+    expect(states.at(-1)).toMatchObject({ model: "opus", permissionMode: "auto", taskName: "Renamed safely" });
+    expect(states.at(-1)?.harness).toBeUndefined();
+  });
+});

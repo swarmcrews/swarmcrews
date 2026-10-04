@@ -1,3 +1,4 @@
+import { thinkingStreamPatch } from "../../thinking-stream.ts";
 import { renderRecoveryFacts } from "../../../shared/recovery-context.ts";
 import { isArchiveDisplayMessage } from "../../archive-display.ts";
 /**
@@ -29,6 +30,7 @@ export function extractLeaderCore(d: LeaderData): SessionStreamState {
     contextDelivery: d.contextDelivery,
     status: d.status,
     messages: d.messages,
+    ...thinkingStreamPatch(d),
     streamingText: d.streamingText,
     streamingBlockIndex: d.streamingBlockIndex ?? null,
     totalCost: d.totalCost,

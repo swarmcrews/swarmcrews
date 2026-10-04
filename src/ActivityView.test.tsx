@@ -1711,13 +1711,16 @@ describe("ActivityView", () => {
     expect(screen.getByRole("region", { name: /add an agent/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Describe your project goal...")).toBeInTheDocument();
     const setup = screen.getByRole("complementary", { name: /run setup/i });
-    expect(setup.querySelector("details")).toBeNull();
+    const advanced = setup.querySelector(".leader-launch-advanced")!;
+    expect(advanced).not.toHaveAttribute("open");
+    expect(within(setup).getByRole("region", { name: "Launch summary" })).toBeInTheDocument();
     expect(within(setup).getByText("Run configuration")).toBeVisible();
-    expect(within(setup).getByRole("combobox", { name: /model/i })).toBeVisible();
+    expect(within(setup).getByRole("button", { name: "Model" })).toBeVisible();
     expect(within(setup).getByRole("combobox", { name: /permissions/i })).toBeVisible();
     expect(within(setup).getByRole("button", { name: "Workspace Global" })).toBeVisible();
     expect(within(setup).getByRole("checkbox", { name: /isolated worktree/i })).toBeVisible();
     expect(within(setup).queryByText("/tmp/project")).not.toBeInTheDocument();
+    fireEvent.click(advanced.querySelector("summary")!);
     expect(within(setup).getByText("Skills")).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /new leader form open/i })).toBeDisabled();

@@ -76,6 +76,7 @@ export function WorkItemTranscript(props: {
   currentRunKey: string;
   currentMessages: readonly DisplayMessage[];
   currentStreamingText: string;
+  currentStreamingThinkingText?: string | undefined;
   loading: boolean;
   thinking?: boolean | undefined;
 } & RunTaskContext) {
@@ -88,7 +89,7 @@ export function WorkItemTranscript(props: {
         </div>
       )}
       <SessionTranscript messages={messages} streamingText={props.currentStreamingText}
-        thinking={props.thinking} />
+        streamingThinkingText={props.currentStreamingThinkingText} thinking={props.thinking} />
     </div>
   );
 }
@@ -99,14 +100,16 @@ export function ActivityTranscript(props: {
   currentRunKey: string;
   currentMessages: readonly DisplayMessage[];
   currentStreamingText: string;
+  currentStreamingThinkingText?: string | undefined;
   thinking?: boolean | undefined;
 } & RunTaskContext) {
   if (!props.unified) {
     return <SessionTranscript messages={[...props.currentMessages]}
-      streamingText={props.currentStreamingText} thinking={props.thinking} />;
+      streamingText={props.currentStreamingText} streamingThinkingText={props.currentStreamingThinkingText} thinking={props.thinking} />;
   }
   return <WorkItemTranscript history={props.history} runs={props.history.orderedRuns} streams={props.history.streams}
     currentRunKey={props.currentRunKey} currentMessages={props.currentMessages}
+    currentStreamingThinkingText={props.currentStreamingThinkingText}
     currentStreamingText={props.currentStreamingText} loading={props.history.loading}
     graphNodes={props.graphNodes} taskPlan={props.taskPlan} onInspectNode={props.onInspectNode}
     thinking={props.thinking} />;

@@ -1,3 +1,4 @@
+import { deferCanvasPresentation } from "../../canvas/CanvasPresentation.tsx";
 /**
  * DashboardSurface — presentational render-DSL dashboard.
  *
@@ -50,7 +51,7 @@ export interface DashboardSurfaceProps {
  * Renders the dashboard header + scrollable component grid. Fills its parent
  * (width/height 100%); the host supplies the outer frame/border.
  */
-export function DashboardSurface({
+export const DashboardSurface = deferCanvasPresentation(function DashboardSurface({
   renderState,
   payloadError = null,
   onSubmitForm,
@@ -442,4 +443,4 @@ export function DashboardSurface({
       </div>
     </div>
   );
-}
+});

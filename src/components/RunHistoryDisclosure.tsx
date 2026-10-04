@@ -20,7 +20,7 @@ export function RunReplay({ run, history }: {
   if (status === "unavailable") return <p role="status">This run's transcript is unavailable.</p>;
   if (status !== "ready") return <p role="status">Loading run transcript…</p>;
   const stream = history.streams[run.runKey];
-  return <SessionTranscript messages={stream?.messages ?? []} streamingText={stream?.streamingText ?? ""} autoFollow={false} />;
+  return <SessionTranscript messages={stream?.messages ?? []} streamingText={stream?.streamingText ?? ""} streamingThinkingText={stream?.streamingThinkingText} autoFollow={false} />;
 }
 
 export function ChildRunDisclosure({ run, history, context = {}, navigation }: {

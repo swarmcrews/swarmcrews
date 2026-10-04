@@ -1,3 +1,4 @@
+import { EMPTY_THINKING_STREAM } from "./thinking-stream.ts";
 /**
  * Factory for creating default node data by type.
  *
@@ -21,7 +22,7 @@ export function createDefaultNodeData(
         sessionKey: null,
         status: "disconnected",
         messages: [],
-        streamingText: "",
+        ...EMPTY_THINKING_STREAM, streamingText: "",
         streamingBlockIndex: null,
         totalCost: 0,
         turns: 0,
@@ -41,7 +42,7 @@ export function createDefaultNodeData(
         sessionKey: null,
         status: "disconnected",
         messages: [],
-        streamingText: "",
+        ...EMPTY_THINKING_STREAM, streamingText: "",
         streamingBlockIndex: null,
         totalCost: 0,
         turns: 0,
@@ -73,7 +74,7 @@ export function createDefaultNodeData(
         taskQueue: [],
         activeTaskIndex: -1,
         messages: [],
-        streamingText: "",
+        ...EMPTY_THINKING_STREAM, streamingText: "",
         streamingBlockIndex: null,
         totalCost: 0,
         turns: 0,

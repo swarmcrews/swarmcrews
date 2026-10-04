@@ -18,6 +18,8 @@ export type PermissionMode =
 export interface SessionToolbarProps {
   /** Optional styling hook for a host surface. */
   className?: string;
+  /** False while the host is inert behind an active surface; discard transient menus. */
+  active?: boolean;
   sessionKey: string | null;
   status: string;
   /** Either a Claude alias ("sonnet") or a concrete harness model id ("gpt-6-astra"). */
@@ -107,7 +109,7 @@ const pillStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 4,
   padding: "3px 8px",
-  fontSize: 10,
+  fontSize: "0.75rem",
   fontFamily: "var(--font-mono)",
   background: "var(--bg-elevated)",
   border: "1px solid var(--border-default)",
@@ -180,6 +182,8 @@ function Dropdown<T extends string>({
         onClick={disabled ? undefined : onToggle}
         onMouseDown={(e) => e.stopPropagation()}
         disabled={disabled}
+        aria-expanded={open}
+        aria-haspopup="dialog"
         style={{
           ...pillStyle,
           borderColor: open ? "var(--accent)" : "var(--border-default)",
@@ -214,7 +218,7 @@ function Dropdown<T extends string>({
       </button>
 
       {open && !disabled && (
-        <div
+        <div role="dialog" aria-label="Permission selection menu"
           onMouseDown={(e) => e.stopPropagation()}
           style={{
             position: "absolute",
@@ -254,7 +258,7 @@ function Dropdown<T extends string>({
                     ? "var(--text-primary)"
                     : "var(--text-secondary)",
                 fontFamily: "var(--font-mono)",
-                fontSize: 11,
+                fontSize: "0.8125rem",
                 textAlign: "left",
                 transition: "background 0.1s",
               }}
@@ -293,7 +297,7 @@ function Dropdown<T extends string>({
                 {descriptions && descriptions[opt] && (
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: "0.6875rem",
                       color: "var(--text-muted)",
                       fontFamily: "var(--font-sans)",
                     }}
@@ -306,7 +310,7 @@ function Dropdown<T extends string>({
                 <span
                   style={{
                     marginLeft: "auto",
-                    fontSize: 10,
+                    fontSize: "0.75rem",
                     color: "var(--accent)",
                   }}
                 >
@@ -410,7 +414,7 @@ export function ModelSelectionMenu({
 
   return (
     <div
-      style={{ position: "relative", minWidth: 0 }}
+      style={{ position: "relative", minWidth: 0, maxWidth: "100%" }}
       onKeyDown={(event) => {
         if (expanded || event.key !== "Escape" || !isOpen) return;
         event.stopPropagation();
@@ -427,6 +431,7 @@ export function ModelSelectionMenu({
         style={{
           ...pillStyle,
           minHeight: 24,
+          maxWidth: "100%",
           gap: 6,
           width: fullWidth ? "100%" : undefined,
           justifyContent: "flex-start",
@@ -517,7 +522,7 @@ export function ModelSelectionMenu({
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <div
               style={{
-                fontSize: 9,
+                fontSize: "0.6875rem",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
                 textTransform: "uppercase",
@@ -593,7 +598,7 @@ export function ModelSelectionMenu({
             {hasSession && (
               <div
                 style={{
-                  fontSize: 9,
+                  fontSize: "0.6875rem",
                   color: "var(--text-muted)",
                   fontFamily: "var(--font-mono)",
                   fontStyle: "italic",
@@ -609,7 +614,7 @@ export function ModelSelectionMenu({
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             <div
               style={{
-                fontSize: 9,
+                fontSize: "0.6875rem",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
                 textTransform: "uppercase",
@@ -648,7 +653,7 @@ export function ModelSelectionMenu({
                         : "var(--text-secondary)",
                       cursor: "pointer",
                       fontFamily: "var(--font-mono)",
-                      fontSize: 11,
+                      fontSize: "0.8125rem",
                       textAlign: "left",
                     }}
                   >
@@ -675,7 +680,7 @@ export function ModelSelectionMenu({
                       {option.label}
                     </span>
                     {isActive && (
-                      <span style={{ color: "var(--accent)", fontSize: 10 }}>✓</span>
+                      <span style={{ color: "var(--accent)", fontSize: "0.75rem" }}>✓</span>
                     )}
                   </button>
                 );
@@ -696,7 +701,7 @@ export function ModelSelectionMenu({
             >
               <div
                 style={{
-                  fontSize: 9,
+                  fontSize: "0.6875rem",
                   color: "var(--text-muted)",
                   fontFamily: "var(--font-mono)",
                   textTransform: "uppercase",
@@ -714,7 +719,7 @@ export function ModelSelectionMenu({
                     minHeight: 28,
                     color: "var(--text-secondary)",
                     fontFamily: "var(--font-sans)",
-                    fontSize: 10,
+                    fontSize: "0.75rem",
                     cursor: "pointer",
                   }}
                 >
@@ -723,12 +728,12 @@ export function ModelSelectionMenu({
                       style={{
                         display: "block",
                         color: "var(--text-primary)",
-                        fontSize: 10,
+                        fontSize: "0.75rem",
                       }}
                     >
                       Adaptive reasoning
                     </strong>
-                    <span style={{ color: "var(--text-muted)", fontSize: 9 }}>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.6875rem" }}>
                       Let this role reason before responding.
                     </span>
                   </span>
@@ -810,6 +815,7 @@ export function ModelSelectionMenu({
 
 export function SessionToolbar({
   className,
+  active = true,
   sessionKey,
   status,
   model,
@@ -897,6 +903,7 @@ export function SessionToolbar({
   }, []);
 
   useEffect(() => {
+    if (!active) { closeAll(); return; }
     if (!modelPickerOpen && !permOpen) return;
 
     const onMouseDown = (e: MouseEvent) => {
@@ -905,7 +912,18 @@ export function SessionToolbar({
       closeAll();
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeAll();
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const toolbar = toolbarRef.current;
+      const owner = e.target instanceof Element ? e.target.closest('[data-session-toolbar]') : null;
+      if (!toolbar || toolbar.closest('[inert], [hidden]') || (owner && owner !== toolbar)) return;
+      // A foreground surface owns Escape even when focus is on its composer or Back button.
+      const surface = e.target instanceof Element ? e.target.closest('[role="dialog"], [role="menu"]') : null;
+      if (surface && !toolbar.contains(e.target as Node) && !surface.contains(toolbar)) return;
+      const trigger = toolbar.querySelector<HTMLButtonElement>('button[aria-expanded="true"]');
+      e.preventDefault();
+      e.stopPropagation();
+      closeAll();
+      trigger?.focus({ preventScroll: true });
     };
 
     // Capture phase matters here because chat/canvas surfaces commonly stop
@@ -916,11 +934,12 @@ export function SessionToolbar({
       document.removeEventListener("mousedown", onMouseDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [closeAll, modelPickerOpen, permOpen]);
+  }, [active, closeAll, modelPickerOpen, permOpen]);
 
   return (
     <div
       ref={toolbarRef}
+      data-session-toolbar
       className={className}
       onMouseDown={(e) => e.stopPropagation()}
       style={{
@@ -949,7 +968,7 @@ export function SessionToolbar({
         onThinkingConfigChange={onThinkingConfigChange}
         onSelectComplete={closeAll}
         hasSession={hasSession}
-        open={modelPickerOpen}
+        open={active && modelPickerOpen}
         onToggle={() => {
           setModelPickerOpen(!modelPickerOpen);
           setPermOpen(false);
@@ -966,7 +985,7 @@ export function SessionToolbar({
             onPermissionModeChange(m);
             closeAll();
           }}
-          open={permOpen}
+          open={active && permOpen}
           onToggle={() => {
             setPermOpen(!permOpen);
             setModelPickerOpen(false);
@@ -987,7 +1006,7 @@ export function SessionToolbar({
             alignItems: "center",
             gap: 4,
             padding: "3px 10px",
-            fontSize: 10,
+            fontSize: "0.75rem",
             fontFamily: "var(--font-mono)",
             fontWeight: 600,
             background: "var(--danger-bg)",
@@ -1015,7 +1034,7 @@ export function SessionToolbar({
         <span
           className="session-toolbar__status-hint"
           style={{
-            fontSize: 9,
+            fontSize: "0.6875rem",
             color: "var(--text-muted)",
             fontFamily: "var(--font-mono)",
             fontStyle: "italic",

@@ -21,3 +21,15 @@ describe("Claude replay projection", () => {
     expect(next.initData).toEqual({ marker: "retained" });
   });
 });
+
+it("clears the standalone thinking preview on completed thinking without duplicating its banner", () => {
+  const base = initial();
+  const live = reduceClaudeSession(base, { type: "sdk_event", sessionKey: "s",
+    event: { kind: "thinking_delta", text: "One thought", blockIndex: 0 } });
+  expect(live.streamingThinkingText).toBe("One thought");
+  expect(live.messages).toBe(base.messages);
+  const completed = reduceClaudeSession(live, { type: "sdk_event", sessionKey: "s",
+    event: { kind: "thinking", text: "One thought" } });
+  expect(completed.streamingThinkingText).toBe("");
+  expect(completed.messages).toEqual([]);
+});

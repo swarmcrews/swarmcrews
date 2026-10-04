@@ -890,3 +890,70 @@ it("uses startup model context in mobile headers and user messages instead of ac
   expect(screen.getByText("Model: model-one").closest(".mob-message--user")).toBeInTheDocument();
   expect(screen.queryByText("Session on model-one")).not.toBeInTheDocument();
 });
+
+it("shows a continuous thinking preview, then removes it when the final block arrives", async () => {
+  const listeners: ((message: ServerMessage) => void)[] = [];
+  render(<SessionChatScreen sessionKey="leader-1" session={leaderSession()}
+    subscribe={fakeSubscribe(listener => listeners.push(listener))} send={vi.fn()} onBack={() => {}} />);
+  act(() => {
+    for (const listener of listeners) {
+      listener({ type: "sdk_event", sessionKey: "leader-1", historyId: 1,
+        event: { kind: "thinking_delta", text: "I need", blockIndex: 0 } });
+      listener({ type: "sdk_event", sessionKey: "leader-1", historyId: 2,
+        event: { kind: "thinking_delta", text: " need time.", blockIndex: 0 } });
+    }
+  });
+  await waitFor(() => expect(screen.getByLabelText("Streaming thinking")).toHaveTextContent("I need need time."));
+  expect(screen.getByLabelText("Streaming thinking").textContent).toBe("I need need time.");
+  act(() => {
+    for (const listener of listeners) listener({ type: "sdk_event", sessionKey: "leader-1", historyId: 3,
+      event: { kind: "thinking", text: "I need need time." } });
+  });
+  await waitFor(() => expect(screen.queryByLabelText("Streaming thinking")).not.toBeInTheDocument());
+});
+
+
+describe("SessionChatScreen: truthful working state", () => {
+  it.each([false, true])("does not call a waiting session Thinking (with transcript: %s) and retains recovery Stop", async (withTranscript) => {
+    const listeners: ((message: ServerMessage) => void)[] = [];
+    const send = vi.fn();
+    render(<SessionChatScreen sessionKey="leader-1" session={leaderSession({ status: "waiting" })}
+      subscribe={fakeSubscribe(listener => listeners.push(listener))} send={send} onBack={() => {}} />);
+    if (withTranscript) act(() => listeners.forEach(listener => listener({ type: "sdk_event", sessionKey: "leader-1",
+      event: { kind: "text", role: "assistant", text: "Please confirm the approach." } })));
+    expect(screen.queryByText(/thinking/i)).not.toBeInTheDocument();
+    if (!withTranscript) expect(screen.getByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(send).toHaveBeenCalledWith({ type: "stop_session", sessionKey: "leader-1" });
+  });
+
+  it("does not infer thinking from running when authoritative presentation requires input", () => {
+    render(<SessionChatScreen sessionKey="leader-1" session={leaderSession({ workItemPresentation: {
+      label: "Decision needed", badge: "attention", attentionRank: 0, needsAttention: true, availableActions: ["provide_input"],
+    } })} subscribe={fakeSubscribe()} send={vi.fn()} onBack={() => {}} />);
+    expect(screen.queryByText(/thinking/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Needs attention" })).toBeInTheDocument();
+  });
+
+  it("does not label waiting for crew as leader thinking", () => {
+    render(<SessionChatScreen sessionKey="leader-1" session={leaderSession({ status: "waiting",
+      activeMinions: [{ taskId: "child", title: "Working child", status: "running", sessionKey: "child-1" }] })}
+      subscribe={fakeSubscribe()} send={vi.fn()} onBack={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Waiting for crew" })).toBeInTheDocument();
+    expect(screen.queryByText(/thinking/i)).not.toBeInTheDocument();
+  });
+
+  it.each(["thinking_delta", "text_delta"] as const)("shows actual %s while the parent list still reports waiting", async (kind) => {
+    const listeners: ((message: ServerMessage) => void)[] = [];
+    render(<SessionChatScreen sessionKey="leader-1" session={leaderSession({ status: "waiting" })}
+      subscribe={fakeSubscribe(listener => listeners.push(listener))} send={vi.fn()} onBack={() => {}} />);
+    act(() => listeners.forEach(listener => listener({ type: "sdk_event", sessionKey: "leader-1",
+      event: { kind, text: "Active preview", blockIndex: 0 } })));
+    await waitFor(() => expect(screen.getByText("Thinking…")).toBeInTheDocument());
+    expect(screen.getByText("Active preview")).toBeInTheDocument();
+    act(() => listeners.forEach(listener => listener({ type: "sdk_event", sessionKey: "leader-1",
+      event: { kind: "done", reason: "completed" } })));
+    await waitFor(() => expect(screen.queryByText("Thinking…")).not.toBeInTheDocument());
+  });
+});

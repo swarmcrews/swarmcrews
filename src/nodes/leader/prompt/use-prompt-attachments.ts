@@ -1,6 +1,7 @@
-import { createContext, useRef, useState, type ClipboardEvent } from "react";
+import { createContext, useRef, type ClipboardEvent } from "react";
 import type { ContextAttachment, ContextItem } from "../../../types.ts";
 import { randomUuid } from "../../../random-id.ts";
+import { useLeaderDraftField } from "./leader-drafts.ts";
 import { loadImageFromFile } from "../../image-loader.ts";
 
 interface DraftAttachment {
@@ -39,9 +40,11 @@ async function readAttachment(file: File, id: string): Promise<Partial<DraftAtta
   throw new Error("Use PNG, JPEG, GIF, WebP, or a text file.");
 }
 
-/** Owned by the leader so drafts survive switching composer surfaces. */
-export function usePromptAttachments() {
-  const [drafts, setDrafts] = useState<DraftAttachment[]>([]);
+const EMPTY_DRAFTS: DraftAttachment[] = [];
+
+/** Keep decoding, removal, retry and submission semantics across composer lifetimes. */
+export function usePromptAttachments(scope?: string) {
+  const [drafts, setDrafts] = useLeaderDraftField(scope, "attachments", EMPTY_DRAFTS);
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const remove = (ids: string[]) => setDrafts(current => current.filter(draft => !ids.includes(draft.id)));

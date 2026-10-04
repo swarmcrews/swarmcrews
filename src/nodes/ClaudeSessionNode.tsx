@@ -1,3 +1,5 @@
+import { ThinkingStream } from "../components/ThinkingStream.tsx";
+import { thinkingStreamPatch, type ThinkingStreamState } from "../thinking-stream.ts";
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
 import type { NodeRenderProps, ThinkingConfig } from "../types.ts";
 import { DEFAULT_THINKING_CONFIG } from "../types.ts";
@@ -56,7 +58,7 @@ export interface SubagentInfo {
   durationMs?: number | undefined;
 }
 
-export interface ClaudeSessionData {
+export interface ClaudeSessionData extends ThinkingStreamState {
   sessionKey: string | null;
   historyHighWater?: number | undefined;
   highestLiveHistoryId?: number | undefined;
@@ -79,12 +81,7 @@ export interface ClaudeSessionData {
   thinkingConfig: ThinkingConfig;
   /** Streaming text from partial messages */
   streamingText: string;
-  /**
-   * Anthropic content block index that {@link streamingText} belongs to,
-   * or `null` when no block is currently streaming. Used to flush the
-   * preview buffer when a new content block starts so deltas from
-   * `[text, tool_use, text]` don't merge across blocks.
-   */
+  /** Active assistant preview block. */
   streamingBlockIndex?: number | null | undefined;
   /** Duration of last turn in ms */
   lastDurationMs: number | null;
@@ -618,6 +615,7 @@ export function ClaudeSessionRenderer({
     if (data.sessionKey === pending.sessionKey) {
       const rebased = {
         ...data,
+        ...thinkingStreamPatch(pending),
         streamingText: pending.streamingText,
         streamingBlockIndex: pending.streamingBlockIndex,
       };
@@ -687,10 +685,10 @@ export function ClaudeSessionRenderer({
       outputRef.current.scrollTop = outputRef.current.scrollHeight;
     }
     // Show jump-to-bottom if user is scrolled up and new content arrived
-    if (userScrolledUpRef.current && (data.messages.length > 0 || data.streamingText)) {
+    if (userScrolledUpRef.current && (data.messages.length > 0 || data.streamingText || data.streamingThinkingText)) {
       setShowJumpToBottom(true);
     }
-  }, [data.messages.length, data.streamingText]);
+  }, [data.messages.length, data.streamingText, data.streamingThinkingText]);
 
   // Attach before requesting replay so events during a run transition are recoverable.
   useEffect(() => {
@@ -707,9 +705,9 @@ export function ClaudeSessionRenderer({
       if (message.type === "sdk_event") processNormalizedEvent(message.event);
       const next = reduceClaudeSession(current, message);
       if (next !== current) {
-        if (next.streamingText && next.messages === current.messages && next.status === current.status &&
+        if ((next.streamingText || next.streamingThinkingText) && next.messages === current.messages && next.status === current.status &&
             next.error === current.error && next.totalCost === current.totalCost && next.turns === current.turns &&
-            (next.streamingText !== current.streamingText || next.streamingBlockIndex !== current.streamingBlockIndex)) {
+            (next.streamingText !== current.streamingText || next.streamingBlockIndex !== current.streamingBlockIndex || next.streamingThinkingText !== current.streamingThinkingText)) {
           emitStreamingUpdate(next);
         } else emitDurableUpdate(next);
       }
@@ -1059,9 +1057,10 @@ export function ClaudeSessionRenderer({
           </div>
         )}
         <MessageFeed messages={data.messages} onAddContentNode={onAddContentNode} />
+        {data.streamingThinkingText && <ThinkingStream text={data.streamingThinkingText} />}
         {data.streamingText ? (
           <StreamingBubble text={data.streamingText} role="assistant" />
-        ) : data.status === "running" && data.messages.length > 0 ? (
+        ) : !data.streamingThinkingText && data.status === "running" && data.messages.length > 0 ? (
           <StreamingIndicator />
         ) : null}
         {debugEnabled && data.sessionKey && (

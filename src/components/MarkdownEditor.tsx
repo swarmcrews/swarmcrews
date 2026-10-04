@@ -1,3 +1,4 @@
+import { deferCanvasPresentation } from "../canvas/CanvasPresentation.tsx";
 /**
  * MarkdownEditor — controlled CodeMirror 6 surface tuned for the
  * Markdown card on the canvas.
@@ -106,7 +107,7 @@ const editorTheme = EditorView.theme(
   { dark: false },
 );
 
-export function MarkdownEditor({
+export const MarkdownEditor = deferCanvasPresentation(function MarkdownEditor({
   value,
   onChange,
   onSave,
@@ -204,4 +205,4 @@ export function MarkdownEditor({
       onMouseDown={(e) => e.stopPropagation()}
     />
   );
-}
+});

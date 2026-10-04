@@ -24,6 +24,16 @@ describe("SandboxPolicyControls", () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...extended, fullHostScope: "leader-only" });
   });
 
+  it("keeps help operable when policy editing is locked for an active session", () => {
+    render(<SandboxPolicyControls disabled onChange={vi.fn()} />);
+    expect(screen.getByLabelText("Sandbox file access")).toBeDisabled();
+    expect(screen.getByLabelText("Sandbox approval policy")).toBeDisabled();
+    const help = screen.getByRole("button", { name: "About sandbox file access" });
+    expect(help).toBeEnabled();
+    fireEvent.click(help);
+    expect(screen.getByRole("region", { name: "About sandbox file access" })).toBeVisible();
+  });
+
   it("disables both full host options when the harness cannot enforce them", () => {
     render(<SandboxPolicyControls onChange={vi.fn()} support={{ filesystem: ["workspace-write"], approval: true }} />);
     expect(screen.getByRole("option", { name: "Full Host - Leader Only" })).toBeDisabled();
@@ -39,21 +49,53 @@ describe("SandboxPolicyControls", () => {
     }));
   });
 
-  it("explains each sandbox axis on hover", () => {
+  it("opens named help with a button and dismisses with Escape or Close, restoring focus", () => {
     render(<SandboxPolicyControls onChange={vi.fn()} />);
+    const help = screen.getByRole("button", { name: "About sandbox file access" });
+    help.focus();
+    expect(help).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(help);
+    expect(help).toHaveAttribute("aria-expanded", "true");
+    const region = screen.getByRole("region", { name: "About sandbox file access" });
+    expect(region).toHaveTextContent("Workspace write limits edits");
+    fireEvent.keyDown(region, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "About sandbox file access" })).toBeNull();
+    expect(help).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "About sandbox approval policy" }));
+    expect(screen.getByRole("region", { name: "About sandbox approval policy" })).toHaveTextContent("guarded actions");
+    fireEvent.click(screen.getByRole("button", { name: "Close sandbox approval policy help" }));
+    expect(screen.getByRole("button", { name: "About sandbox approval policy" })).toHaveFocus();
+  });
 
-    expect(screen.getByLabelText("About sandbox file access")).toHaveAttribute(
-      "title",
-      expect.stringContaining("Workspace write limits edits"),
+  it("discloses the full requested host scope outside the native control", () => {
+    const { rerender } = render(<SandboxPolicyControls onChange={vi.fn()} policy={{
+      filesystemScope: "unrestricted", approvalPolicy: "never", fullHostScope: "leader-and-minions",
+    }} />);
+    expect(screen.getByLabelText("Sandbox file access")).toHaveAccessibleDescription(
+      "Requested: Full Host - Leader + Minions. Remove the process sandbox for the Leader and its Minions.",
     );
-    expect(screen.getByLabelText("About sandbox approval policy")).toHaveAttribute(
-      "title",
-      expect.stringContaining("guarded actions"),
+    expect(screen.getByLabelText("Sandbox approval policy")).toHaveAccessibleDescription(
+      expect.stringContaining("rejects escalation instead of prompting"),
     );
+    rerender(<SandboxPolicyControls onChange={vi.fn()} support={null} policy={{
+      filesystemScope: "unrestricted", approvalPolicy: "never",
+    }} />);
+    expect(screen.getByText("Full Host - Leader Only.", { exact: false })).toBeVisible();
+    expect(screen.getByText(/Minions keep their task sandbox/)).toBeVisible();
+    expect(screen.getByText(/Effective policy is resolved when the session starts/)).toBeVisible();
+  });
+
+  it("does not imply an old effective resolution enforces a changed request", () => {
+    render(<SandboxPolicyControls onChange={vi.fn()} policy={{ filesystemScope: "unrestricted", approvalPolicy: "never" }} effective={{
+      requested: { filesystemScope: "workspace-write", approvalPolicy: "on-request" },
+      effective: { filesystemScope: "workspace-write", approvalPolicy: "on-request" }, unsupported: [],
+    }} />);
+    expect(screen.getByText(/Effective from last launch:/)).toBeVisible();
+    expect(screen.getByText(/Changed request is not yet resolved/)).toBeVisible();
   });
 
   it("shows the server-resolved posture and unsupported guarantees", () => {
-    render(<SandboxPolicyControls onChange={vi.fn()} effective={{
+    render(<SandboxPolicyControls onChange={vi.fn()} policy={{ filesystemScope: "workspace-write", approvalPolicy: "on-request" }} effective={{
       requested: { filesystemScope: "workspace-write", approvalPolicy: "on-request" },
       effective: { filesystemScope: "unmanaged", approvalPolicy: "unmanaged" },
       unsupported: ["filesystem:workspace-write", "approval"],

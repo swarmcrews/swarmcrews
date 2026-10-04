@@ -1,3 +1,5 @@
+import { ThinkingGroup } from "../../components/ThinkingGroup.tsx";
+import { ThinkingStream } from "../../components/ThinkingStream.tsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DisplayMessage } from "../../sdk-messages.ts";
 import type { SessionStreamState, SessionStreamStatus } from "../../session-stream.ts";
@@ -244,11 +246,11 @@ function MinionDetail({ task, index, stream }: { task: TaskPlanItem; index: numb
   const outputRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [stream.messages.length, stream.streamingText]);
+  }, [stream.messages.length, stream.streamingText, stream.streamingThinkingText]);
 
   const progress = task.progress ?? [];
   const visibleMessages = stream.messages.filter((message) => message.role !== "tool");
-  const hasActivity = visibleMessages.length > 0 || !!stream.streamingText || progress.length > 0 || !!task.sessionSummary;
+  const hasActivity = visibleMessages.length > 0 || !!stream.streamingText || !!stream.streamingThinkingText || progress.length > 0 || !!task.sessionSummary;
   return (
     <section style={{ minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", background: "var(--bg-surface)" }}>
       <header style={{ padding: "11px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, borderBottom: "1px solid var(--border-default)" }}>
@@ -288,6 +290,7 @@ function MinionDetail({ task, index, stream }: { task: TaskPlanItem; index: numb
           {stream.messages.length === 0 && task.sessionSummary && !task.result && (
             <ActivityEntry message={{ id: "session-summary", role: "assistant", content: task.sessionSummary, timestamp: task.completedAt ?? 0 }} />
           )}
+          {stream.streamingThinkingText && <ThinkingStream text={stream.streamingThinkingText} density="compact" />}
           {stream.streamingText && (
             <div style={{ padding: "8px 9px", borderRadius: 6, background: "color-mix(in srgb, var(--accent) 7%, var(--bg-primary))", color: "var(--text-secondary)", fontSize: 11, lineHeight: 1.45 }}>
               <AgentMessageText text={stream.streamingText} />
@@ -302,6 +305,7 @@ function MinionDetail({ task, index, stream }: { task: TaskPlanItem; index: numb
 }
 
 function ActivityEntry({ message }: { message: DisplayMessage }) {
+  if (message.role === "thinking") return <ThinkingGroup msgs={[message]} density="compact" />;
   const isMarkdown = message.role === "assistant" || message.role === "result";
   return (
     <div

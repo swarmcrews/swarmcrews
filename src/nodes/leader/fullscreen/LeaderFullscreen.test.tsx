@@ -7,10 +7,12 @@
  * shell renders the activity rail, conversation, and context drawer.
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { CanvasPresentationContext } from "../../../canvas/CanvasPresentation.tsx";
+import { HeaderMenu } from "../HeaderMenu.tsx";
 import { LeaderNodeRenderer } from "../../LeaderNode.tsx";
 import { LEADER_DEFAULT_DATA, type LeaderData } from "../types.ts";
 import type { CanvasNode, NodeRenderProps } from "../../../types.ts";
@@ -153,6 +155,103 @@ describe("LeaderNode fullscreen cockpit", () => {
       document.querySelector("[data-testid='leader-fullscreen-overlay']"),
     ).toBeNull();
     expect(document.body.style.overflow).toBe("");
+  });
+
+  it.each([false, true])("retires a real %s sibling/selected Canvas HeaderMenu before foreground outer Escape", async sibling => {
+    render(<>{sibling && <section className="canvas-node-card"><HeaderMenu data={LEADER_DEFAULT_DATA}
+      onReset={() => {}} onExportLog={() => {}} /></section>}<Probe /></>);
+    fireEvent.click(screen.getAllByRole("button", { name: "More leader actions" })[0]!);
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Export log" })).toHaveFocus());
+    const enter = screen.getByRole("button", { name: "Enter fullscreen" }); enter.focus();
+    fireEvent.keyDown(enter, { key: "F", ctrlKey: true, shiftKey: true });
+    const cockpit = screen.getByTestId("leader-fullscreen-overlay");
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Leader actions" })).toBeNull());
+    expect(within(cockpit).getByRole("button", { name: "Exit fullscreen" })).toHaveFocus();
+    fireEvent.keyDown(within(cockpit).getByRole("button", { name: "Exit fullscreen" }), { key: "Escape" });
+    expect(screen.queryByTestId("leader-fullscreen-overlay")).toBeNull();
+  });
+
+  it("reveals the whole focused workspace tab on focus and selected-layout change", () => {
+    render(<Probe initial={{ renderState: { layout: {}, components: [{ id: "context", type: "text", content: "Simulated decision" }] } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    const nav = screen.getByRole("navigation", { name: "Leader workspace" });
+    const dashboard = within(nav).getByRole("button", { name: "Dashboard" });
+    // DOM geometry boundary simulation only; native paint/reflow is covered in e2e.
+    vi.spyOn(nav, "getBoundingClientRect").mockImplementation(() => new DOMRect(42, 0, 236, 60));
+    vi.spyOn(dashboard, "getBoundingClientRect").mockImplementation(() => new DOMRect(42 + 179 - nav.scrollLeft, 0, 165, 60));
+    nav.scrollLeft = 238; dashboard.focus();
+    expect(nav.scrollLeft).toBe(179);
+    nav.scrollLeft = 238; fireEvent.click(dashboard);
+    expect(dashboard).toHaveAttribute("aria-current", "page");
+    expect(nav.scrollLeft).toBe(179);
+  });
+
+  it("reveals attention-selected Dashboard when focus is outside the tab rail without taking focus", () => {
+    render(<Probe initial={{ renderState: { layout: {}, components: [{ id: "decision", type: "form", fields: [{ id: "choice", label: "Choice", kind: "text" }] }] } }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    const nav = screen.getByRole("navigation", { name: "Leader workspace" });
+    const dashboard = within(nav).getByRole("button", { name: "Dashboard" });
+    vi.spyOn(nav, "getBoundingClientRect").mockImplementation(() => new DOMRect(42, 0, 236, 60));
+    vi.spyOn(dashboard, "getBoundingClientRect").mockImplementation(() => new DOMRect(42 + 179 - nav.scrollLeft, 0, 165, 60));
+    const attention = screen.getByRole("button", { name: /question needs your response/ });
+    nav.scrollLeft = 238; attention.focus(); fireEvent.click(attention);
+    expect(dashboard).toHaveAttribute("aria-current", "page");
+    expect(nav.scrollLeft).toBe(179);
+    expect(dashboard).not.toHaveFocus();
+  });
+
+  it("observes tab geometry as well as the rail and prioritizes native focus over selection", () => {
+    const observed = new Map<Element, () => void>();
+    // Browser geometry boundary: delayed font/weight sizing can change tabs without changing rail size.
+    vi.stubGlobal("ResizeObserver", class {
+      private own = new Set<Element>();
+      private callback: () => void;
+      constructor(callback: () => void) { this.callback = callback; }
+      observe(element: Element) { this.own.add(element); observed.set(element, this.callback); }
+      disconnect() { for (const element of this.own) observed.delete(element); }
+    });
+    try {
+      const result = render(<Probe initial={{ renderState: { layout: {}, components: [{ id: "context", type: "text", content: "Simulated decision" }] } }} />);
+      fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+      const nav = screen.getByRole("navigation", { name: "Leader workspace" });
+      const dashboard = within(nav).getByRole("button", { name: "Dashboard" });
+      const conversation = within(nav).getByRole("button", { name: "Conversation" });
+      expect(observed.has(nav)).toBe(true); expect(observed.has(dashboard)).toBe(true);
+      vi.spyOn(nav, "getBoundingClientRect").mockImplementation(() => new DOMRect(42, 0, 236, 60));
+      let start = 179;
+      vi.spyOn(dashboard, "getBoundingClientRect").mockImplementation(() => new DOMRect(42 + start - nav.scrollLeft, 0, 165, 60));
+      vi.spyOn(conversation, "getBoundingClientRect").mockImplementation(() => new DOMRect(42 - nav.scrollLeft, 0, 179, 60));
+      dashboard.focus(); fireEvent.click(dashboard);
+      start = 168; nav.scrollLeft = 179; act(() => observed.get(nav)?.());
+      expect(nav.scrollLeft).toBe(168); expect(dashboard).toHaveFocus();
+      conversation.focus(); nav.scrollLeft = 179; act(() => observed.get(nav)?.());
+      expect(nav.scrollLeft).toBe(0); expect(conversation).toHaveFocus();
+      result.unmount(); expect(observed.size).toBe(0);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each(['dialog', 'menu'])('occluded sibling Canvas %s does not block ordinary foreground Escape', async role => {
+    render(<><div className="canvas-node-card"><div role={role}>Older Canvas popup</div></div><Probe /></>);
+    fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }));
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Exit fullscreen' }), { key: 'Escape' });
+    expect(screen.queryByTestId('leader-fullscreen-overlay')).not.toBeInTheDocument();
+    expect(screen.getByText('Older Canvas popup')).toBeInTheDocument();
+  });
+
+  it('foreground nested and body-level dialogs still block outer Escape, unlike inert background dialogs', () => {
+    const view = render(<Probe />);
+    fireEvent.click(screen.getByRole('button', { name: 'Enter fullscreen' }));
+    const cockpit = screen.getByTestId('leader-fullscreen-overlay');
+    const nested = document.createElement('div'); nested.setAttribute('role', 'dialog'); cockpit.append(nested);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Exit fullscreen' }), { key: 'Escape' });
+    expect(cockpit).toBeInTheDocument(); nested.remove();
+    const global = document.createElement('div'); global.setAttribute('role', 'dialog'); document.body.append(global);
+    try {
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Exit fullscreen' }), { key: 'Escape' });
+      expect(cockpit).toBeInTheDocument(); global.setAttribute('inert', '');
+      fireEvent.keyDown(screen.getByRole('button', { name: 'Exit fullscreen' }), { key: 'Escape' });
+      expect(screen.queryByTestId('leader-fullscreen-overlay')).not.toBeInTheDocument();
+    } finally { global.remove(); view.unmount(); }
   });
 
   it("Cmd+Shift+F toggles the cockpit when the leader node owns focus", async () => {
@@ -398,4 +497,16 @@ describe("LeaderNode fullscreen cockpit", () => {
     expect(screen.getByTestId("drawer-tab-approval")).toHaveTextContent("Workspace changes");
     expect(screen.getByTestId("drawer-panel-overview")).toBeInTheDocument();
   });
+});
+
+it("hydrates fullscreen dashboards independently of an unvisited canvas card", () => {
+  requestLeaderFullscreen("leader-fs-test");
+  render(<CanvasPresentationContext.Provider value={false}>
+    <Probe initial={{ renderState: { layout: {}, components: [
+      { id: "report", type: "text", content: "Fullscreen report from an offscreen card" },
+    ] } }} />
+  </CanvasPresentationContext.Provider>);
+  const overlay = screen.getByTestId("leader-fullscreen-overlay");
+  fireEvent.click(within(overlay).getByRole("button", { name: /^Dashboard$/ }));
+  expect(within(overlay).getByText("Fullscreen report from an offscreen card")).toBeVisible();
 });
