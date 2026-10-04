@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkRuntime } from "./check-runtime.mjs";
 import "../server/harness/register-production.ts";
 import { getHarnessReadiness } from "../server/harness/readiness.ts";
 
@@ -38,9 +39,8 @@ function canBind(port) {
 }
 
 console.log("\nSwarmcrews — host checks\n");
-await check("Node.js ≥ 22", async () => {
-  const major = Number.parseInt(process.versions.node.split(".")[0], 10);
-  if (major < 22) throw new Error(`found v${process.versions.node}; upgrade to Node 22 or newer`);
+await check("Node.js ≥ 22.12.0", async () => {
+  checkRuntime();
   return `v${process.versions.node}`;
 });
 await check("declared pnpm", async () => {

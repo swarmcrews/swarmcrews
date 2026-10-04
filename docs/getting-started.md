@@ -38,13 +38,17 @@ are included for maintainers.
 
 ## 1. Install and start
 
+For guided setup, use the [Linux, macOS, or Windows terminal installer](./installing.md).
+It checks prerequisites, reviews changes with you, and verifies startup. The
+manual source workflow below remains available for contributors.
+
 ### Check the prerequisites
 
 Install these tools using their official, platform-specific instructions:
 
 | Tool | Installation guide |
 |---|---|
-| **Node.js 22 or newer** | [Download and install Node.js](https://nodejs.org/en/download) (install before pnpm) |
+| **Node.js 22.12.0 or newer** | [Download and install Node.js](https://nodejs.org/en/download) (install before pnpm) |
 | **Git** | [Install Git](https://git-scm.com/downloads) |
 | **pnpm** | [Install pnpm](https://pnpm.io/installation) |
 

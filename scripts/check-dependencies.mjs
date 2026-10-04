@@ -1,8 +1,13 @@
 import { createRequire } from "node:module";
+import { checkRuntime } from "./check-runtime.mjs";
 
 const require = createRequire(new URL("../package.json", import.meta.url));
 
 export function checkDependencies(packages = ["tsx", "better-sqlite3"]) {
+  try { checkRuntime(); } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
   const missing = packages.filter((name) => {
     try {
       require.resolve(name);

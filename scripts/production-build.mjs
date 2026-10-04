@@ -2,7 +2,7 @@
 // Build away from the assets a running preview serves. A failed build must
 // preserve both the old service and its frontend, not merely its PID.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,11 @@ import { checkDependencies } from './check-dependencies.mjs';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(join(root, 'package.json'));
 checkDependencies(['typescript', 'vite']);
-const tsc = join(dirname(require.resolve('typescript/package.json')), 'bin', 'tsc.js');
+// Package upgrades can move the CLI (TypeScript 7 uses bin/tsc). Follow
+// the published entrypoint, not a private file layout or platform .bin shim.
+const typescriptManifest = require.resolve('typescript/package.json');
+const { bin: { tsc: compilerEntry } } = JSON.parse(readFileSync(typescriptManifest, 'utf8'));
+const tsc = join(dirname(typescriptManifest), compilerEntry);
 const vite = join(dirname(require.resolve('vite/package.json')), 'bin', 'vite.js');
 const temporary = mkdtempSync(join(root, '.swarmcrews-build-'));
 const staged = join(temporary, 'dist');

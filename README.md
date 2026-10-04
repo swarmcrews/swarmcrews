@@ -30,14 +30,29 @@ Swarmcrews gives you a spatial interface for orchestrating coding agents:
 - **Project management** — persistent projects with SQLite storage, session history, cost tracking
 - **Multiple agent harnesses** — use Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, or Pi, with each installed harness exposing its own configured model catalog
 
+## Guided installation
+
+Choose your host OS. From a checkout containing the installers:
+
+| Linux | macOS | Windows (PowerShell) |
+|---|---|---|
+| `bash install/linux.sh` | `bash install/macos.sh` | `powershell -NoProfile -File .\install\windows.ps1` |
+
+The branded terminal wizard has **no TUI dependencies**. It checks prerequisites,
+asks before provisioning tools, installs into an empty folder, guides agent login,
+and verifies the running app. It currently builds **from source**, not prebuilt
+releases. See [guided installation](./docs/installing.md) for standalone script
+usage without a checkout, supported hosts, unattended options, and recovery.
+
 ## Prerequisites
 
-Install the required tools using the official guides below. Tailscale is optional.
+For the manual workflow below, install the required tools using the official
+guides. The guided installer can provision Node and pnpm for you. Tailscale is optional.
 
 | Requirement | Why |
 |---|---|
 | **At least one agent harness** | Claude Code and Codex can use their bundled SDK runtimes. Copilot, OpenCode, and Pi are discovered on `PATH` (or via `COPILOT_CLI_PATH` / `OPENCODE_PATH` / `PI_PATH`). Authenticate with the harness itself; Swarmcrews derives model choices from each ready harness. |
-| **[Node.js ≥ 22](https://nodejs.org/en/download)** | Required by the agent SDKs and modern runtime features; install Node.js before pnpm |
+| **[Node.js ≥ 22.12.0](https://nodejs.org/en/download)** | Required by the agent SDKs and modern runtime features; install Node.js before pnpm |
 | **[pnpm](https://pnpm.io/installation)** | Package manager; use the version pinned in `package.json` (`npm install -g pnpm@10.15.1`) |
 | **[Git](https://git-scm.com/downloads)** | Used for repository access and optional worktree isolation |
 | **[Tailscale](https://tailscale.com/download)** | Optional, for tailnet HTTPS and the mobile companion |
@@ -51,6 +66,8 @@ Choose at least one harness and follow its installation and authentication guide
 - [Pi installation and quick start](https://github.com/earendil-works/pi/tree/main/packages/coding-agent#quick-start)
 
 ### Verify your setup
+
+Run this from the application checkout **after `pnpm install`**:
 
 ```bash
 pnpm preflight
@@ -78,8 +95,9 @@ pnpm start
 as a background service. After the build and startup check, it returns the terminal
 to you. It writes logs to `.run/swarmcrews.log` and keeps running until you
 `pnpm stop`. Visit **http://localhost:6173**; production startup does not open a
-browser automatically. Use `pnpm status` to check it, or `pnpm restart` to rebuild
-and relaunch after updates. Tailscale is only configured with `-- --tailscale`.
+browser automatically. Use `pnpm status` to check it. After updating the checkout
+(or upgrading Node.js), run `pnpm install` and then `pnpm restart` to rebuild and
+relaunch; `pnpm start` leaves an already-running service unchanged. Tailscale is only configured with `-- --tailscale`.
 
 For development with hot reload and foreground logs (stopping both services on
 `Ctrl-C`), use `pnpm dev`. Use the production service for remote access over

@@ -5,16 +5,16 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, syml
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-function fixture(fail = false) {
+function fixture(fail = false, compilerBin = './bin/tsc.js') {
   const dir = mkdtempSync(join(tmpdir(), 'swarmcrews build spaces '));
   cpSync(new URL('./', import.meta.url), join(dir, 'scripts'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), '{"type":"module"}');
   for (const name of ['vite', 'typescript']) {
     const base = join(dir, 'node_modules', name);
     mkdirSync(join(base, 'bin'), { recursive: true });
-    writeFileSync(join(base, 'package.json'), JSON.stringify({ name, type: 'module', exports: { '.': './index.js', './package.json': './package.json' } }));
+    writeFileSync(join(base, 'package.json'), JSON.stringify({ name, type: 'module', bin: name === 'vite' ? { vite: './bin/vite.js' } : { tsc: compilerBin }, exports: { '.': './index.js', './package.json': './package.json' } }));
     writeFileSync(join(base, 'index.js'), '');
-    writeFileSync(join(base, 'bin', name === 'vite' ? 'vite.js' : 'tsc.js'), `
+    writeFileSync(join(base, name === 'vite' ? './bin/vite.js' : compilerBin), `
       import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
       import { join } from 'node:path';
       appendFileSync('build-order', '${name}\\n');
@@ -40,6 +40,30 @@ test('builds latest assets in sequence from a path containing spaces', () => {
     const result = spawnSync(process.execPath, ['scripts/production-build.mjs'], { cwd: dir, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(readFileSync(join(dir, 'build-order'), 'utf8'), 'typescript\nvite\n');
+    assert.equal(readFileSync(join(dir, 'dist/index.html'), 'utf8'), 'fresh');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('production build uses the declared TypeScript 7 compiler entrypoint', () => {
+  const dir = fixture(false, './bin/tsc');
+  try {
+    const result = spawnSync(process.execPath, ['scripts/production-build.mjs'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(join(dir, 'build-order'), 'utf8'), 'typescript\nvite\n');
+    assert.equal(readFileSync(join(dir, 'dist/index.html'), 'utf8'), 'fresh');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('production build runs the installed TypeScript compiler without a bin shim', { timeout: 15_000 }, () => {
+  const dir = fixture();
+  try {
+    rmSync(join(dir, 'node_modules/typescript'), { recursive: true, force: true });
+    symlinkSync(fileURLToPath(new URL('../node_modules/typescript', import.meta.url)), join(dir, 'node_modules/typescript'), 'junction');
+    writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: { noEmit: true, types: [] }, files: ['entry.ts'] }));
+    writeFileSync(join(dir, 'entry.ts'), 'const value: number = 42;');
+    const result = spawnSync(process.execPath, ['scripts/production-build.mjs'], { cwd: dir, encoding: 'utf8', timeout: 12_000 });
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.equal(readFileSync(join(dir, 'dist/index.html'), 'utf8'), 'fresh');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

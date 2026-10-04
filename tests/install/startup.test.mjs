@@ -127,7 +127,7 @@ test("startup launches both services from a checkout path with spaces without sh
       const packageDir = join(fixture, "node_modules", name);
       mkdirSync(join(packageDir, "bin"), { recursive: true });
       writeFileSync(join(packageDir, "package.json"), JSON.stringify({
-        name, type: "module", main: "index.js",
+        name, type: "module", main: "index.js", bin: { tsc: "./bin/tsc.js" },
         exports: { ".": "./index.js", "./cli": "./index.js", "./package.json": "./package.json" },
       }));
       const cli = `
@@ -314,7 +314,7 @@ function launcherFixture(backend, frontend) {
     const fixtureCode = name === "vite" ? `if (process.argv[2] === "build") { const { mkdirSync, writeFileSync, appendFileSync } = await import("node:fs"); appendFileSync("build-count", "vite\\n"); const out = process.argv[process.argv.indexOf("--outDir") + 1]; mkdirSync(out, { recursive: true }); writeFileSync(out + "/index.html", "fixture-built"); process.exit(0); }\n${code}` : code;
     const dir = join(fixture, "node_modules", name);
     mkdirSync(join(dir, "bin"), { recursive: true });
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ name, type: "module", main: "index.js", exports: { ".": "./index.js", "./cli": "./index.js", "./package.json": "./package.json" } }));
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name, type: "module", main: "index.js", bin: { tsc: "./bin/tsc.js" }, exports: { ".": "./index.js", "./cli": "./index.js", "./package.json": "./package.json" } }));
     writeFileSync(join(dir, "index.js"), fixtureCode);
     writeFileSync(join(dir, "bin", "vite.js"), fixtureCode);
     if (name === "typescript") writeFileSync(join(dir, "bin", "tsc.js"), "process.exit(0);");
