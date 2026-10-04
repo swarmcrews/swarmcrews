@@ -20,7 +20,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Annotation, AnnotationTool } from "./AnnotationLayer.tsx";
 import { AnnotationList } from "./AnnotationList.tsx";
-import { MARKUP_PALETTE } from "./markup-palette.ts";
+import { MARKUP_PALETTE, markupNumberForeground } from "./markup-palette.ts";
+import "./annotation-sidebar.css";
 
 export interface AnnotationSidebarProps {
   tool: AnnotationTool;
@@ -94,6 +95,7 @@ export function AnnotationSidebar({
   return (
     <aside
       data-testid="annotation-sidebar"
+      className="annotation-sidebar"
       data-no-drag
       aria-label="Annotation controls"
       style={{
@@ -152,14 +154,13 @@ export function AnnotationSidebar({
           borderBottom: "1px solid var(--border-default)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "baseline", justifyContent: "space-between" }}>
           <SidebarLabel>{selected ? "Mark colour" : "Next colour"}</SidebarLabel>
           {selected && (
             <span style={{
-              fontSize: 9,
+              fontSize: "0.75rem",
               fontFamily: "var(--font-mono)",
               color: "var(--text-muted)",
-              opacity: 0.7,
               letterSpacing: "0.04em",
             }}>
               #{selected.order}
@@ -167,7 +168,7 @@ export function AnnotationSidebar({
           )}
         </div>
         <div
-          style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 5, marginTop: 6 }}
+          className="annotation-palette"
           role="radiogroup"
           aria-label={selected ? `Color for ${selected.kind} ${selected.order}` : "Annotation color"}
         >
@@ -180,6 +181,7 @@ export function AnnotationSidebar({
                 key={swatch.color}
                 type="button"
                 role="radio"
+                className="annotation-swatch"
                 aria-checked={isActive}
                 aria-label={swatch.label}
                 disabled={disabled}
@@ -193,12 +195,8 @@ export function AnnotationSidebar({
                   cursor: disabled ? "not-allowed" : "pointer",
                   padding: 0,
                   position: "relative",
-                  outline: isActive
-                    ? "2px solid var(--text-primary)"
-                    : "none",
-                  outlineOffset: 1,
-                  transition: "transform 0.1s ease",
-                  transform: isActive ? "scale(1.04)" : "scale(1)",
+                  // Selection is inset; the separate outer keyboard ring stays visible.
+                  boxShadow: isActive ? `inset 0 0 0 2px ${markupNumberForeground(swatch.color)}` : "none",
                 }}
               />
             );
@@ -217,19 +215,20 @@ export function AnnotationSidebar({
             background: "color-mix(in srgb, var(--accent) 4%, transparent)",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
             <span
               aria-hidden
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 18,
-                height: 18,
+                width: "1.5rem",
+                height: "1.5rem",
+                flexShrink: 0,
                 borderRadius: selected.kind === "pin" ? 9 : 3,
                 background: selected.color,
-                color: "#fff",
-                fontSize: 9,
+                color: markupNumberForeground(selected.color),
+                fontSize: "0.75rem",
                 fontFamily: "var(--font-mono)",
                 fontWeight: 700,
                 boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.25)",
@@ -245,12 +244,14 @@ export function AnnotationSidebar({
               aria-label="Delete annotation"
               style={{
                 display: "inline-flex",
+                flexShrink: 0,
+                marginLeft: "auto",
                 alignItems: "center",
                 gap: 4,
                 background: "transparent",
                 border: "1px solid var(--border-default)",
                 color: "var(--text-muted)",
-                fontSize: 9,
+                fontSize: "0.75rem",
                 fontFamily: "var(--font-mono)",
                 padding: "2px 6px",
                 borderRadius: 4,
@@ -286,11 +287,10 @@ export function AnnotationSidebar({
               background: "var(--bg-primary)",
               border: "1px solid var(--border-default)",
               color: "var(--text-primary)",
-              fontSize: 11,
+              fontSize: "0.75rem",
               fontFamily: "var(--font-sans)",
               padding: "7px 8px",
               borderRadius: 5,
-              outline: "none",
               resize: "vertical",
               minHeight: 62,
               lineHeight: 1.45,
@@ -311,9 +311,9 @@ export function AnnotationSidebar({
       )}
 
       <div
+        className="annotation-inventory"
         style={{
           flex: 1,
-          minHeight: 0,
           display: "flex",
           flexDirection: "column",
         }}
@@ -327,7 +327,7 @@ export function AnnotationSidebar({
               data-testid="annotation-list-empty"
               style={{
                 padding: "8px 10px",
-                fontSize: 11,
+                fontSize: "0.75rem",
                 fontFamily: "var(--font-sans)",
                 color: "var(--text-muted)",
                 fontStyle: "italic",
@@ -353,6 +353,7 @@ export function AnnotationSidebar({
           display: "flex",
           alignItems: "center",
           gap: 8,
+          flexWrap: "wrap",
           padding: "8px 10px",
           borderTop: "1px solid var(--border-default)",
           background: "color-mix(in srgb, var(--bg-secondary) 50%, transparent)",
@@ -363,7 +364,7 @@ export function AnnotationSidebar({
             display: "inline-flex",
             alignItems: "center",
             gap: 6,
-            fontSize: 10,
+            fontSize: "0.75rem",
             color: "var(--text-muted)",
             fontFamily: "var(--font-mono)",
             letterSpacing: "0.04em",
@@ -377,13 +378,13 @@ export function AnnotationSidebar({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minWidth: 16,
-                height: 14,
+                minWidth: "1em",
+                minHeight: "1.2em",
                 padding: "0 4px",
                 borderRadius: 3,
                 background: "color-mix(in srgb, var(--accent) 18%, transparent)",
                 color: "var(--accent)",
-                fontSize: 9,
+                fontSize: "0.75rem",
                 fontWeight: 700,
               }}
             >
@@ -416,7 +417,7 @@ export function AnnotationSidebar({
               background: clearArmed ? "color-mix(in srgb, #ef4444 18%, transparent)" : "transparent",
               border: `1px solid ${clearArmed ? "#ef4444" : "var(--border-default)"}`,
               color: clearArmed ? "#ef4444" : "var(--text-muted)",
-              fontSize: 10,
+              fontSize: "0.75rem",
               fontFamily: "var(--font-mono)",
               padding: "3px 8px",
               borderRadius: 4,
@@ -440,11 +441,13 @@ function SidebarLabel({ children }: { children: React.ReactNode }): React.JSX.El
   return (
     <span
       style={{
-        fontSize: 9,
+        fontSize: "0.75rem",
         color: "var(--text-muted)",
-        fontFamily: "var(--font-mono)",
-        textTransform: "uppercase",
-        letterSpacing: "0.06em",
+        fontFamily: "var(--font-sans)",
+        fontWeight: 600,
+        lineHeight: 1.3,
+        maxWidth: "100%",
+        overflowWrap: "anywhere",
       }}
     >
       {children}
@@ -475,8 +478,10 @@ function ToolButton({ label, active, disabled, onClick, children }: ToolButtonPr
         alignItems: "center",
         justifyContent: "center",
         gap: 6,
-        height: 26,
-        padding: "0 4px",
+        minHeight: 32,
+        minWidth: 0,
+        flexWrap: "wrap",
+        padding: "6px 4px",
         background: active
           ? "color-mix(in srgb, var(--accent) 18%, var(--bg-surface))"
           : "transparent",
@@ -485,7 +490,7 @@ function ToolButton({ label, active, disabled, onClick, children }: ToolButtonPr
         color: active ? "var(--accent)" : "var(--text-muted)",
         cursor: disabled ? "not-allowed" : "pointer",
         fontFamily: "var(--font-mono)",
-        fontSize: 10,
+        fontSize: "0.75rem",
         fontWeight: active ? 700 : 500,
         letterSpacing: "0.04em",
         textTransform: "uppercase",
@@ -496,7 +501,7 @@ function ToolButton({ label, active, disabled, onClick, children }: ToolButtonPr
       }}
     >
       {children}
-      <span aria-hidden style={{ fontSize: 9 }}>{label}</span>
+      <span aria-hidden style={{ fontSize: "0.75rem" }}>{label}</span>
     </button>
   );
 }

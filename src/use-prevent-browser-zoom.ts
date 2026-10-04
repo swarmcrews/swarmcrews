@@ -1,30 +1,23 @@
-/**
- * Disable browser-level page zoom gestures inside the app.
- *
- * Trackpad pinch-to-zoom is delivered as a wheel event with ctrlKey/metaKey
- * in Chromium/WebKit. Canvas.tsx consumes those events when the pointer is
- * over the canvas, but the app chrome sits outside that listener. Capturing
- * the event globally prevents the browser from zooming the whole UI while
- * still letting the event bubble to the canvas when appropriate.
- */
+/** Keep browser zoom for app chrome, reading surfaces and forms. */
 import { useEffect } from "react";
 
 export function isBrowserZoomWheelEvent(e: WheelEvent): boolean {
   return e.ctrlKey || e.metaKey;
 }
 
+/** Shared with Canvas's local handler so a bubbling event is not recaptured. */
+export function isCanvasZoomTarget(target: EventTarget | null): boolean {
+  return target instanceof Element
+    && !!target.closest(".canvas-root")
+    && !target.closest('[data-scroll-capture], [data-viewport-overlay], input, textarea, select, [contenteditable="true"]');
+}
+
 export function usePreventBrowserZoom(): void {
   useEffect(() => {
     const preventBrowserZoom = (e: WheelEvent) => {
-      if (isBrowserZoomWheelEvent(e)) e.preventDefault();
+      if (isBrowserZoomWheelEvent(e) && isCanvasZoomTarget(e.target)) e.preventDefault();
     };
-
-    document.addEventListener("wheel", preventBrowserZoom, {
-      capture: true,
-      passive: false,
-    });
-    return () => {
-      document.removeEventListener("wheel", preventBrowserZoom, true);
-    };
+    document.addEventListener("wheel", preventBrowserZoom, { capture: true, passive: false });
+    return () => document.removeEventListener("wheel", preventBrowserZoom, true);
   }, []);
 }

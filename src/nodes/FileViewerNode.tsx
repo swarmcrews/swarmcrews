@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useId, useRef, useCallback } from "react";
+import "./file-viewer.css";
 import type { NodeRenderProps } from "../types.ts";
 import { registerNodeType } from "../node-registry.ts";
 import { registerContract, CONTEXT_OUT_PORT } from "../graph.ts";
@@ -79,7 +80,7 @@ function CodeView({ content }: { content: string }) {
     <div
       style={{
         padding: "10px 0",
-        fontSize: 12,
+        fontSize: ".8125rem",
         fontFamily: "var(--font-mono)",
         lineHeight: 1.6,
         tabSize: 2,
@@ -100,7 +101,6 @@ function CodeView({ content }: { content: string }) {
               width: `${pad + 1}ch`,
               textAlign: "right",
               color: "var(--text-muted)",
-              opacity: 0.35,
               userSelect: "none",
               flexShrink: 0,
               paddingRight: "1.5ch",
@@ -108,7 +108,7 @@ function CodeView({ content }: { content: string }) {
           >
             {i + 1}
           </span>
-          <span
+          <span data-file-line={i}
             style={{
               flex: 1,
               whiteSpace: "pre",
@@ -142,7 +142,15 @@ function FileViewerNodeRenderer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const readPending = useRef(false);
+  const retryRequested = useRef<string | null>(null);
+  const retryRef = useRef<HTMLButtonElement>(null);
+  const restoreReadFocus = useRef(false);
   const encoded = projectPath ? encodePath(projectPath) : null;
+  const readIdentity = `${encoded ?? ""}\n${data.filePath}`;
+  const identityRef = useRef(readIdentity);
+  identityRef.current = readIdentity;
   const ext = extOf(data.filePath);
   const isMarkdown = MARKDOWN_EXTS.has(ext);
   const fileName = data.filePath ? data.filePath.split("/").pop() ?? data.filePath : "";
@@ -153,6 +161,47 @@ function FileViewerNodeRenderer({
   // the collapsed header would prevent CanvasNode from ever initiating a drag.
   const clickStartRef = useRef<{ x: number; y: number } | null>(null);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const contentId = useId();
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const scrollPosition = useRef({ top: 0, left: 0 });
+  const lineScroll = useRef<number[]>([]);
+  const scrollPath = useRef(data.filePath);
+  const restoreToggleFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (scrollPath.current !== data.filePath) {
+      scrollPath.current = data.filePath;
+      scrollPosition.current = { top: 0, left: 0 };
+      lineScroll.current = [];
+    }
+    if (!collapsed && contentRef.current) {
+      contentRef.current.scrollTop = scrollPosition.current.top;
+      contentRef.current.scrollLeft = scrollPosition.current.left;
+      contentRef.current.querySelectorAll<HTMLElement>("[data-file-line]").forEach((line, index) => {
+        line.scrollLeft = lineScroll.current[index] ?? 0;
+      });
+    }
+    if (restoreToggleFocus.current) {
+      restoreToggleFocus.current = false;
+      toggleRef.current?.focus({ preventScroll: true });
+    }
+  }, [collapsed, data.filePath]);
+
+  useLayoutEffect(() => {
+    if (loading || !restoreReadFocus.current) return;
+    restoreReadFocus.current = false;
+    if (!error) contentRef.current?.focus({ preventScroll: true });
+  }, [loading, error, content]);
+
+  const retryRead = () => {
+    if (!error || readPending.current) return;
+    readPending.current = true; // Guard repeated activation before React commits.
+    retryRequested.current = readIdentity;
+    setLoading(true);
+    setRetryCount(count => count + 1);
+  };
 
   const handleCopy = useCallback(() => {
     if (!content) return;
@@ -168,6 +217,11 @@ function FileViewerNodeRenderer({
   }, [content]);
 
   const toggleCollapsed = () => {
+    restoreToggleFocus.current = document.activeElement === toggleRef.current;
+    if (!collapsed && contentRef.current) {
+      scrollPosition.current = { top: contentRef.current.scrollTop, left: contentRef.current.scrollLeft };
+      lineScroll.current = [...contentRef.current.querySelectorAll<HTMLElement>("[data-file-line]")].map(line => line.scrollLeft);
+    }
     if (collapsed) {
       // Expanding — restore saved height
       const h = data.expandedHeight ?? DEFAULT_EXPANDED_HEIGHT;
@@ -180,16 +234,34 @@ function FileViewerNodeRenderer({
     }
   };
 
-  // Fetch file when path changes
+  const toggle = <button ref={toggleRef} type="button" className="file-viewer-toggle" data-no-drag
+    aria-label={collapsed ? "Expand file viewer" : "Collapse file viewer"}
+    aria-expanded={!collapsed} aria-controls={collapsed ? undefined : contentId}
+    onPointerDown={event => event.stopPropagation()} onPointerUp={event => event.stopPropagation()}
+    onMouseDown={event => event.stopPropagation()}
+    onKeyDown={event => { if (event.key === "Enter" || event.key === " ") event.stopPropagation(); }}
+    onClick={event => { event.stopPropagation(); toggleCollapsed(); }}>
+    <span aria-hidden="true">{collapsed ? "▶" : "▼"}</span>
+  </button>;
+
+  // Fetch only on identity changes or explicit recovery, never on toggling.
   useEffect(() => {
     if (!encoded || !data.filePath) {
+      readPending.current = false;
+      retryRequested.current = null;
       setContent(null);
+      setError(null);
+      setLoading(false);
       return;
     }
 
     let cancelled = false;
+    const isRetry = retryRequested.current === readIdentity;
+    retryRequested.current = null;
+    readPending.current = true;
     setLoading(true);
-    setError(null);
+    // Keep the failed read and its focused recovery control while retrying.
+    if (!isRetry) setError(null);
 
     getAuthToken()
       .then((token) =>
@@ -212,26 +284,31 @@ function FileViewerNodeRenderer({
         }>;
       })
       .then((json) => {
-        if (cancelled) return;
+        if (cancelled || identityRef.current !== readIdentity) return;
+        restoreReadFocus.current = isRetry && document.activeElement === retryRef.current;
+        setError(null);
         setContent(json.content);
         setFileSize(json.size);
         setTruncated(json.truncated);
         // Persist to node data so the context system can read it
-        onUpdateData({ ...data, loadedContent: json.content });
+        onUpdateData({ ...dataRef.current, loadedContent: json.content });
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled || identityRef.current !== readIdentity) return;
         setError(err instanceof Error ? err.message : "Failed to load");
         setContent(null);
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && identityRef.current === readIdentity) {
+          readPending.current = false;
+          setLoading(false);
+        }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [encoded, data.filePath]);
+  }, [encoded, data.filePath, retryCount]);
 
   // ── Collapsed view ────────────────────────────────────
   if (collapsed) {
@@ -253,6 +330,7 @@ function FileViewerNodeRenderer({
           onPointerDown={(e) => {
             clickStartRef.current = { x: e.clientX, y: e.clientY };
           }}
+          onPointerCancel={() => { clickStartRef.current = null; }}
           onPointerUp={(e) => {
             if (clickStartRef.current) {
               const d =
@@ -264,6 +342,7 @@ function FileViewerNodeRenderer({
           }}
           style={{
             padding: "4px 8px",
+            lineHeight: 1.1,
             display: "flex",
             alignItems: "center",
             gap: 4,
@@ -275,19 +354,10 @@ function FileViewerNodeRenderer({
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--state-hover)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = HEADER_BG; }}
         >
+          {toggle}
           <span
             style={{
-              fontSize: 6,
-              color: "var(--text-muted)",
-              flexShrink: 0,
-              transition: "transform 0.15s",
-            }}
-          >
-            &#9654;
-          </span>
-          <span
-            style={{
-              fontSize: 11,
+              fontSize: "0.75rem",
               fontFamily: "var(--font-mono)",
               color: "var(--text-primary)",
               overflow: "hidden",
@@ -303,23 +373,22 @@ function FileViewerNodeRenderer({
           {content !== null && (
             <span
               style={{
-                fontSize: 9,
+                fontSize: "0.75rem",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
                 flexShrink: 0,
-                opacity: 0.6,
               }}
             >
               {lineCount}L {formatSize(fileSize)}
             </span>
           )}
           {loading && (
-            <span style={{ fontSize: 9, color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
               ...
             </span>
           )}
           {error && (
-            <span style={{ fontSize: 9, color: "var(--danger-color)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--danger-color)", fontFamily: "var(--font-mono)", flexShrink: 0 }}>
               error
             </span>
           )}
@@ -348,6 +417,7 @@ function FileViewerNodeRenderer({
           padding: "8px 12px",
           display: "flex",
           justifyContent: "space-between",
+          flexWrap: "wrap",
           alignItems: "center",
           borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
@@ -355,30 +425,18 @@ function FileViewerNodeRenderer({
           gap: 8,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-          <span
-            onClick={toggleCollapsed}
-            onMouseDown={(e) => e.stopPropagation()}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 12rem", minWidth: 0 }}>
+          {toggle}
+          <span className="file-viewer-kind"
             style={{
-              fontSize: 8,
-              color: "var(--text-muted)",
-              flexShrink: 0,
-              cursor: "pointer",
-              transition: "transform 0.15s",
-              transform: "rotate(90deg)",
-              padding: "2px 4px",
-            }}
-          >
-            &#9654;
-          </span>
-          <span
-            style={{
-              fontSize: 10,
+              fontSize: "0.75rem",
               color: "var(--text-muted)",
               textTransform: "uppercase",
               letterSpacing: 1,
               fontFamily: "var(--font-mono)",
-              flexShrink: 0,
+              flexShrink: 1,
+              minWidth: 0,
+              overflowWrap: "normal",
             }}
           >
             File Viewer
@@ -388,7 +446,7 @@ function FileViewerNodeRenderer({
           </span>
         </div>
         {content !== null && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, maxWidth: "100%" }}>
             <button
               onClick={handleCopy}
               onMouseDown={(e) => e.stopPropagation()}
@@ -399,9 +457,9 @@ function FileViewerNodeRenderer({
                 borderRadius: 4,
                 padding: "2px 8px",
                 cursor: "pointer",
-                fontSize: 10,
+                fontSize: "0.75rem",
                 fontFamily: "var(--font-mono)",
-                color: copied ? "#fff" : "var(--text-muted)",
+                color: copied ? "var(--text-on-accent)" : "var(--text-muted)",
                 transition: "all 0.15s",
                 whiteSpace: "nowrap",
               }}
@@ -410,7 +468,7 @@ function FileViewerNodeRenderer({
             </button>
             <span
               style={{
-                fontSize: 10,
+                fontSize: "0.75rem",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
               }}
@@ -428,7 +486,7 @@ function FileViewerNodeRenderer({
           borderBottom: `1px solid ${BORDER}`,
           flexShrink: 0,
           fontFamily: "var(--font-mono)",
-          fontSize: 12,
+          fontSize: "0.75rem",
           color: "var(--text-primary)",
           background: "var(--state-hover)",
           overflow: "hidden",
@@ -440,22 +498,31 @@ function FileViewerNodeRenderer({
         {data.filePath || "No file selected"}
       </div>
 
-      <div
+      <div ref={contentRef} id={contentId} role="region" aria-label="File contents" tabIndex={-1} aria-busy={loading}
         onMouseDown={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
-        style={{ flex: 1, overflow: "auto", position: "relative" }}
+        style={{ flex: 1, minHeight: 0, overflow: "auto", position: "relative" }}
       >
-        {loading ? (
-          <StatusMsg>Loading...</StatusMsg>
-        ) : error ? (
+        {error ? (
           <StatusMsg
             style={{
               color: "var(--danger-color)",
               background: "var(--danger-bg)",
             }}
           >
-            {error}
+            <p className="file-viewer-error" role="alert">{error}</p>
+            {/* Native disabled drops keyboard focus in Chromium; aria-disabled
+                keeps the recovery anchor while retryRead guards every activation. */}
+            <button ref={retryRef} type="button" className="file-viewer-retry" data-no-drag
+              aria-label="Retry file" aria-disabled={loading}
+              onPointerDown={event => event.stopPropagation()}
+              onKeyDown={event => { if (event.key === "Enter" || event.key === " ") event.stopPropagation(); }}
+              onClick={event => { event.stopPropagation(); retryRead(); }}>
+              {loading ? "Retrying..." : "Retry"}
+            </button>
           </StatusMsg>
+        ) : loading ? (
+          <StatusMsg>Loading...</StatusMsg>
         ) : content === null ? (
           <StatusMsg>No file selected</StatusMsg>
         ) : isMarkdown ? (
@@ -463,7 +530,7 @@ function FileViewerNodeRenderer({
             style={{
               padding: "12px 16px",
               color: "var(--text-primary)",
-              fontSize: 13,
+              fontSize: ".875rem",
               fontFamily: "var(--font-sans)",
               lineHeight: 1.6,
             }}
@@ -505,7 +572,7 @@ function StatusMsg({
         padding: 20,
         textAlign: "center",
         color: "var(--text-muted)",
-        fontSize: 12,
+        fontSize: "0.75rem",
         fontFamily: "var(--font-mono)",
         ...style,
       }}

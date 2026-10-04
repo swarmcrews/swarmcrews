@@ -33,12 +33,17 @@ describe('shared feedback journal', () => {
   });
   it('does not cross the socket boundary if the outgoing marker cannot be persisted', () => {
     const { store, send } = setup();
-    const write = vi.spyOn(window.localStorage, 'setItem').mockImplementation(() => { throw new Error('Quota'); });
-    store.send('<p>A</p>');
-    expect(send).not.toHaveBeenCalled();
-    expect(store.snapshot().pending).toBe(false);
-    expect(store.snapshot().storageError).toContain('storage');
-    write.mockRestore();
+    // Replace the boundary rather than spying on jsdom's Storage proxy.
+    const read = window.localStorage.getItem.bind(window.localStorage);
+    const write = vi.fn(() => { throw new Error('Quota'); });
+    vi.stubGlobal('localStorage', { getItem: read, setItem: write });
+    try {
+      store.send('<p>A</p>');
+      expect(write).toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+      expect(store.snapshot().pending).toBe(false);
+      expect(store.snapshot().storageError).toContain('storage');
+    } finally { vi.unstubAllGlobals(); }
   });
   it('restores an outgoing marker as unconfirmed after a page reload', () => {
     const { store, sessionKey, send } = setup();

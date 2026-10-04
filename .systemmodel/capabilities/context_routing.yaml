@@ -6,14 +6,14 @@ constraints: []
 decisions: [ decision.typed_event_bus ]
 risks:
   - risk.project_worktree_content_split
-suggested_files: [ shared/project-context.ts, src/connected-context.ts, src/context-extraction.ts, src/context-delivery.ts, server/commands/canvas-context.ts, server/task-graph/connected-graph-source.ts, server/task-graph/connected-graph-context.ts, server/task-graph/planning-tools.ts, server/task-tools/update-project-context.ts, server/task-tools/task-prompt.ts ]
-suggested_tests: [ src/ProjectPanel.test.tsx, src/connected-context.test.ts, src/context-extraction.test.ts, src/context-delivery.test.ts, src/context-staleness.test.ts, server/task-tools/update-project-context.test.ts, server/task-tools/task-prompt.test.ts ]
+suggested_files: [ shared/project-context.ts, src/connected-context.ts, src/context-extraction.ts, src/context-delivery.ts, src/nodes/FileViewerNode.tsx, src/nodes/file-viewer.css, server/commands/canvas-context.ts, server/task-graph/connected-graph-source.ts, server/task-graph/connected-graph-context.ts, server/task-graph/planning-tools.ts, server/task-tools/update-project-context.ts, server/task-tools/task-prompt.ts ]
+suggested_tests: [ src/nodes/FileViewerNode.test.tsx, src/nodes/FileViewerNode.accessibility.test.tsx, tests/e2e/design-finish-readability.spec.mjs, src/ProjectPanel.test.tsx, src/connected-context.test.ts, src/context-extraction.test.ts, src/context-delivery.test.ts, src/context-staleness.test.ts, server/task-tools/update-project-context.test.ts, server/task-tools/task-prompt.test.ts ]
 keywords: [ context, graph, routing, provider, attachment, canvas_context, stale, snapshot, file, image, markdown, ordering ]
 entry_points:
   - surface: surface.canvas
-    summary: Connect providers through graph ports and inspect or publish their extracted context.
-    files: [ src/Canvas.tsx, src/connected-context.ts, src/context-extraction.ts, src/ProjectPanel.tsx ]
-    tests: [ src/connected-context.test.ts, src/context-extraction.test.ts, src/ProjectPanel.test.tsx ]
+    summary: Connect providers through graph ports and inspect their extracted context. Read-only File Viewer toggles are named and keyboard-operable, preserving selected file, loaded context and local scroll intent; delayed reads must not overwrite newer view state.
+    files: [ src/Canvas.tsx, src/connected-context.ts, src/context-extraction.ts, src/ProjectPanel.tsx, src/nodes/FileViewerNode.tsx, src/nodes/file-viewer.css ]
+    tests: [ src/connected-context.test.ts, src/context-extraction.test.ts, src/ProjectPanel.test.tsx, src/nodes/FileViewerNode.test.tsx, src/nodes/FileViewerNode.accessibility.test.tsx, tests/e2e/design-finish-readability.spec.mjs ]
     flows: [ flow.route_canvas_context, flow.save_project_knowledge ]
   - surface: surface.agent_tools
     summary: Let Leaders replace workspace-owned context and freeze configured context into delegation; Leaders and Minions load parent skills, sub-skills, and paged attachments from the same persisted skill snapshot used for prompts.

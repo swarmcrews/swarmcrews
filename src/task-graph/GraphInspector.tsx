@@ -44,6 +44,17 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "timeline", label: "Timeline" },
 ];
 
+const PHONE_VIEW_KEY = "swarmcrews:graph-inspector-phone-view";
+function initialView(explicit: Tab | undefined): Tab {
+  if (explicit) return explicit;
+  if (typeof window === "undefined" || window.innerWidth > 650) return "topology";
+  try {
+    const stored = localStorage.getItem(PHONE_VIEW_KEY);
+    if (TABS.some((item) => item.id === stored)) return stored as Tab;
+  } catch { /* Preferences are optional when storage is unavailable. */ }
+  return "queue";
+}
+
 const FILTERS: { id: GraphFilter; label: string }[] = [
   { id: "all", label: "All nodes" },
   { id: "active", label: "Active path" },
@@ -76,7 +87,7 @@ export function GraphInspector({
   createRequestId,
   plan = [],
   goal,
-  initialTab = "topology",
+  initialTab,
   initialSelectedNodeId = null,
   controlsEnabled = true,
   stale = false,
@@ -84,7 +95,13 @@ export function GraphInspector({
   onRefresh,
   navigation,
 }: GraphInspectorProps) {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(() => initialView(initialTab));
+  const chooseTab = (next: Tab) => {
+    setTab(next);
+    if (window.innerWidth <= 650) {
+      try { localStorage.setItem(PHONE_VIEW_KEY, next); } catch { /* Optional preference. */ }
+    }
+  };
   const [filter, setFilter] = useState<GraphFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     snapshot.nodes.some((node) => node.id === initialSelectedNodeId) ? initialSelectedNodeId : null);
@@ -94,6 +111,12 @@ export function GraphInspector({
   const [planOpen, setPlanOpen] = useState(() => typeof window === "undefined" || window.innerWidth > 900);
   const [detailOpen, setDetailOpen] = useState(selectedId !== null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const revealTab = () => dialogRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    revealTab();
+    window.addEventListener("resize", revealTab);
+    return () => window.removeEventListener("resize", revealTab);
+  }, [tab]);
   const titleId = useId();
   const objectiveId = useId();
   const [objectiveExpanded, setObjectiveExpanded] = useState(false);
@@ -176,7 +199,7 @@ export function GraphInspector({
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight" && event.key !== "Home" && event.key !== "End") return;
     event.preventDefault();
     const next = event.key === "Home" ? 0 : event.key === "End" ? TABS.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + TABS.length) % TABS.length;
-    setTab(TABS[next]!.id);
+    chooseTab(TABS[next]!.id);
     document.getElementById(`tg-tab-${TABS[next]!.id}`)?.focus();
   };
   const selectNode = (nodeId: string, revealFlow = false) => {
@@ -222,7 +245,9 @@ export function GraphInspector({
             <button className="tg-view-toggle" aria-label="Toggle plan rail" aria-pressed={planOpen} onClick={togglePlan}>Plan</button>
             <button className="tg-view-toggle" aria-label="Toggle details rail" aria-pressed={detailOpen} onClick={toggleDetail}>Details</button>
             {canPause ? <button className="tg-button" disabled={!controlsEnabled} onClick={() => dispatch({ type: "pause" })}>Pause</button> : snapshot.status === "paused" ? <button className="tg-button" disabled={!controlsEnabled} onClick={() => dispatch({ type: "resume" })}>Resume</button> : null}
-            {canCancelRun ? <button className="tg-button tg-button--danger" disabled={!controlsEnabled} onClick={() => dispatch({ type: "cancel_run" })}>Cancel run</button> : null}
+            {canCancelRun ? <button className="tg-button tg-button--danger" disabled={!controlsEnabled} onClick={() => {
+              if (controlsEnabled && window.confirm(`Cancel run “${snapshot.title}”? Active work will be stopped. This cannot be undone.`)) dispatch({ type: "cancel_run" });
+            }}>Cancel run</button> : null}
             <button className="tg-close" aria-label="Close graph inspector" onClick={onClose}>×</button>
           </div>
         </header>
@@ -263,7 +288,7 @@ export function GraphInspector({
                     aria-controls={`tg-panel-${item.id}`}
                     tabIndex={tab === item.id ? 0 : -1}
                     onKeyDown={(event) => onTabKey(event, index)}
-                    onClick={() => setTab(item.id)}
+                    onClick={() => chooseTab(item.id)}
                   >{item.label}</button>
                 ))}
               </div>

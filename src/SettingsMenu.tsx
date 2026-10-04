@@ -128,7 +128,9 @@ export function SettingsMenu({
 }: SettingsMenuProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Close on outside click or Escape
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Nonmodal: keyboard dismissal restores the opener; pointer dismissal
+  // leaves focus with the user's next target. Nested controls consume Escape first.
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -137,7 +139,11 @@ export function SettingsMenu({
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      setOpen(false);
+      if (containerRef.current?.contains(document.activeElement)) {
+        triggerRef.current?.focus({ preventScroll: true });
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -150,6 +156,7 @@ export function SettingsMenu({
     <div ref={containerRef} style={{ position: "relative" }}>
       <button
         type="button"
+        ref={triggerRef}
         aria-label="Open settings"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -373,6 +380,7 @@ function SettingsPopover({
                         type="button"
                         aria-current={selected ? "page" : undefined}
                         className="settings-nav__item"
+                        onFocus={(event) => event.currentTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
                         onClick={() => setActiveCategory(category.id)}
                       >
                         <Icon size={16} aria-hidden="true" />

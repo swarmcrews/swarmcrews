@@ -100,12 +100,12 @@ export function ConfirmModal({ title, description, actions, onClose }: ConfirmMo
           gap: 16,
         }}
       >
-        <div id={titleId} style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}>
+        <div id={titleId} style={{ fontSize: "1rem", fontWeight: 600, color: "var(--text-primary)", fontFamily: "var(--font-sans)" }}>
           {title}
         </div>
 
         {description && (
-          <div id={descriptionId} style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
+          <div id={descriptionId} style={{ fontSize: ".875rem", color: "var(--text-secondary)", lineHeight: 1.5, fontFamily: "var(--font-sans)" }}>
             {description}
           </div>
         )}
@@ -149,7 +149,7 @@ const buttonBase: React.CSSProperties = {
   borderRadius: "var(--radius-control)",
   maxWidth: "100%",
   whiteSpace: "normal",
-  fontSize: 12,
+  fontSize: ".8125rem",
   fontWeight: 500,
   fontFamily: "var(--font-sans)",
   cursor: "pointer",

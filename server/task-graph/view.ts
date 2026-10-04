@@ -106,7 +106,10 @@ export function projectTaskGraphSnapshot(
     const satisfied = latest ? !stale && executionPassed
       && completionPassed && hasOutputs && verified : false;
     const latestOutcome = latest ? text(latest,"outcome","outcome") : null;
-    const invalidCompletion=!accepted && latestOutcome!==null && !completionPassed;
+    // An active verifier has no completion verdict yet (outcome is "none").
+    // Only terminal attempt facts can require completion adjudication.
+    const invalidCompletion=!accepted && latest !== null
+      && text(latest,"runtime","runtime")==="terminal" && !completionPassed;
     const unsuccessful = latestOutcome === "failed" || latestOutcome === "cancelled"
       || latestOutcome === "lost" || latestOutcome === "superseded" || invalidCompletion;
     const ready = readinessByNode.get(node.id);

@@ -764,6 +764,49 @@ describe("SettingsMenu", () => {
     expect(screen.getByRole("option", { name: /review/i })).toBeInTheDocument();
   });
 
+  it.each(["General", "Agent defaults", "Context actions", "Governance"])("restores the opener after Escape from %s without making settings modal", (category) => {
+    render(<SettingsMenu settings={{}} onSettingsChange={() => {}} />);
+    const trigger = screen.getByRole("button", { name: /open settings/i });
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: /settings/i });
+    expect(dialog).not.toHaveAttribute("aria-modal", "true");
+    const navigation = within(dialog).getByRole("navigation", { name: /settings categories/i });
+    const item = within(navigation).getByRole("button", { name: new RegExp(category, "i") });
+    fireEvent.click(item);
+    item.focus();
+    fireEvent.keyDown(item, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /settings/i })).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("dismisses on outside pointer without stealing the next control's focus", () => {
+    render(<><SettingsMenu settings={{}} onSettingsChange={() => {}} /><button>Outside action</button></>);
+    const trigger = screen.getByRole("button", { name: /open settings/i });
+    fireEvent.click(trigger);
+    const category = screen.getByRole("button", { name: /general/i });
+    category.focus();
+    const outside = screen.getByRole("button", { name: "Outside action" });
+    fireEvent.mouseDown(outside);
+    outside.focus();
+    expect(screen.queryByRole("dialog", { name: /settings/i })).toBeNull();
+    expect(outside).toHaveFocus();
+    expect(trigger).not.toHaveFocus();
+  });
+
+  it("lets nested safety help consume Escape before dismissing settings", () => {
+    render(<SettingsMenu settings={{}} onSettingsChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /open settings/i }));
+    openCategory("Agent defaults");
+    const help = screen.getByRole("button", { name: "About sandbox file access" });
+    fireEvent.click(help);
+    fireEvent.keyDown(help, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: /settings/i })).toBeInTheDocument();
+    expect(help).toHaveFocus();
+    fireEvent.keyDown(help, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: /settings/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /open settings/i })).toHaveFocus();
+  });
+
   it("closes on Escape", () => {
     render(<SettingsMenu settings={{}} onSettingsChange={() => {}} />);
 

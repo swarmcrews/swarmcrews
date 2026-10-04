@@ -78,6 +78,21 @@ describe("AnnotationSidebar — tools", () => {
 });
 
 describe("AnnotationSidebar — palette", () => {
+  it("keeps focus separate from selection and never recolors a mark on focus alone", () => {
+    const onColorChange = vi.fn();
+    const selected = basePin({ color: MARKUP_PALETTE[2]!.color });
+    renderSidebar({ selected, annotations: [selected], onColorChange });
+    const blue = screen.getByRole("radio", { name: "Blue" });
+    blue.focus();
+    expect(blue).toHaveFocus();
+    expect(blue).toHaveAttribute("aria-checked", "false");
+    expect(blue.style.outline).toBe("");
+    expect(screen.getByRole("radio", { name: "Amber" }).style.boxShadow).toContain("inset");
+    expect(onColorChange).not.toHaveBeenCalled();
+    fireEvent.click(blue);
+    expect(onColorChange).toHaveBeenCalledExactlyOnceWith(MARKUP_PALETTE[4]!.color);
+  });
+
   it("fires onColorChange with the swatch color", () => {
     const onColorChange = vi.fn();
     renderSidebar({ onColorChange });

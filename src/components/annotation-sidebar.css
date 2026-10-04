@@ -1,0 +1,16 @@
+/* Keep mark colors/data fixed; selection and input focus are distinct roles.
+   Six swatches fit at ordinary text size; enlarged text gets fewer columns,
+   keeping the same reading order and room for complete outer focus rings. */
+.annotation-sidebar { overflow-y: auto; }
+.annotation-sidebar > div { flex-shrink: 0; }
+.annotation-inventory { min-height: 6rem; }
+.annotation-palette {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(1.25rem, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.annotation-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

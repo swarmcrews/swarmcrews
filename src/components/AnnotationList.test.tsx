@@ -15,6 +15,10 @@ function rect(id: string, order: number, note = "", color = "#000"): Annotation 
 }
 
 describe("AnnotationList", () => {
+  it("uses a legible number foreground on the blue markup swatch without recoloring the mark", () => {
+    render(<AnnotationList annotations={[pin("blue", 1, "Evidence", "#3b82f6")]} selectedId="blue" onSelect={() => {}} onDelete={() => {}} />);
+    expect(screen.getByText("1")).toHaveStyle({ color: "#000000", background: "#3b82f6" });
+  });
   it("returns nothing when there are no annotations", () => {
     const { container } = render(
       <AnnotationList

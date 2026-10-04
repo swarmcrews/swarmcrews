@@ -9,6 +9,7 @@
  * a click on the delete glyph removes. Rows are sorted by `order` so
  * the sequence reads 1→N, regardless of the array order on the node.
  */
+import { markupNumberForeground } from "./markup-palette.ts";
 import type { Annotation } from "./AnnotationLayer.tsx";
 
 export interface AnnotationListProps {
@@ -101,12 +102,12 @@ export function AnnotationList({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: 18,
-                height: 18,
+                width: "1.5rem",
+                height: "1.5rem",
                 borderRadius: a.kind === "pin" ? 9 : 3,
                 background: a.color,
-                color: "#fff",
-                fontSize: 10,
+                color: markupNumberForeground(a.color),
+                fontSize: "0.75rem",
                 fontWeight: 700,
                 fontFamily: "var(--font-mono)",
                 flexShrink: 0,
@@ -117,7 +118,7 @@ export function AnnotationList({
             </span>
             <span
               style={{
-                fontSize: 11,
+                fontSize: "0.75rem",
                 color: isSelected ? "var(--text-primary)" : "var(--text-muted)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -142,7 +143,7 @@ export function AnnotationList({
                 border: "none",
                 color: "var(--text-muted)",
                 fontFamily: "var(--font-mono)",
-                fontSize: 13,
+                fontSize: "0.8125rem",
                 lineHeight: 1,
                 padding: "2px 4px",
                 cursor: "pointer",

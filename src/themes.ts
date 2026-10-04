@@ -1007,6 +1007,7 @@ export const THEME_STORAGE_KEY = "canvas-theme";
 export function applyTheme(themeId: string): void {
   const theme = themeMap[themeId] ?? themeMap[DEFAULT_THEME_ID]!;
   const root = document.documentElement;
+  root.style.colorScheme = theme.tone;
 
   // Apply all CSS variables
   for (const [prop, value] of Object.entries(theme.vars)) {

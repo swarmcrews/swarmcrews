@@ -58,6 +58,7 @@ import { findContextEdgeStaleness } from "./context-staleness.ts";
 import { CanvasMiniMap } from "./CanvasMiniMap.tsx";
 import { applyPromptSeed, createDefaultNodeData } from "./node-defaults.ts";
 import { wheelDetector, wheelZoomFactor } from "./wheel-detector.ts";
+import { isCanvasZoomTarget } from "./use-prevent-browser-zoom.ts";
 import { canvasScale as canvasScaleRef } from "./canvas-scale.ts";
 import { useCanvasKeyboard } from "./use-canvas-keyboard.ts";
 import { useCanvasFileDrop } from "./use-canvas-file-drop.ts";
@@ -1560,8 +1561,8 @@ export function Canvas({
     };
 
     const handleWheel = (e: WheelEvent) => {
-      // ── Pinch-to-zoom detection (conclusive, browser-provided) ──
       const isPinch = e.ctrlKey || e.metaKey;
+      if (isPinch && !isCanvasZoomTarget(e.target)) return;
 
       // ── Device detection via heuristic engine ───────────────────
       // Pinch is conclusive and must not seed the heuristic used by the next
@@ -1582,8 +1583,7 @@ export function Canvas({
       //      canvas over the background and drifted over a scroll-capture
       //      zone mid-gesture, keep panning the canvas (gesture continuity).
       //
-      // Pinch (ctrlKey/metaKey + wheel) always zooms the canvas regardless
-      // of where the cursor is.
+      // Pinch over reading/forms uses browser zoom; scene pinch stays spatial.
       const target = e.target as HTMLElement | null;
       const overScrollCapture = !!target?.closest?.("[data-scroll-capture]");
 

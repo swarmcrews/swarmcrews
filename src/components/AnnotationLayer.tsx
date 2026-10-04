@@ -27,6 +27,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { markupNumberForeground } from "./markup-palette.ts";
+
 export type AnnotationTool = "pin" | "rect";
 
 export interface PinAnnotation {
@@ -403,7 +405,7 @@ export function AnnotationLayer({
               <text
                 x={a.x * vbW + shortSide * 0.026}
                 y={a.y * vbH + shortSide * 0.026 + RECT_LABEL_FONT * 0.36}
-                fill="#fff"
+                fill={markupNumberForeground(a.color)}
                 fontSize={RECT_LABEL_FONT * 0.78}
                 fontWeight={700}
                 textAnchor="middle"
@@ -456,7 +458,7 @@ export function AnnotationLayer({
             <text
               x={a.x * vbW}
               y={a.y * vbH + PIN_LABEL_FONT * 0.36}
-              fill="#fff"
+              fill={markupNumberForeground(a.color)}
               fontSize={PIN_LABEL_FONT}
               fontWeight={700}
               textAnchor="middle"

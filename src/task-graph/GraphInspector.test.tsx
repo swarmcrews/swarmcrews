@@ -350,8 +350,11 @@ describe("GraphInspector", () => {
     render(<GraphInspector snapshot={snapshot} onClose={vi.fn()} onAction={action} createRequestId={() => "request-fixed"} />);
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Resume" })).not.toBeInTheDocument();
+    // U07 now confirms cancellation; the existing revision-fenced payload is unchanged.
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Cancel run" }));
     expect(action).toHaveBeenCalledWith(expect.objectContaining({ type: "cancel_run", expectedRunRevision: 42 }));
+    confirmation.mockRestore();
   });
 
   it("disables every mutation while the displayed projection is awaiting convergence", () => {

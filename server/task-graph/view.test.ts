@@ -82,6 +82,34 @@ describe("projectTaskGraphSnapshot logical projection",()=>{
     expect(projectedNode(projectTaskGraphSnapshot(facts,readiness,30),"completed").blocker)
       .toBeNull();
   });
+  it.each(["claimed","running","waiting_input","waiting_tool"])(
+    "keeps an active %s verifier pending without a premature completion blocker",runtime=>{
+      const verifier=node("verifier",{completionMode:"verification"});
+      const facts=snapshot([verifier],[],{attempts:[{
+        ...attempt("active","verifier",1,"none"),runtime,
+        session_run_key:"child",source_snapshot_id:"source",terminal_witness_json:null,
+      }]});
+      const projected=projectedNode(projectTaskGraphSnapshot(facts,[],30),"verifier");
+      expect(projected.logicalState).toBe("pending");
+      expect(projected.readiness).toBe("claimed");
+      expect(projected.blocker).toBeNull();
+    });
+
+  it.each([null,{result:"failed",confidence:1},{result:"inconclusive",confidence:0.5}])(
+    "retains the adjudication blocker for terminal invalid/negative verdict %j",verdict=>{
+      const verifier=node("verifier",{completionMode:"verification"});
+      const facts=snapshot([verifier],[],{attempts:[{
+        ...attempt("terminal","verifier",1,"succeeded"),
+        session_run_key:"child",source_snapshot_id:"source",
+        terminal_witness_json:verdict ? {source:"work_item_run",runKey:"child",
+          finalReport:JSON.stringify(verdict),completionVerdict:verdict}:null,
+      }]});
+      expect(projectedNode(projectTaskGraphSnapshot(facts,[],30),"verifier")).toMatchObject({
+        logicalState:"failed",readiness:"terminal",blocker:{category:"policy",
+          explanation:"Verification needs Leader adjudication or a guided retry"},
+      });
+    });
+
   it("does not project a legacy succeeded verification task without a passed verdict witness",()=>{
     const verificationTask=node("verification-task",{completionMode:"verification"});
     const facts=snapshot([verificationTask],[],{run:{...snapshot([verificationTask],[]).run,

@@ -32,6 +32,7 @@
   --accent-dark: #d97a1c;
   --dot-grid: #1a2036;
   --selection-bg: rgba(245, 158, 59, 0.28);
+  color-scheme: dark;
   --font-sans: "DM Sans Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", "Fira Code", monospace;
 

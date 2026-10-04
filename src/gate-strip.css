@@ -24,7 +24,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.75rem;
   line-height: 1.2;
 }
 
@@ -50,7 +50,7 @@
 }
 
 .gate-strip__glyph {
-  font-size: 11px;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -73,12 +73,12 @@
   border: 1px solid var(--border-default);
   border-radius: 6px;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 
 .gate-strip__row {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 4.875rem) minmax(0, 1fr);
   gap: 8px;
   margin-bottom: 6px;
 }
@@ -86,11 +86,13 @@
 .gate-strip__row span {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 0.75rem;
   text-transform: uppercase;
 }
 
 .gate-strip__row p {
+  min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   line-height: 1.35;
 }
@@ -109,7 +111,7 @@
   border: 1px solid var(--border-default);
   border-radius: 4px;
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 0.75rem;
 }
 
 .gate-strip__waive button {
@@ -120,7 +122,7 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.75rem;
 }
 
 .gate-strip__waive button:disabled,
@@ -132,6 +134,9 @@
 .gate-strip__note {
   margin-top: 6px;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 0.75rem;
   font-style: italic;
 }
+
+.gate-strip__chip:focus-visible, .gate-strip__waive :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .gate-strip__chip, .gate-strip__waive button, .gate-strip__waive input { min-height: 44px; } }
