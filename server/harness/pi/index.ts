@@ -178,7 +178,7 @@ class PiHarness implements AgentHarness {
           if (next.value.value === undefined) continue;
           for (const event of translator.translate(next.value.value)) {
             if (event.kind === "done") terminal = event;
-            else if (event.kind === "thinking" && opts.thinking?.display !== "summarized") continue;
+            else if ((event.kind === "thinking" || event.kind === "thinking_delta") && opts.thinking?.display !== "summarized") continue;
             else yield event;
           }
         }

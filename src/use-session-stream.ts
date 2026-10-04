@@ -1,3 +1,4 @@
+import { thinkingStreamPatch } from "./thinking-stream.ts";
 /**
  * Controlled React hook around `sessionStreamReducer`.
  *
@@ -95,6 +96,8 @@ function isTransientStreamingOnlyChange(
     previous.error === next.error &&
     previous.fullError === next.fullError &&
     (
+      previous.streamingThinkingText !== next.streamingThinkingText ||
+      previous.streamingThinkingBlockIndex !== next.streamingThinkingBlockIndex ||
       previous.streamingText !== next.streamingText ||
       previous.streamingBlockIndex !== next.streamingBlockIndex
     )
@@ -126,6 +129,7 @@ export function useSessionStream(opts: UseSessionStreamOptions): void {
     if (opts.state.sessionKey === pending.sessionKey) {
       const rebased = {
         ...opts.state,
+        ...thinkingStreamPatch(pending),
         streamingText: pending.streamingText,
         streamingBlockIndex: pending.streamingBlockIndex,
       };

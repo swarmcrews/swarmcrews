@@ -31,7 +31,10 @@ it("retains a streamed Pi reply in the live transcript and reconnect history", (
   const providerEvents = [
     { type: "turn_start" },
     { type: "message_update", assistantMessageEvent: {
-      type: "thinking_delta", contentIndex: 0, delta: "Considering a greeting",
+      type: "thinking_delta", contentIndex: 0, delta: "Considering",
+    } },
+    { type: "message_update", assistantMessageEvent: {
+      type: "thinking_delta", contentIndex: 0, delta: " a greeting",
     } },
     { type: "message_update", assistantMessageEvent: {
       type: "text_delta", contentIndex: 1, delta: "Sup! ",
@@ -40,7 +43,7 @@ it("retains a streamed Pi reply in the live transcript and reconnect history", (
       type: "text_delta", contentIndex: 1, delta: "What are we working on?",
     } },
     { type: "message_end", message: {
-      role: "assistant", content: [{ type: "text", text: reply }], stopReason: "stop",
+      role: "assistant", content: [{ type: "thinking", thinking: "Considering a greeting" }, { type: "text", text: reply }], stopReason: "stop",
     } },
     { type: "agent_end", messages: [] },
   ];
@@ -48,8 +51,16 @@ it("retains a streamed Pi reply in the live transcript and reconnect history", (
     for (const normalized of translator.translate(event)) {
       processNormalizedEvent(host, bus, agent, ctx, normalized);
     }
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "thinking_delta") {
+      expect(live.messages.filter(message => message.role === "thinking")).toEqual([]);
+      expect(live.streamingThinkingText).toBe(event.assistantMessageEvent.delta === "Considering"
+        ? "Considering" : "Considering a greeting");
+    }
   }
 
+  expect(live.streamingThinkingText).toBe("");
+  expect(live.messages.filter(message => message.role === "thinking").map(message => message.content))
+    .toEqual(["Considering a greeting"]);
   expect(translator.result()).toBe(reply);
   expect(live.streamingText).toBe("");
   expect(live.messages.filter(message => message.role === "assistant")
@@ -59,6 +70,9 @@ it("retains a streamed Pi reply in the live transcript and reconnect history", (
     status: host.status, events: host.eventBuffer,
   }, "pi");
   expect(replay.streamingText).toBe("");
+  expect(replay.streamingThinkingText).toBe("");
+  expect(replay.messages.filter(message => message.role === "thinking").map(message => message.content))
+    .toEqual(["Considering a greeting"]);
   expect(replay.messages.filter(message => message.role === "assistant")
     .map(message => message.content)).toEqual([reply]);
 });

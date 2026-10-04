@@ -89,7 +89,7 @@ function provesProviderAcceptance(event: NormalizedEvent): boolean {
   if (event.kind === "done") return event.reason === "stop" || event.reason === "completed";
   if (event.kind === "text") return event.role === "assistant";
   if (event.kind === "usage") return event.output > 0;
-  return ["text_delta", "thinking", "tool_call", "tool_result", "tool_progress", "agent_spawned"].includes(event.kind);
+  return ["text_delta", "thinking_delta", "thinking", "tool_call", "tool_result", "tool_progress", "agent_spawned"].includes(event.kind);
 }
 
 function recordProviderContinuationBoundary(

@@ -63,3 +63,10 @@ describe("harness producers → normalized event consumer", () => {
     expect(normalizedEventSchema.safeParse({ ...usage, contextTokens: -1 }).success).toBe(false);
   });
 });
+
+it("round-trips streaming thinking with block and sub-agent identity", () => {
+  const event = { kind: "thinking_delta", text: "I need", blockIndex: 2, parentId: "tool-1" };
+  expect(normalizedEventSchema.parse(event)).toEqual(event);
+  expect(normalizedEventSchema.safeParse({ ...event, blockIndex: -1 }).success).toBe(false);
+  expect(normalizedEventSchema.safeParse({ ...event, text: undefined }).success).toBe(false);
+});

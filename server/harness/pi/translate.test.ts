@@ -63,3 +63,40 @@ describe("Pi event translation", () => {
     expect(translator.result()).toBe("Complete answer");
   });
 });
+
+describe("Pi thinking streaming", () => {
+  it("streams fragments separately and commits authoritative thinking once", () => {
+    const translator = createPiTranslator("local/model", "fallback");
+    translator.ensureInit();
+    for (const delta of ["I", " need", " need", "\n time."]) {
+      expect(translator.translate({ type: "message_update", assistantMessageEvent: {
+        type: "thinking_delta", contentIndex: 0, delta,
+      } })).toEqual([{ kind: "thinking_delta", text: delta, blockIndex: 0 }]);
+    }
+    expect(translator.translate({ type: "message_update", assistantMessageEvent: {
+      type: "thinking_end", contentIndex: 0, content: "I need need\n time.",
+    } })).toEqual([]);
+    expect(translator.translate({ type: "message_end", message: {
+      role: "assistant", content: [{ type: "thinking", thinking: "Authoritative thought" },
+        { type: "text", text: "Answer" }],
+    } })).toEqual([{ kind: "thinking", text: "Authoritative thought" },
+      { kind: "text", role: "assistant", text: "Answer" }]);
+    expect(translator.translate({ type: "agent_end" }).filter(event => event.kind === "thinking")).toEqual([]);
+  });
+
+  it("uses thinking_end snapshots as fallback and isolates consecutive messages", () => {
+    const translator = createPiTranslator("local/model", "fallback");
+    translator.ensureInit();
+    translator.translate({ type: "message_update", assistantMessageEvent: {
+      type: "thinking_delta", contentIndex: 2, delta: "Incomplete",
+    } });
+    translator.translate({ type: "message_update", assistantMessageEvent: {
+      type: "thinking_end", contentIndex: 2, content: "Complete thought",
+    } });
+    expect(translator.translate({ type: "message_end", message: { role: "assistant", content: [] } }))
+      .toEqual([{ kind: "thinking", text: "Complete thought" }]);
+    expect(translator.translate({ type: "message_end", message: { role: "assistant", content: [
+      { type: "thinking", thinking: "Next message" },
+    ] } })).toEqual([{ kind: "thinking", text: "Next message" }]);
+  });
+});

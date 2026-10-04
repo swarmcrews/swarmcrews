@@ -99,7 +99,9 @@ export type NormalizedEvent =
    * so receivers can filter them out of the parent session's preview.
    */
   | { kind: "text_delta"; text: string; blockIndex: number; parentId?: string }
-  /** Signals the end of a streaming response. Clears the streaming buffer. */
+  /** Incremental thinking, never a completed transcript block. Same isolation and indexing as text_delta. */
+  | { kind: "thinking_delta"; text: string; blockIndex: number; parentId?: string }
+  /** Signals the end of a streaming response. Clears both preview buffers. */
   | { kind: "stream_end" }
   /**
    * Tool execution in progress — emitted periodically while the harness runs
@@ -138,6 +140,7 @@ export const normalizedEventSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("agent_spawned"), taskId: z.string(), description: z.string() }),
   z.object({ kind: z.literal("agent_task_update"), taskId: z.string(), status: z.string(), summary: z.string() }),
   z.object({ kind: z.literal("text_delta"), text: z.string(), blockIndex: z.number().int().nonnegative(), parentId: z.string().optional() }),
+  z.object({ kind: z.literal("thinking_delta"), text: z.string(), blockIndex: z.number().int().nonnegative(), parentId: z.string().optional() }),
   z.object({ kind: z.literal("stream_end") }),
   z.object({ kind: z.literal("tool_progress"), id: z.string(), name: z.string(), elapsedSeconds: z.number().nonnegative(), parentId: z.string().optional() }),
 ]);

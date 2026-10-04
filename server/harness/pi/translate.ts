@@ -14,6 +14,7 @@ export function createPiTranslator(model: string, fallbackSessionId: string, per
   let messageTextStart = 0;
   let turns = 0;
   let failure: Extract<NormalizedEvent, { kind: "done" }> | undefined;
+  const thinking = new Map<number, string>();
   const toolStartedAt = new Map<string, number>();
 
   const init = (sessionId = fallbackSessionId): NormalizedEvent[] => {
@@ -40,6 +41,8 @@ export function createPiTranslator(model: string, fallbackSessionId: string, per
       } else if (type === "auto_retry_start") {
         events.push({ kind: "api_retry", attempt: Math.max(1, Math.floor(numberValue(event["attempt"]))),
           reason: stringValue(event["errorMessage"]) || "Pi is retrying the request" });
+      } else if (type === "message_start" && record(event["message"])?.["role"] === "assistant") {
+        thinking.clear();
       } else if (type === "message_update") {
         const update = record(event["assistantMessageEvent"]);
         const updateType = stringValue(update?.["type"]);
@@ -48,7 +51,12 @@ export function createPiTranslator(model: string, fallbackSessionId: string, per
           text += delta;
           events.push({ kind: "text_delta", text: delta, blockIndex: numberValue(update?.["contentIndex"]) });
         } else if ((updateType === "thinking_delta" || updateType === "reasoning_delta") && delta) {
-          events.push({ kind: "thinking", text: delta });
+          const blockIndex = numberValue(update?.["contentIndex"]);
+          thinking.set(blockIndex, (thinking.get(blockIndex) ?? "") + delta);
+          events.push({ kind: "thinking_delta", text: delta, blockIndex });
+        } else if (updateType === "thinking_end" || updateType === "reasoning_end") {
+          const content = stringValue(update?.["content"]);
+          thinking.set(numberValue(update?.["contentIndex"]), content);
         }
       } else if (type === "tool_execution_start") {
         const id = stringValue(event["toolCallId"]);
@@ -63,6 +71,14 @@ export function createPiTranslator(model: string, fallbackSessionId: string, per
       } else if (type === "message_end") {
         const message = record(event["message"]);
         if (message?.["role"] === "assistant") {
+          // Commit only at message_end: final content is authoritative, even
+          // when deltas or thinking_end snapshots were incomplete.
+          const blocks = Array.isArray(message["content"]) ? message["content"].map(record) : [];
+          const finalThinking = blocks.filter(block => block?.["type"] === "thinking");
+          const thoughts = finalThinking.length ? finalThinking.map(block => stringValue(block?.["thinking"]))
+            : [...thinking.entries()].sort(([a], [b]) => a - b).map(([, content]) => content);
+          for (const thought of thoughts) if (thought) events.push({ kind: "thinking", text: thought });
+          thinking.clear();
           const finalText = extractText(message["content"]);
           // message_end is authoritative even if streaming deltas were incomplete.
           text = text.slice(0, messageTextStart) + finalText;

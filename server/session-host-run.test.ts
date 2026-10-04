@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { buildHarnessStartOpts, ensureWorktree, sessionHostLogFields } from "./session-host-run.ts";
+import { getCodexModels, setCodexModels } from "./harness/codex/models.ts";
 import type { AgentHarness, HarnessCapabilities } from "./harness/types.ts";
 import type { AgentType, AgentTypeContext, AgentToolResult } from "./agents/types.ts";
 import type { SessionHost, StartSessionOptions } from "./session-host.ts";
@@ -522,6 +523,21 @@ describe("buildHarnessStartOpts — capability gating", () => {
 });
 
 describe("dynamic model thinking at launch", () => {
+  it.each(["minimal", "low", "medium", "high", "xhigh", "max"] as const)(
+    "forwards selected Codex effort %s after native catalog normalization", effort => {
+      setCodexModels([{ model: "native-codex", supportedReasoningEfforts: [{ reasoningEffort: effort }] }]);
+      try {
+        const harness = fakeHarness("codex", { thinking: true });
+        harness.staticInfo = () => ({ models: getCodexModels(), commands: [], agents: [], account: { provider: "openai" } });
+        const { startOpts } = buildHarnessStartOpts({
+          host: fakeHost({ model: "native-codex", thinkingConfig: { enabled: true, effort, display: "summarized" } }),
+          opts: fakeOpts(), agentType: fakeAgentType, agentCtx: fakeCtx, toolResult: fakeToolResult,
+          abortController: new AbortController(), harness, prompt: "hello",
+        });
+        expect(startOpts.thinking).toEqual({ effort, display: "summarized" });
+      } finally { setCodexModels([]); }
+    },
+  );
   it.each([
     { supportsReasoning: false, supportedEffortLevels: [] },
     { supportsReasoning: true, supportedEffortLevels: [] },

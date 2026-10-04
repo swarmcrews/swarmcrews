@@ -718,19 +718,19 @@ describe("CodexHarness permission mode", () => {
 });
 
 describe("CodexHarness reasoning effort", () => {
-  it("forwards max reasoning to the Codex thread", async () => {
+  it.each(["minimal", "low", "medium", "high", "xhigh", "max"] as const)("forwards %s reasoning to the Codex thread", async (effort) => {
     codexHarness.registerTools({});
     await collect(
       codexHarness.start(
         baseOpts({
-          thinking: { effort: "max", display: "summarized" },
+          thinking: { effort, display: "summarized" },
         }),
       ).events,
     );
     const startThreadOpts = sdkMock.calls.startThread[0] as {
       modelReasoningEffort?: string;
     };
-    expect(startThreadOpts.modelReasoningEffort).toBe("max");
+    expect(startThreadOpts.modelReasoningEffort).toBe(effort);
   });
 });
 

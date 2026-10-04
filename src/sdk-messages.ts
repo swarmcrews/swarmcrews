@@ -91,7 +91,7 @@ function derivedId(prefix: string, kind: string, key: string): string {
  *   api_retry  → system "Retrying..."
  *   rate_limit → system "Rate limited..."
  *   permission_denial → system "Permission denied: <tool>"
- *   everything else (usage, text_delta, stream_end, tool_result) → []
+ *   everything else (usage, text_delta, thinking_delta, stream_end, tool_result) → []
  */
 export function normalizedToDisplayMessages(
   event: NormalizedEvent,
@@ -205,7 +205,7 @@ export function normalizedToDisplayMessages(
         timestamp: now,
       }];
 
-    // usage, text_delta, stream_end, tool_result → no display
+    // usage, text_delta, thinking_delta, stream_end, tool_result → no display
     default:
       return [];
   }

@@ -569,3 +569,29 @@ it("reconnects again from the delivered page when live traffic overtook a multi-
   expect(result.current.historyHighWater).toBe(9);
   expect(result.current.messages.map(message => message.content)).toEqual(["page 6", "page 8", "live"]);
 });
+
+it("batches thinking fragments, rebases them, and cancels the frame on completion", async () => {
+  useFrameTimers();
+  const { socket, replay } = createReplaySocket();
+  const initial = { ...emptySessionStreamState("leader-1"), status: "running" as const };
+  const states: SessionStreamState[] = [];
+  const { rerender } = renderHook(({ state }) => useSessionStream({ state,
+    socketSubscribe: socket.subscribe, onChange: next => states.push(next), prefix: "test" }),
+  { initialProps: { state: initial } });
+  await pump(replay, ["I", " need", " need"].map(text => ({ message: {
+    type: "sdk_event", sessionKey: "leader-1", event: { kind: "thinking_delta", text, blockIndex: 0 },
+  } })));
+  expect(states).toHaveLength(0);
+  rerender({ state: { ...initial, totalCost: 1 } });
+  await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+  expect(states).toHaveLength(1);
+  expect(states[0]).toMatchObject({ streamingThinkingText: "I need need", streamingText: "", totalCost: 1 });
+  await pump(replay, [{ message: { type: "sdk_event", sessionKey: "leader-1",
+    event: { kind: "thinking_delta", text: " time.", blockIndex: 0 } } },
+  { message: { type: "sdk_event", sessionKey: "leader-1", event: { kind: "thinking", text: "I need need time." } } }]);
+  expect(states.at(-1)?.streamingThinkingText).toBe("");
+  expect(states.at(-1)?.messages.map(message => message.content)).toEqual(["I need need time."]);
+  const count = states.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(20); });
+  expect(states).toHaveLength(count);
+});

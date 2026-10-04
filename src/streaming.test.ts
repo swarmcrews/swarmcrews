@@ -131,3 +131,10 @@ describe("extractParentId", () => {
     expect(extractParentId(event)).toBe("parent-tool");
   });
 });
+
+it("recognizes thinking deltas as streaming without treating them as assistant text", () => {
+  const event: NormalizedEvent = { kind: "thinking_delta", text: "Thought", blockIndex: 1 };
+  expect(isStreamingEvent(event)).toBe(true);
+  expect(extractStreamDelta(event)).toBeNull();
+  expect(isCompleteAssistant(event)).toBe(false);
+});

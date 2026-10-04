@@ -101,6 +101,8 @@ describe("useAutosave", () => {
       data: {
         ...(baseNode.data as Record<string, unknown>),
         streamingText: "partial token",
+        streamingThinkingText: "partial thought",
+        streamingThinkingBlockIndex: 1,
         streamingBlockIndex: 0,
       },
     };
@@ -177,6 +179,8 @@ describe("toPersistableNodes", () => {
         data: {
           messages: [],
           streamingText: "partial",
+          streamingThinkingText: "partial thought",
+          streamingThinkingBlockIndex: 1,
           streamingBlockIndex: 0,
           status: "running",
         },

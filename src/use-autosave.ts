@@ -11,7 +11,7 @@ export type SaveStatus = "saved" | "saving" | "unsaved" | "error" | "idle";
 const RETRY_BASE_MS = 3000;
 const RETRY_MAX_MS = 30000;
 const SESSION_NODE_TYPES = new Set(["leader", "minion", "claude-session"]);
-const TRANSIENT_SESSION_FIELDS = ["streamingText", "streamingBlockIndex"] as const;
+const TRANSIENT_SESSION_FIELDS = ["streamingText", "streamingBlockIndex", "streamingThinkingText", "streamingThinkingBlockIndex"] as const;
 const CANONICAL_LEADER_LIFECYCLE_FIELDS = ["status", "worktreeStatus", "workItemSnapshot"] as const;
 
 interface AutosaveResult {

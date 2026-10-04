@@ -32,7 +32,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   fs.writeFileSync(executable, `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' '${script}' "$@"\n`, { mode: 0o755 });
   return { executable, source: "env_override" as const, env: { ...process.env, OPENAI_PROJECT_ID: "configured-project", GITHUB_TOKEN: "must-not-forward", AWS_SECRET_ACCESS_KEY: "must-not-forward" } };
 }
-const model = { id: "picker-id", model: "gpt-5.4", displayName: "Native GPT", hidden: false, isDefault: true };
+const model = { id: "picker-id", model: "gpt-5.4", displayName: "Native GPT", hidden: false, isDefault: true,
+  supportedReasoningEfforts: [
+    { reasoningEffort: "low", description: "Fast" },
+    { reasoningEffort: "high", description: "Thorough" },
+    { reasoningEffort: "xhigh", description: "Extra thorough" },
+  ], defaultReasoningEffort: "high" };
 afterEach(() => {
   setCodexModels([]);
   for (const dir of directories.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
@@ -59,7 +64,8 @@ describe("Codex native model discovery", () => {
     `);
     expect(await checkCodexReadiness({ signal: new AbortController().signal }, { resolve: () => runtime })).toMatchObject({ state: "ready" });
     expect(getCodexModels()).toEqual([
-      expect.objectContaining({ id: "gpt-5.4", label: "Native GPT (gpt-5.4)", source: "dynamic" }),
+      expect.objectContaining({ id: "gpt-5.4", label: "Native GPT (gpt-5.4)", source: "dynamic",
+        supportsReasoning: true, supportedEffortLevels: ["low", "high", "xhigh"], defaultEffortLevel: "high" }),
       expect.objectContaining({ id: "custom-new", label: "New model (custom-new)", source: "dynamic" }),
     ]);
     expect(resolveCodexModel("gpt-5.4")).toBe("gpt-5.4");

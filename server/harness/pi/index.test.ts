@@ -235,11 +235,13 @@ describe("Pi invocation lifecycle", () => {
   it.each(["summarized", "omitted"] as const)("honors thinking display %s", async display => {
     stream.mockImplementation(async function* () {
       yield { raw: "", value: { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "Reasoning" } } };
+      yield { raw: "", value: { type: "message_end", message: { role: "assistant", content: [{ type: "thinking", thinking: "Reasoning" }] } } };
       yield { raw: "", value: { type: "agent_end" } };
       return { code: 0, stderr: "" };
     });
     const result = await collect({ attachments: [], thinking: { effort: "high", display } });
     expect(result.filter(event => event.kind === "thinking")).toHaveLength(display === "summarized" ? 1 : 0);
+    expect(result.filter(event => event.kind === "thinking_delta")).toHaveLength(display === "summarized" ? 1 : 0);
   });
 
   it("spools large system prompts to a private file and cleans it after execution", async () => {

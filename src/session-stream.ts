@@ -1,3 +1,4 @@
+import { appendThinkingDelta, clearThinkingStream, EMPTY_THINKING_STREAM, thinkingStreamPatch, type ThinkingStreamState } from "./thinking-stream.ts";
 /**
  * Pure reducer for the shared session-stream state.
  * Key behaviours preserved:
@@ -49,7 +50,7 @@ export type SessionStreamStatus =
  * adds `taskPlan`, `worktreeBranch`, etc.). The node's own reducer/effect
  * spreads `SessionStreamState` over its own state on each transition.
  */
-export interface SessionStreamState {
+export interface SessionStreamState extends ThinkingStreamState {
   /** Server-assigned key used to filter inbound WS traffic. */
   sessionKey: string | null;
   /** Contiguous delivered replay cursor, never advanced by live traffic. */
@@ -94,8 +95,12 @@ export function sessionStreamReducer(state: SessionStreamState, msg: ServerMessa
     && msg.afterHistoryId === undefined && msg.history && msg.history.highWater > 0
     && msg.history.highWater < Math.max(state.historyHighWater ?? 0, state.highestLiveHistoryId ?? 0) && !msg.history.reset) return state;
   const incremental = msg.type === "sync_response" && msg.afterHistoryId !== undefined && msg.found && !msg.history?.reset;
-  const next = incremental ? reduceIncrementalSync(state, msg, prefix)
+  const reduced = incremental ? reduceIncrementalSync(state, msg, prefix)
     : unboundedSessionStreamReducer(state, msg, prefix);
+  const terminal = msg.type === "session_status" && !["running", "creating"].includes(msg.status)
+    || msg.type === "session_error" || msg.type === "session_cleared"
+    || msg.type === "sync_response" && msg.status !== undefined && !["running", "creating"].includes(msg.status);
+  const next = terminal && msg.sessionKey === state.sessionKey ? clearThinkingStream(reduced) : reduced;
   const highestLiveHistoryId = msg.type === "sdk_event" && msg.sessionKey === state.sessionKey
     && msg.historyId !== undefined ? Math.max(state.highestLiveHistoryId ?? 0, msg.historyId)
     : msg.type === "sync_response" && msg.history?.reset ? undefined : next.highestLiveHistoryId;
@@ -116,7 +121,8 @@ export function sessionStreamReducer(state: SessionStreamState, msg: ServerMessa
     content: `[Read session history](/api/history/${encodeURIComponent(state.sessionKey)})` });
   return { ...next, messages, historyHighWater: msg.type === "sync_response"
     ? deliveredHistoryCursor(state, msg) : next.historyHighWater,
-    highestLiveHistoryId, streamingText: next.streamingText.slice(-65536) };
+    highestLiveHistoryId, streamingText: next.streamingText.slice(-65536),
+    streamingThinkingText: (next.streamingThinkingText ?? "").slice(-65536) };
 }
 
 /** Apply ascending replay as events, never replace transcript or supersede live events. */
@@ -149,7 +155,12 @@ function reduceIncrementalSync(state: SessionStreamState,
     const messages = withDisplayHistory(before.messages, next.messages, event.historyId, event.timestamp);
     const seen = new Set(messages.map(message => message.id));
     next = { ...next, messages: [...messages, ...later.filter(message => !seen.has(message.id))],
-      ...(later.length ? { streamingText: previous.streamingText, streamingBlockIndex: previous.streamingBlockIndex } : {}) };
+      ...(later.length ? { streamingText: previous.streamingText, streamingBlockIndex: previous.streamingBlockIndex,
+        streamingThinkingText: previous.streamingThinkingText, streamingThinkingBlockIndex: previous.streamingThinkingBlockIndex } : {}),
+      // Transient deltas have no message row in `later`; older replay pages
+      // must not duplicate them or clear a newer live thinking block.
+      ...(event.historyId !== undefined && event.historyId <= (state.highestLiveHistoryId ?? 0)
+        ? thinkingStreamPatch(previous) : {}) };
   }
   return { ...next, status: (msg.status as SessionStreamStatus | undefined) ?? next.status,
     totalCost: msg.totalCost ?? next.totalCost, turns: msg.turns ?? next.turns,
@@ -172,7 +183,7 @@ function unboundedSessionStreamReducer(
   switch (msg.type) {
     case "session_cleared":
       return msg.sessionKey === state.sessionKey ? { ...state, messages: [],
-        streamingText: "", streamingBlockIndex: null, error: null, fullError: null,
+        streamingText: "", streamingBlockIndex: null, ...EMPTY_THINKING_STREAM, error: null, fullError: null,
         historyHighWater: undefined, highestLiveHistoryId: undefined, contextDelivery: {} } : state;
     case "sync_response":
       return reduceSyncResponse(state, msg, prefix);
@@ -226,6 +237,7 @@ function reduceSyncResponse(
       sessionKey: null,
       streamingText: "",
       streamingBlockIndex: null,
+      ...EMPTY_THINKING_STREAM,
       error: null,
       fullError: null,
     };
@@ -253,9 +265,10 @@ function reduceSyncResponse(
         continue;
       }
       if ((event.kind === "text" && event.role === "assistant")
-        || event.kind === "thinking" || event.kind === "done") {
-        streaming = emptySessionStreamState(state.sessionKey);
+        || event.kind === "done") {
+        streaming = { ...streaming, streamingText: "", streamingBlockIndex: null };
       }
+      if (event.kind === "thinking" || event.kind === "done") streaming = clearThinkingStream(streaming);
       const produced = evt.historyRef ? []
         : normalizedToDisplayMessages(event, displayPrefix(prefix, event, evt.historyId));
       const filtered = collapseAssistantResultDup(rebuilt, produced, event);
@@ -304,6 +317,8 @@ function reduceSyncResponse(
       && !state.messages.some(old => old.id === m.id)) ? {} : state.contextDelivery,
     streamingText: streaming.streamingText,
     streamingBlockIndex: streaming.streamingBlockIndex,
+    streamingThinkingText: streaming.streamingThinkingText,
+    streamingThinkingBlockIndex: streaming.streamingThinkingBlockIndex,
     totalCost: msg.history ? msg.totalCost ?? cost : cost,
     turns: msg.history ? msg.turns ?? turns : turns,
     error: msg.history && msg.lastError !== undefined ? msg.lastError : error,
@@ -320,7 +335,15 @@ function displayPrefix(prefix: string, event: NormalizedEvent, historyId?: numbe
     ? `${prefix}-history-${historyId}` : prefix;
 }
 
-function reduceSdkEvent(
+function reduceSdkEvent(state: SessionStreamState,
+  msg: Extract<ServerMessage, { type: "sdk_event" }>, prefix: string): SessionStreamState {
+  if (!state.sessionKey || msg.sessionKey !== state.sessionKey) return state;
+  if (msg.event.kind === "thinking_delta") return msg.historyRef ? state : appendThinkingDelta(state, msg.event);
+  const next = reduceSdkEventBody(state, msg, prefix);
+  return ["thinking", "done", "stream_end"].includes(msg.event.kind) ? clearThinkingStream(next) : next;
+}
+
+function reduceSdkEventBody(
   state: SessionStreamState,
   msg: Extract<ServerMessage, { type: "sdk_event" }>,
   prefix: string,
@@ -329,7 +352,7 @@ function reduceSdkEvent(
   const event: NormalizedEvent = msg.event;
   const messagePrefix = displayPrefix(prefix, event, msg.historyId);
   if (msg.historyRef) {
-    const clearStreaming = (event.kind === "text" && event.role === "assistant") || event.kind === "thinking" || event.kind === "done";
+    const clearStreaming = (event.kind === "text" && event.role === "assistant") || event.kind === "done";
     // Still advance the history cursor and completion state without adding prose.
     return { ...state,
       ...(event.kind === "done" && event.turns != null ? { turns: event.turns } : {}),
@@ -414,9 +437,9 @@ function reduceSdkEvent(
   const collapse = collapseAssistantResultDup(state.messages, produced, event);
 
   // No new messages and no field changes → bail with same reference,
-  // unless we still need to clear stale streamingText on text/thinking.
+  // unless we still need to clear stale assistant preview on complete text.
   if (collapse.appended.length === 0 && collapse.dropAssistantIdx < 0) {
-    if ((event.kind === "text" && event.role === "assistant") || event.kind === "thinking") {
+    if (event.kind === "text" && event.role === "assistant") {
       if (state.streamingText || state.streamingBlockIndex !== null) {
         return { ...state, streamingText: "", streamingBlockIndex: null };
       }
@@ -438,7 +461,7 @@ function reduceSdkEvent(
       nextMessages = [...nextMessages, ...dedup];
     } else if (nextMessages === state.messages && collapse.dropAssistantIdx < 0) {
       // Nothing new and no drop — bail.
-      if ((event.kind === "text" && event.role === "assistant") || event.kind === "thinking") {
+      if (event.kind === "text" && event.role === "assistant") {
         if (state.streamingText || state.streamingBlockIndex !== null) {
           return { ...state, streamingText: "", streamingBlockIndex: null };
         }
@@ -448,8 +471,8 @@ function reduceSdkEvent(
   }
 
   const next: SessionStreamState = { ...state, messages: nextMessages };
-  // Clear streaming buffer when a complete assistant text or thinking block arrives.
-  if ((event.kind === "text" && event.role === "assistant") || event.kind === "thinking") {
+  // Clear the assistant preview when complete text arrives.
+  if (event.kind === "text" && event.role === "assistant") {
     next.streamingText = "";
     next.streamingBlockIndex = null;
   }
@@ -632,6 +655,7 @@ export function emptySessionStreamState(
     messages: [],
     streamingText: "",
     streamingBlockIndex: null,
+    ...EMPTY_THINKING_STREAM,
     totalCost: 0,
     turns: 0,
     error: null,

@@ -520,6 +520,8 @@ describe("emptySessionStreamState", () => {
       messages: [],
       streamingText: "",
       streamingBlockIndex: null,
+      streamingThinkingText: "",
+      streamingThinkingBlockIndex: null,
       totalCost: 0,
       turns: 0,
       error: null,

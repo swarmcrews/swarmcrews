@@ -50,7 +50,7 @@ export function isStreamEnd(event: NormalizedEvent): boolean {
  * (as opposed to a complete message we handle normally).
  */
 export function isStreamingEvent(event: NormalizedEvent): boolean {
-  return event.kind === "text_delta" || event.kind === "stream_end";
+  return event.kind === "text_delta" || event.kind === "thinking_delta" || event.kind === "stream_end";
 }
 
 /**

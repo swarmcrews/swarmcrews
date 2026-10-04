@@ -15,8 +15,20 @@ export function setCodexModels(models: readonly unknown[]): void {
     const id = model.model;
     seen.add(id);
     if (model.isDefault === true) nativeDefault = id;
+    // model/list advertises objects, not strings. Preserve native choices so
+    // dynamic-model capability gates can offer and forward reasoning effort.
+    const supportedEffortLevels = Array.isArray(model.supportedReasoningEfforts)
+      ? [...new Set(model.supportedReasoningEfforts.flatMap((option: unknown) => {
+        if (!option || typeof option !== "object") return [];
+        const effort = (option as Record<string, unknown>).reasoningEffort;
+        return typeof effort === "string" && effort.trim() ? [effort] : [];
+      }))]
+      : undefined;
     return [{ id, label: modelVersionLabel(id, typeof model.displayName === "string" ? model.displayName : undefined),
       source: "dynamic" as const,
+      ...(supportedEffortLevels !== undefined ? { supportedEffortLevels, supportsReasoning: supportedEffortLevels.length > 0 } : {}),
+      ...(typeof model.defaultReasoningEffort === "string" && supportedEffortLevels?.includes(model.defaultReasoningEffort)
+        ? { defaultEffortLevel: model.defaultReasoningEffort } : {}),
       ...(typeof model.description === "string" && model.description ? { description: model.description } : {}),
     }];
   });
