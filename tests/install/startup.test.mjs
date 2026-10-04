@@ -4,7 +4,7 @@ import { closeSync, openSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { promisify, stripVTControlCharacters } from "node:util";
 import { test } from "node:test";
 import Database from "better-sqlite3";
 import { boundedLog } from "../../scripts/bounded-log.mjs";
@@ -218,11 +218,11 @@ test("the guarded preload still executes TypeScript when dependencies are instal
     const entry = join(fixture, "entry.ts");
     writeFileSync(entry, 'const value: number = 42; console.log(value);');
     const result = spawnSync(process.execPath, ["--import", "./scripts/register-typescript.mjs", entry], {
-      cwd: root, env: fixtureEnv, encoding: "utf8", timeout: 10_000,
+      cwd: root, env: { ...fixtureEnv, NO_COLOR: "", FORCE_COLOR: "1" }, encoding: "utf8", timeout: 10_000,
     });
     assert.ifError(result.error);
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout.trim(), "42");
+    assert.equal(stripVTControlCharacters(result.stdout).trim(), "42");
   } finally {
     rmSync(fixture, { recursive: true, force: true });
   }

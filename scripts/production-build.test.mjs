@@ -5,6 +5,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, syml
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { waitForOutput, stopTestProcess } from './test-process.mjs';
 function fixture(fail = false, compilerBin = './bin/tsc.js') {
   const dir = mkdtempSync(join(tmpdir(), 'swarmcrews build spaces '));
   cpSync(new URL('./', import.meta.url), join(dir, 'scripts'), { recursive: true });
@@ -103,7 +104,7 @@ test('actual Vite failure after output cleanup leaves the previous frontend inta
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('preview compresses and caches hashed assets without caching HTML', { timeout: 15_000 }, async () => {
+test('preview compresses and caches hashed assets without caching HTML', { timeout: 15_000 }, async t => {
   const { createServer } = await import('node:net');
   const { once } = await import('node:events');
   const { spawn } = await import('node:child_process');
@@ -121,24 +122,20 @@ test('preview compresses and caches hashed assets without caching HTML', { timeo
   await once(listener, 'close');
   const cli = new URL('../node_modules/vite/bin/vite.js', import.meta.url);
   const config = new URL('../vite.config.ts', import.meta.url);
-  const child = spawn(process.execPath, [fileURLToPath(cli), 'preview', dir, '--config', fileURLToPath(config), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [fileURLToPath(cli), 'preview', dir, '--config', fileURLToPath(config), '--host', '127.0.0.1', '--port', String(port), '--strictPort'], { cwd: dir, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NO_COLOR: '', FORCE_COLOR: '1' } });
   try {
-    let output = '';
-    const ready = new Promise((resolve, reject) => {
-      child.once('error', reject);
-      child.once('exit', code => reject(new Error(`preview exited ${code}: ${output}`)));
-      for (const stream of [child.stdout, child.stderr]) stream.on('data', chunk => {
-        output += chunk;
-        if (output.includes(`:${port}/`)) resolve();
-      });
-    });
-    await ready;
+    // CI and Windows colorize the port. Readiness must not depend on ANSI layout.
+    const output = await waitForOutput(child, `:${port}/`, { signal: t.signal });
+    assert.match(output, /\x1b\[/, 'exercise actual colored Vite output');
     const url = `http://127.0.0.1:${port}`;
     // Fetch transparently decompresses bodies, so use raw HTTP to verify
     // actual transferred bytes and response headers.
     const { get } = await import('node:http');
-    const request = (path, headers) => new Promise((resolve, reject) => get(url + path, { headers }, res => {
+    const request = (path, headers) => new Promise((resolve, reject) => get(url + path, {
+      headers, signal: AbortSignal.any([t.signal, AbortSignal.timeout(3000)]),
+    }, res => {
       const chunks = [];
+      res.on('error', reject);
       res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => resolve({ headers: res.headers, body: Buffer.concat(chunks), status: res.statusCode }));
     }).once('error', reject));
@@ -151,8 +148,7 @@ test('preview compresses and caches hashed assets without caching HTML', { timeo
     assert.equal(html.status, 200);
     assert.notEqual(html.headers['cache-control'], 'public, max-age=31536000, immutable');
   } finally {
-    child.kill('SIGTERM');
-    if (child.exitCode === null) await once(child, 'exit');
-    rmSync(dir, { recursive: true, force: true });
+    try { await stopTestProcess(child); }
+    finally { rmSync(dir, { recursive: true, force: true }); }
   }
 });
