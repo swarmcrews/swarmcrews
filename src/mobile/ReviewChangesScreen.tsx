@@ -5,13 +5,12 @@ import type { ChangeMode } from "../../shared/work-item-lifecycle.ts";
 import { randomUuid } from "../random-id.ts";
 import { useWorktreeIntegration } from "../use-worktree-integration.ts";
 import { WorktreeIntegrationControls } from "../WorktreeIntegrationControls.tsx";
+import { useReviewDiff } from "../use-review-diff.ts";
+import { ReviewFiles, ReviewIdentity, canDecideFromReview } from "../components/review/ReviewEvidence.tsx";
 import { LiveChangesPanel } from "../LiveChangesPanel.tsx";
 import type { ServerMessage, SocketSubscribe } from "../use-socket.ts";
 import {
-  fileStatusSymbol,
   formatDiffStat,
-  isDetailedDiff,
-  type DetailedDiff,
 } from "./mobile-approvals.ts";
 
 interface ReviewChangesScreenProps {
@@ -34,10 +33,6 @@ interface MergeConflict {
   targetBranch?: string | undefined;
 }
 
-function makeRequestId(): string {
-  return randomUuid();
-}
-
 export function ReviewChangesScreen({
   changeMode,
   workItemId,
@@ -57,12 +52,12 @@ export function ReviewChangesScreen({
           </div>
         </header>}
         <section className="mob-review-body">
-          <LiveChangesPanel sessionKey={props.sessionKey} send={props.send} subscribe={props.subscribe} />
+          <LiveChangesPanel key={props.sessionKey} sessionKey={props.sessionKey} send={props.send} subscribe={props.subscribe} />
         </section>
       </Container>
     );
   }
-  return <WorktreeReviewChangesScreen {...props} workItemId={workItemId} changeMode={changeMode} />;
+  return <WorktreeReviewChangesScreen key={props.sessionKey} {...props} workItemId={workItemId} changeMode={changeMode} />;
 }
 
 function WorktreeReviewChangesScreen({
@@ -78,49 +73,19 @@ function WorktreeReviewChangesScreen({
   approvalPending = false,
 }: ReviewChangesScreenProps) {
   const Container = embedded ? "section" : "main";
-  const [requestId, setRequestId] = useState(makeRequestId);
-  const [diff, setDiff] = useState<DetailedDiff | null>(null);
+  const { diff, loading, error: diffError, refresh } = useReviewDiff(sessionKey, send, subscribe);
+  const reviewReady = canDecideFromReview(diff, loading, diffError);
   const [error, setError] = useState<string | null>(null);
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [feedbackFocused, setFeedbackFocused] = useState(false);
-  const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [conflict, setConflict] = useState<MergeConflict | null>(null);
   const integration = useWorktreeIntegration({ workItemId: workItemId ?? null,
     runKey: sessionKey, send, subscribe });
 
   useEffect(() => {
-    send({ type: "get_worktree_diff", sessionKey, requestId });
-  }, [requestId, send, sessionKey]);
-
-  useEffect(() => {
     return subscribe("*", (msg: ServerMessage) => {
-      if (msg.type === "control_response") {
-        if (
-          msg.command !== "get_worktree_diff" ||
-          msg.sessionKey !== sessionKey ||
-          msg.requestId !== requestId
-        ) {
-          return;
-        }
-
-        if (msg.success === false) {
-          setError(msg.error ?? "Could not load diff.");
-          return;
-        }
-
-        if (isDetailedDiff(msg["diff"])) {
-          const nextDiff = msg["diff"];
-          setDiff(nextDiff);
-          setExpandedFile(nextDiff.files[0]?.file ?? null);
-          setError(null);
-        } else {
-          setError("Diff response was incomplete.");
-        }
-        return;
-      }
-
       if (!workItemId && msg.type === "worktree_merge_failed" && msg.sessionKey === sessionKey) {
         setConflict({
           conflicts: msg.result?.conflicts ?? [],
@@ -137,8 +102,10 @@ function WorktreeReviewChangesScreen({
         onClose();
       }
     });
-  }, [onClose, requestId, sessionKey, subscribe, workItemId]);
+  }, [onClose, sessionKey, subscribe, workItemId]);
 
+  const canonicalEvidenceVisible = Boolean(workItemId && integration.lineage
+    && integration.contribution?.state === "ready" && integration.contribution.reviewState === "pending");
   const emptyChanges = diff !== null && diff.filesChanged === 0 && diff.commits.length === 0;
   // Changes is now browsable without an approval request. Keep legacy merge
   // actions scoped to a real pending decision; canonical integration has its
@@ -187,51 +154,21 @@ function WorktreeReviewChangesScreen({
           ) : null}
         </div>
 
-        {!diff && !error ? (
+        {!diff && loading && !diffError ? (
           <div className="mob-review-loading" role="status">Loading diff...</div>
         ) : null}
-        {error ? <div className="mob-review-error" role="alert">{error}
-          <button className="mob-header-action" type="button" onClick={() => {
-            setError(null); setDiff(null); setRequestId(makeRequestId());
-          }}>Retry loading changes</button>
-        </div> : null}
+        {!canonicalEvidenceVisible && <ReviewIdentity diff={diff} sessionKey={sessionKey} loading={loading} error={diffError} />}
+        {error ? <div className="mob-review-error" role="alert">{error}</div> : null}
+        {diffError ? <div className="mob-review-error" role="alert">{diffError}</div> : null}
+        <button className="changes-btn" type="button" onClick={refresh} disabled={loading}>{diffError ? "Retry loading changes" : "Refresh changes"}</button>
+
 
         {diff ? (
           <>
-            <section className="mob-review-section" aria-label="Changed files">
+            {!canonicalEvidenceVisible && <section className="mob-review-section" aria-label="Changed files">
               <h2>Files</h2>
-              <div className="mob-file-list">
-                {diff.files.map((file) => (
-                  <div
-                    className="mob-file-review-item"
-                    data-expanded={expandedFile === file.file ? "true" : "false"}
-                    key={`${file.status}:${file.file}`}
-                  >
-                    <button
-                      className="mob-file-row"
-                      type="button"
-                      aria-expanded={expandedFile === file.file}
-                      onClick={() =>
-                        setExpandedFile((current) => current === file.file ? null : file.file)
-                      }
-                    >
-                      <span className={`mob-file-status mob-file-status--${file.status}`} aria-hidden="true">
-                        {fileStatusSymbol(file.status)}
-                      </span>
-                      <span className="mob-file-path">{file.file}</span>
-                      <span className="mob-file-stat">+{file.insertions} -{file.deletions}</span>
-                    </button>
-                    {expandedFile === file.file ? (
-                      <div className="mob-file-detail">
-                        <span>Status: {file.status}</span>
-                        <span>{file.insertions} additions</span>
-                        <span>{file.deletions} deletions</span>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </section>
+              <ReviewFiles diff={diff} />
+            </section>}
 
             <section className="mob-review-section" aria-label="Commits">
               <h2>Commits</h2>
@@ -261,13 +198,13 @@ function WorktreeReviewChangesScreen({
               </ul>
             ) : null}
             {!workItemId ? <div className="mob-conflict-actions">
-              <button type="button" onClick={() => send({ type: "retry_merge", sessionKey })}>
+              <button type="button" disabled={!reviewReady} onClick={() => { if (reviewReady) send({ type: "retry_merge", sessionKey }); }}>
                 Retry
               </button>
-              <button type="button" onClick={() => send({ type: "force_merge", sessionKey })}>
+              <button type="button" disabled={!reviewReady} onClick={() => { if (reviewReady) send({ type: "force_merge", sessionKey }); }}>
                 Force
               </button>
-              <button type="button" onClick={() => send({ type: "theirs_merge", sessionKey })}>
+              <button type="button" disabled={!reviewReady} onClick={() => { if (reviewReady) send({ type: "theirs_merge", sessionKey }); }}>
                 Theirs
               </button>
             </div> : null}
@@ -282,6 +219,7 @@ function WorktreeReviewChangesScreen({
       </section>
 
       {showActions ? <footer className="mob-review-actions">
+        {!workItemId && !reviewReady && <p className="review-decision-help">Merge unavailable until an identified review is loaded without a refresh error.</p>}
         {requestingChanges ? (
           <form
             className="mob-review-feedback"
@@ -329,6 +267,7 @@ function WorktreeReviewChangesScreen({
           {!workItemId ? <button
             className="mob-primary-action"
             type="button"
+            disabled={Boolean(conflict) || !reviewReady}
             onClick={() => send({ type: "approve_changes", sessionKey })}
           >
             Approve &amp; Merge

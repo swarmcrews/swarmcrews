@@ -7,6 +7,7 @@ import { useReviewContribution } from "./use-review-contribution.ts";
 import type { SocketSubscribeLike } from "./use-socket.ts";
 import "./review-feedback.css";
 import "./lineage.css";
+import { CanonicalReview, useCanonicalReview } from "./components/review/CanonicalReview.tsx";
 
 const REVIEW_TEXT = {
   pending: "review pending",
@@ -24,6 +25,7 @@ export function LineageNodeStrip(props: {
 }): JSX.Element {
   const { lineage, send, onExpand, className } = props;
   const { contribution, pending, error, review, refresh } = useReviewContribution(props.contribution, send, props.subscribe);
+  const evidence = useCanonicalReview(contribution, send, props.subscribe);
 
   const shortId = `${lineage.id.slice(0, 12)}…`;
   const rev = contribution?.reviewState ?? "pending";
@@ -60,12 +62,13 @@ export function LineageNodeStrip(props: {
         </button>
       </div>
 
+      {canReview && <CanonicalReview review={evidence} />}
       {canReview && (
         <div className="lin-strip__actions">
           <button
             type="button"
             className="lin-btn lin-btn--approve lin-btn--sm"
-            disabled={!!pending}
+            disabled={!!pending || !evidence.ready}
             onClick={() => review("approved")}
           >
             {pending?.decision === "approved" ? "Recording approval…" : "✓ Approve contribution"}

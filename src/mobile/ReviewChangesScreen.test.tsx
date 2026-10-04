@@ -128,7 +128,7 @@ describe("ReviewChangesScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("src/auth/token.ts")).toBeInTheDocument();
     });
-    expect(screen.getByText("+10 -4")).toBeInTheDocument();
+    expect(screen.getByText("+10")).toBeInTheDocument();
     expect(screen.getByText("Extract token validation")).toBeInTheDocument();
     expect(screen.getByText(/2 files \+18 -4/)).toBeInTheDocument();
   });
@@ -147,6 +147,9 @@ describe("ReviewChangesScreen", () => {
       />,
     );
 
+    act(() => socket.deliver({ type: "control_response", command: "get_worktree_diff", sessionKey: "s-1", requestId, success: true,
+      diff: { ...diff, snapshot: { id: `sha256:${"b".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree", runKey: "s-1", contributionBinding: "unbound", consistency: "sampled" },
+        files: diff.files.map(file => ({ ...file, patch: { state: "text", text: "+reviewed" } })) } }));
     fireEvent.click(screen.getByRole("button", { name: "Approve & Merge" }));
     expect(send).toHaveBeenCalledWith({ type: "approve_changes", sessionKey: "s-1" });
 
@@ -278,6 +281,10 @@ describe("ReviewChangesScreen", () => {
       expect(screen.getByText("Conflicts while merging")).toBeInTheDocument();
     });
 
+    act(() => socket.deliver({ type: "control_response", command: "get_worktree_diff", sessionKey: "s-1", requestId, success: true,
+      diff: { ...diff, snapshot: { id: `sha256:${"b".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree",
+        runKey: "s-1", contributionBinding: "unbound", consistency: "sampled" }, files: diff.files.map(file => ({ ...file,
+          patch: { state: "text", text: "@@ -1 +1 @@\n-before\n+after" } })) } }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     fireEvent.click(screen.getByRole("button", { name: "Force" }));
     fireEvent.click(screen.getByRole("button", { name: "Theirs" }));
@@ -286,4 +293,33 @@ describe("ReviewChangesScreen", () => {
     expect(send).toHaveBeenCalledWith({ type: "force_merge", sessionKey: "s-1" });
     expect(send).toHaveBeenCalledWith({ type: "theirs_merge", sessionKey: "s-1" });
   });
+});
+
+it("retains mobile patches through failed refresh and retry, with honest identity", () => {
+  const socket = fakeSocket(); const send = vi.fn();
+  render(<ReviewChangesScreen sessionKey="s-1" send={send} subscribe={socket.subscribe} onClose={() => {}} />);
+  const latest = () => send.mock.calls.filter(([m]) => m.type === "get_worktree_diff").at(-1)![0].requestId;
+  const evidence = { ...diff, snapshot: { id: `sha256:${"b".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree", runKey: "s-1", contributionBinding: "unbound", consistency: "sampled" },
+    files: diff.files.map((file, i) => ({ ...file, patch: i ? { state: "binary", reason: "Binary content; no text patch." } : { state: "text", text: "@@ -1 +1 @@\n-before\n+after" } })) };
+  expect(screen.getByRole("button", { name: "Approve & Merge" })).toBeDisabled();
+  act(() => socket.deliver({ type: "control_response", command: "get_worktree_diff", sessionKey: "s-1", requestId: latest(), success: true, diff: evidence }));
+  fireEvent.click(screen.getByText("src/auth/token.ts"));
+  expect(screen.getByText("+after")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh changes" }));
+  act(() => socket.deliver({ type: "control_response", command: "get_worktree_diff", sessionKey: "s-1", requestId: latest(), success: false, error: "Network failed" }));
+  expect(screen.getByText("+after")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Approve & Merge" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Retry loading changes" }));
+  expect(screen.getByText("+after")).toBeVisible();
+});
+
+it("does not carry prior-session conflict or feedback into a different run", () => {
+  const socket = fakeSocket(); const send = vi.fn();
+  const view = render(<ReviewChangesScreen sessionKey="s-1" send={send} subscribe={socket.subscribe} onClose={() => {}} />);
+  act(() => socket.deliver({ type: "worktree_merge_failed", sessionKey: "s-1", result: { conflicts: ["prior-secret-path"], summary: "Prior run conflict" } }));
+  fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+  fireEvent.change(screen.getByLabelText("Request changes"), { target: { value: "Prior run feedback" } });
+  view.rerender(<ReviewChangesScreen sessionKey="s-2" send={send} subscribe={socket.subscribe} onClose={() => {}} />);
+  expect(screen.queryByText("prior-secret-path")).toBeNull();
+  expect(screen.queryByDisplayValue("Prior run feedback")).toBeNull();
 });

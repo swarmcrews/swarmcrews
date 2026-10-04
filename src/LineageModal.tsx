@@ -1,5 +1,11 @@
-import { type JSX, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useLineageModalBoundary } from "./components/review/use-lineage-modal-boundary.ts";
+import { type JSX, useId, useState } from "react";
 import { randomUuid } from "./random-id.ts";
+import type { SocketSubscribeLike } from "./use-socket.ts";
+import { CanonicalReview, useCanonicalReview } from "./components/review/CanonicalReview.tsx";
+import { LineageReview, useLineageReview } from "./components/review/LineageReview.tsx";
+type ReviewTransport = { send: (data: unknown) => void; subscribe?: SocketSubscribeLike | undefined };
 import type {
   WorktreeContributionSnapshot,
   WorktreeLineageSnapshot,
@@ -22,6 +28,7 @@ export function LineageModal({
   runKey,
   allLineages,
   send,
+  subscribe,
   onClose,
 }: {
   lineage: WorktreeLineageSnapshot;
@@ -29,26 +36,25 @@ export function LineageModal({
   runKey?: string | null;
   allLineages: WorktreeLineageSnapshot[];
   send: (data: unknown) => void;
+  subscribe?: SocketSubscribeLike | undefined;
   onClose: () => void;
 }): JSX.Element {
   const [tab, setTab] = useState<Tab>("this");
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
+  const boundary = useLineageModalBoundary(onClose);
 
   const command = (value: Record<string, unknown>) =>
     send({ requestId: randomUuid(), ...value });
 
-  return (
-    <div className="lin-modal__backdrop" onClick={onClose}>
-      <div className="lin-modal" onClick={(event) => event.stopPropagation()}>
+  return createPortal(
+    <div ref={boundary.backdrop} data-viewport-overlay="" className="lin-modal__backdrop"
+      onMouseDown={event => event.stopPropagation()}
+      onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) onClose(); }}>
+      <div className="lin-modal" role="dialog" aria-modal="true" aria-labelledby={titleId}
+        onClick={(event) => event.stopPropagation()}>
         <div className="lin-modal__head">
-          <h3>Lineage {short(lineage.id, 12)}…</h3>
+          <h3 id={titleId} title={lineage.id}>Lineage {short(lineage.id, 12)}…</h3>
           <span className="lin-chip">{lineage.integrationState}</span>
           <span className="lin-modal__spacer" />
           {workItemId ? (
@@ -64,6 +70,7 @@ export function LineageModal({
           ) : null}
           <button
             type="button"
+            ref={boundary.initialFocus}
             className="lin-modal__close"
             aria-label="Close"
             onClick={onClose}
@@ -96,6 +103,7 @@ export function LineageModal({
               workItemId={workItemId ?? null}
               runKey={runKey ?? null}
               command={command}
+              reviewTransport={{ send, subscribe }}
               onMap={() => setTab("all")}
             />
           ) : (
@@ -108,7 +116,7 @@ export function LineageModal({
           )}
         </div>
       </div>
-    </div>
+    </div>, document.body,
   );
 }
 
@@ -119,12 +127,14 @@ function ThisLineageTab({
   workItemId,
   runKey,
   command,
+  reviewTransport,
   onMap,
 }: {
   lineage: WorktreeLineageSnapshot;
   workItemId: string | null;
   runKey: string | null;
   command: (value: Record<string, unknown>) => void;
+  reviewTransport: ReviewTransport;
   onMap: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -151,6 +161,7 @@ function ThisLineageTab({
     && lineage.contributions.some((e) => e.state === "integrated")
     && lineage.status === "open"
     && lineage.integrationState === "active";
+  const combinedEvidence = useLineageReview(finalReady ? lineage : null, reviewTransport.send, reviewTransport.subscribe);
   const latestFinalReview = selectLatestLineageReview(lineage);
   const finalApproved =
     latestFinalReview?.decision === "approved"
@@ -213,6 +224,8 @@ function ThisLineageTab({
         </div>
       ) : null}
 
+      {finalReady && <LineageReview review={combinedEvidence} />}
+
       <div className="lin2-rows">
         {contributions.map((entry) => {
           const isSelf = !!selfContribution && selfContribution.id === entry.id;
@@ -246,6 +259,8 @@ function ThisLineageTab({
                   lineage={lineage}
                   entry={entry}
                   command={command}
+                  reviewTransport={reviewTransport}
+                  combinedReady={combinedEvidence.ready}
                   finalReady={finalReady}
                   finalApproved={finalApproved}
                   lineageBlocked={lineageBlocked}
@@ -265,7 +280,9 @@ function ContributionDetail({
   lineage,
   entry,
   command,
+  reviewTransport,
   finalReady,
+  combinedReady,
   finalApproved,
   lineageBlocked,
   latestFinalReview,
@@ -273,11 +290,14 @@ function ContributionDetail({
   lineage: WorktreeLineageSnapshot;
   entry: WorktreeContributionSnapshot;
   command: (value: Record<string, unknown>) => void;
+  reviewTransport: ReviewTransport;
   finalReady: boolean;
+  combinedReady: boolean;
   finalApproved: boolean;
   lineageBlocked: boolean;
   latestFinalReview: ReturnType<typeof selectLatestLineageReview>;
 }) {
+  const evidence = useCanonicalReview(entry, reviewTransport.send, reviewTransport.subscribe);
   const queue = selectLatestQueueEntry(lineage, (item) => item.contributionId === entry.id);
   const contributionGates = lineage.gates.filter(
     (gate) => gate.scope === "contribution" && gate.contributionId === entry.id,
@@ -288,6 +308,7 @@ function ContributionDetail({
 
   return (
     <div className="lin2-detail">
+      <CanonicalReview review={evidence} />
       {entry.state === "conflicted" ? (
         <div className="lin2-alert" role="alert">
           Contribution conflict. Start a new iteration on this work item to resolve it in the
@@ -338,7 +359,8 @@ function ContributionDetail({
           <button
             type="button"
             className="lin-btn lin-btn--approve"
-            onClick={() =>
+            disabled={!evidence.ready}
+            onClick={() => evidence.ready &&
               command({
                 type: "review_worktree_contribution",
                 contributionId: entry.id,
@@ -421,7 +443,8 @@ function ContributionDetail({
           <button
             type="button"
             className="lin-btn lin-btn--approve"
-            onClick={() =>
+            disabled={!combinedReady}
+            onClick={() => combinedReady &&
               command({
                 type: "review_worktree_lineage",
                 lineageId: lineage.id,

@@ -66,6 +66,7 @@ export function WorktreeIntegrationControls({
           runKey={runKey ?? null}
           allLineages={allLineages}
           send={send}
+          {...(subscribe ? { subscribe } : {})}
           onClose={() => setOpen(false)}
         />
       ) : null}

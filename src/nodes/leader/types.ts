@@ -1,3 +1,6 @@
+import type { ReviewPatch, ReviewSnapshot } from "../../../shared/review-diff.ts";
+import { EMPTY_THINKING_STREAM } from "../../thinking-stream.ts";
+import type { ThinkingStreamState } from "../../thinking-stream.ts";
 /**
  * Type definitions and defaults for the Leader node.
  */
@@ -54,7 +57,7 @@ export interface TaskPlanItem {
   progress?: string[] | undefined;
 }
 
-export interface LeaderData {
+export interface LeaderData extends ThinkingStreamState {
   /** Durable lifecycle identity. `sessionKey` remains a legacy run alias. */
   workItemId?: string | null;
   currentRunKey?: string | null;
@@ -129,10 +132,11 @@ export interface LeaderData {
   approvalPending?: boolean | undefined;
   approvalSummary?: string | null | undefined;
   approvalDiff?: {
+    snapshot?: ReviewSnapshot;
     filesChanged: number;
     insertions: number;
     deletions: number;
-    files: { file: string; insertions: number; deletions: number; status: string }[];
+    files: { file: string; insertions: number; deletions: number; status: string; previousFile?: string; patch?: ReviewPatch }[];
     commits: string[];
     branch: string;
   } | null | undefined;
@@ -180,7 +184,7 @@ export const LEADER_DEFAULT_DATA: LeaderData = {
   sessionKey: null,
   status: "disconnected",
   messages: [],
-  streamingText: "",
+  ...EMPTY_THINKING_STREAM, streamingText: "",
   streamingBlockIndex: null,
   totalCost: 0,
   turns: 0,

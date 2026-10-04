@@ -1,4 +1,6 @@
-.integration-controls { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--border-default); border-radius: 7px; background: var(--bg-secondary); font-size: 11px; }
+.integration-controls { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; font-size: var(--text-size-ui); }
+/* One host panel, one integration boundary, then files—not nested empty cards. */
+.act-content-card[data-activity-target="changes"] .changes-card--inline { border: 0; padding: 0; background: transparent; }
 .integration-controls__status { display: grid; gap: 3px; color: var(--text-secondary); }
 .integration-controls__status strong { color: var(--text-primary); }
 .integration-controls__alert { padding: 7px; border-radius: 5px; background: var(--danger-bg); color: var(--status-error); }
@@ -381,3 +383,50 @@
 @media (prefers-reduced-motion: reduce) {
   .changes-refresh { transition: none; }
 }
+
+.legacy-conflict-review button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Review evidence: sans explanations, mono patches; wrap paths, scroll code only. */
+.review-identity {
+  display: grid; gap: 4px; margin: 12px 0; min-width: 0;
+  font: var(--text-size-ui)/var(--leading-body) var(--font-sans);
+  color: var(--text-secondary); overflow-wrap: anywhere;
+}
+.review-identity code { font-family: var(--font-mono); color: var(--text-primary); user-select: all; }
+.review-identity p { margin: 4px 0 0; }
+.review-identity__id { color: var(--accent); }
+.changes-card__files.review-files { max-height: none; padding: 0; font-size: var(--text-size-label); min-width: 0; overflow: visible; }
+.review-file { border: 1px solid var(--border-default); border-radius: var(--radius-control, 6px); min-width: 0; margin-bottom: 6px; }
+.review-file__row { cursor: pointer; padding: 10px 12px; min-height: 44px; color: var(--text-primary); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.review-file__row::marker { color: var(--accent); }
+.review-file__status { font: var(--text-size-label)/var(--leading-body) var(--font-sans); margin-right: 8px; color: var(--text-secondary); }
+.review-file__status[data-status="added"] { color: var(--success-color); }
+.review-file__status[data-status="deleted"] { color: var(--status-error); }
+.review-file__stat { display: inline-block; margin-left: 8px; white-space: nowrap; }
+.review-file__detail { border-top: 1px solid var(--border-default); min-width: 0; }
+.review-file__rename, .review-patch__notice { margin: 0; padding: 12px; font: var(--text-size-ui)/var(--leading-body) var(--font-sans); color: var(--text-secondary); overflow-wrap: anywhere; }
+.review-file__rename code { font-family: var(--font-mono); }
+.review-patch { margin: 0; max-width: 100%; max-height: 420px; overflow: auto; padding: 12px; background: var(--bg-primary); color: var(--text-primary); font: var(--text-size-label)/var(--leading-body) var(--font-mono); tab-size: 4; border-radius: 0 0 var(--radius-control, 6px) var(--radius-control, 6px); }
+.review-patch code { font: inherit; }
+.review-patch span { display: block; min-height: 1.6em; white-space: pre; }
+.review-patch [data-kind="add"] { color: var(--success-color); }
+.review-patch [data-kind="delete"] { color: var(--status-error); }
+.review-patch [data-kind="hunk"] { color: var(--accent); }
+.review-file__row:focus-visible, .review-patch:focus-visible, .changes-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mob-review .review-files { margin-top: 12px; }
+@media (max-width: 480px) {
+  .review-file__row { padding: 12px 8px; }
+  .review-file__stat { margin-left: 0; display: block; }
+  .review-patch { max-height: 300px; padding: 8px; }
+  .review-identity { font-size: .8125rem; }
+}
+
+.changes-card--inline .changes-badge, .changes-card--inline .changes-card__branch, .changes-card--inline .changes-card__stats { font-size: var(--text-size-label); }
+.changes-card__branch { max-width: 100%; overflow-wrap: anywhere; }
+.changes-btn { min-height: 36px; font-size: var(--text-size-ui); font-family: var(--font-sans); }
+.mob-review .changes-btn { min-height: 44px; }
+.mob-review .mob-review-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.review-decision-help { margin: 8px 0; font: var(--text-size-ui)/var(--leading-body) var(--font-sans); color: var(--text-secondary); }
+
+.review-file__kind { margin: 0 8px; white-space: nowrap; font: var(--text-size-label)/var(--leading-body) var(--font-sans); color: var(--text-secondary); }
+.legacy-conflict-review .legacy-conflict-actions > button { min-height: 44px; }

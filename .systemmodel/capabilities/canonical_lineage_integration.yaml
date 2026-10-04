@@ -1,7 +1,7 @@
 id: capability.canonical_lineage_integration
 type: capability
 name: Canonical lineage integration
-summary: Users can organize WorkItem contributions into lineages, review and enqueue them separately, recover conflicts, and promote a gate-cleared target with revision fencing.
+summary: Users can inspect immutable contribution or combined-lineage evidence by durable IDs, review and enqueue separately, recover conflicts, and promote a gate-cleared target with revision fencing. Evidence reads do not mutate integration state or require a live session; approval requires matching evidence, while requesting changes remains available during capture failure.
 constraints:
   - constraint.integration_revision_authority
   - constraint.gates_and_review_separation
@@ -9,29 +9,29 @@ decisions: [ decision.worktree_isolation_and_approval, decision.canonical_work_i
 risks:
   - risk.legacy_canonical_review_split
   - risk.canonical_conflict_controls_latent
-suggested_files: [ src/LineageModal.tsx, src/LineageNodeStrip.tsx, src/WorktreeIntegrationControls.tsx, src/use-worktree-integration.ts, server/worktree-integration-service.ts ]
-suggested_tests: [ src/LineageModal.test.tsx, src/LineageNodeStrip.test.tsx, src/WorktreeIntegrationControls.test.tsx, src/use-worktree-integration.test.tsx, server/commands/worktree-integration.test.ts ]
+suggested_files: [ src/LineageModal.tsx, src/LineageNodeStrip.tsx, src/WorktreeIntegrationControls.tsx, src/use-worktree-integration.ts, src/use-integration-review-diff.ts, src/components/review/CanonicalReview.tsx, src/components/review/LineageReview.tsx, src/components/review/use-lineage-modal-boundary.ts, server/commands/get-integration-review-diff.ts, server/canonical-review-diff.ts, shared/integration-review.ts, shared/review-diff.ts, server/worktree-integration-service.ts ]
+suggested_tests: [ src/LineageModal.test.tsx, src/LineageModal.accessibility.test.tsx, src/LineageNodeStrip.test.tsx, src/WorktreeIntegrationControls.test.tsx, src/use-worktree-integration.test.tsx, src/use-integration-review-diff.test.tsx, src/components/review/CanonicalReview.test.tsx, server/commands/canonical-review.test.ts, server/canonical-review-diff.test.ts, tests/contracts/integration-review-diff.test.ts, server/commands/worktree-integration.test.ts ]
 keywords: [ lineage, contribution, review, enqueue, promote, integration, revision, conflict, preserved_paths, canonical, gate ]
 entry_points:
   - surface: surface.canvas
-    summary: Create, join, inspect, review, enqueue, and promote lineages through shared controls.
-    files: [ src/LineageModal.tsx, src/LineageNodeStrip.tsx, src/WorktreeIntegrationControls.tsx, src/use-worktree-integration.ts ]
-    tests: [ src/LineageModal.test.tsx, src/LineageNodeStrip.test.tsx, src/WorktreeIntegrationControls.test.tsx, src/use-worktree-integration.test.tsx ]
+    summary: Inspect distinct contribution and combined-head patches through shared controls; the named portalled review retains evidence on resize and contains/restores focus without changing mutation authority.
+    files: [ src/LineageModal.tsx, src/LineageNodeStrip.tsx, src/WorktreeIntegrationControls.tsx, src/use-worktree-integration.ts, src/use-integration-review-diff.ts, src/components/review/CanonicalReview.tsx, src/components/review/LineageReview.tsx, src/components/review/use-lineage-modal-boundary.ts ]
+    tests: [ src/LineageModal.test.tsx, src/LineageModal.accessibility.test.tsx, src/LineageNodeStrip.test.tsx, src/WorktreeIntegrationControls.test.tsx, src/use-worktree-integration.test.tsx, src/use-integration-review-diff.test.tsx, src/components/review/CanonicalReview.test.tsx ]
     flows: [ flow.promote_lineage, flow.recover_integration_conflict ]
   - surface: surface.activity
-    summary: Reach shared lineage and contribution review controls from execution triage.
-    files: [ src/ActivityView.tsx, src/WorktreeIntegrationControls.tsx ]
-    tests: [ src/ActivityView.test.tsx, src/WorktreeIntegrationControls.test.tsx ]
+    summary: Reach shared durable contribution and combined-lineage evidence and separate decision controls from execution triage.
+    files: [ src/ActivityView.tsx, src/WorktreeIntegrationControls.tsx, src/LineageModal.tsx, src/use-integration-review-diff.ts ]
+    tests: [ src/ActivityView.test.tsx, src/WorktreeIntegrationControls.test.tsx, src/LineageModal.test.tsx, src/LineageModal.accessibility.test.tsx ]
     flows: [ flow.promote_lineage, flow.recover_integration_conflict ]
   - surface: surface.mobile
-    summary: Inspect canonical change state through shared remote review hooks.
-    files: [ src/mobile/ReviewChangesScreen.tsx, src/use-worktree-integration.ts ]
-    tests: [ src/mobile/ReviewChangesScreen.test.tsx, src/use-worktree-integration.test.tsx ]
+    summary: Inspect canonical change state and immutable contribution evidence through shared remote review controls.
+    files: [ src/mobile/ReviewChangesScreen.tsx, src/use-worktree-integration.ts, src/LineageNodeStrip.tsx, src/use-integration-review-diff.ts ]
+    tests: [ src/mobile/ReviewChangesScreen.test.tsx, src/use-worktree-integration.test.tsx, src/LineageNodeStrip.test.tsx, src/use-integration-review-diff.test.tsx ]
     flows: [ flow.promote_lineage, flow.recover_integration_conflict ]
   - surface: surface.ws_api
-    summary: Dispatch revision-fenced lineage mutations and status queries into the integration service.
-    files: [ server/commands/worktree-integration.ts, server/commands/list-worktree-lineages.ts, server/worktree-integration-service.ts ]
-    tests: [ server/commands/worktree-integration.test.ts, server/worktree-integration-sqlite.test.ts, tests/contracts/worktree-lineages-list.test.ts ]
+    summary: Read immutable evidence with strict durable IDs only, deriving repository/run/revision/base/head server-side and rejecting capture races; contribution and combined bindings are distinct. Revision-fenced mutations remain separate.
+    files: [ server/commands/worktree-integration.ts, server/commands/list-worktree-lineages.ts, server/commands/get-integration-review-diff.ts, server/canonical-review-diff.ts, shared/integration-review.ts, shared/review-diff.ts, server/worktree-integration-service.ts ]
+    tests: [ server/commands/worktree-integration.test.ts, server/worktree-integration-sqlite.test.ts, tests/contracts/worktree-lineages-list.test.ts, server/commands/canonical-review.test.ts, server/canonical-review-diff.test.ts, tests/contracts/integration-review-diff.test.ts ]
     flows: [ flow.promote_lineage, flow.recover_integration_conflict ]
 freshness:
   class: code_coupled

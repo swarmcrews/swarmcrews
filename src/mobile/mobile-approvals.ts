@@ -1,3 +1,4 @@
+import { isReviewDiff, type ReviewPatch, type ReviewSnapshot } from "../../shared/review-diff.ts";
 import type { ServerMessage, SessionInfo } from "../use-socket.ts";
 import { sessionDisplayTitle } from "./mobile-selectors.ts";
 
@@ -5,12 +6,15 @@ export type FileChangeStatus = "added" | "modified" | "deleted" | "renamed";
 
 export interface FileChange {
   file: string;
+  previousFile?: string;
+  patch?: ReviewPatch;
   insertions: number;
   deletions: number;
   status: FileChangeStatus;
 }
 
 export interface DetailedDiff {
+  snapshot?: ReviewSnapshot;
   filesChanged: number;
   insertions: number;
   deletions: number;
@@ -29,35 +33,8 @@ export interface PendingApproval {
 
 export type PendingApprovalsMap = Record<string, PendingApproval>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isFileChange(value: unknown): value is FileChange {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value["file"] === "string" &&
-    typeof value["insertions"] === "number" &&
-    typeof value["deletions"] === "number" &&
-    (value["status"] === "added" ||
-      value["status"] === "modified" ||
-      value["status"] === "deleted" ||
-      value["status"] === "renamed")
-  );
-}
-
 export function isDetailedDiff(value: unknown): value is DetailedDiff {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value["filesChanged"] === "number" &&
-    typeof value["insertions"] === "number" &&
-    typeof value["deletions"] === "number" &&
-    Array.isArray(value["files"]) &&
-    value["files"].every(isFileChange) &&
-    Array.isArray(value["commits"]) &&
-    value["commits"].every((commit) => typeof commit === "string") &&
-    typeof value["branch"] === "string"
-  );
+  return isReviewDiff(value);
 }
 
 function withoutApproval(

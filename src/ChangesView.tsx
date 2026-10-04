@@ -10,7 +10,7 @@
  * session hits merge conflicts this panel deep-links to it via "Open in
  * Canvas" rather than duplicating that stateful flow.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   GitMerge,
   GitBranch,
@@ -31,6 +31,7 @@ import { WorktreeIntegrationControls } from "./WorktreeIntegrationControls.tsx";
 import { selectCanvasChangeMode } from "./nodes/leader/work-item.ts";
 import "./changes-view.css";
 import { LiveChangesPanel } from "./LiveChangesPanel.tsx";
+import { ReviewFiles, ReviewIdentity, canDecideFromReview } from "./components/review/ReviewEvidence.tsx";
 import { ChangesRefreshIndicator } from "./ChangesRefreshIndicator.tsx";
 
 /**
@@ -56,14 +57,6 @@ export function countReviewableLeaders(nodes: CanvasNode[]): number {
   return n;
 }
 
-const FILE_STATUS_COLOR: Record<string, string> = {
-  added: "var(--success-color)",
-  deleted: "var(--status-error)",
-};
-const fileStatusColor = (s: string) => FILE_STATUS_COLOR[s] ?? "var(--accent)";
-const fileStatusLetter = (s: string) =>
-  s === "added" ? "A" : s === "deleted" ? "D" : "M";
-
 export function SessionChangesPanel({
   nodeId,
   sessionKey,
@@ -81,11 +74,11 @@ export function SessionChangesPanel({
   onUpdateNodeData: (nodeId: string, data: LeaderData) => void;
   onOpenInCanvas: (nodeId: string) => void;
 }) {
-  if (selectCanvasChangeMode(data) === "live") return <LiveChangesPanel
+  if (selectCanvasChangeMode(data) === "live") return <LiveChangesPanel key={sessionKey}
     sessionKey={sessionKey} send={socketSend} subscribe={socketSubscribe} />;
 
   return (
-    <WorktreeSessionChangesPanel
+    <WorktreeSessionChangesPanel key={sessionKey}
       nodeId={nodeId}
       sessionKey={sessionKey}
       data={data}
@@ -116,10 +109,13 @@ function WorktreeSessionChangesPanel({
 }) {
   const { diff, loading, error: diffError, loadedAt, refresh: fetchDiff } = useReviewDiff(sessionKey, socketSend, socketSubscribe);
   const [confirm, setConfirm] = useState<"merge" | "discard" | null>(null);
+  useEffect(() => { setConfirm(null); }, [diff?.snapshot?.id, sessionKey]);
   const integration = useWorktreeIntegration({ workItemId: data.workItemId ?? null,
     runKey: sessionKey, ...(socketSend ? { send: socketSend } : {}),
     ...(socketSubscribe ? { subscribe: socketSubscribe } : {}) });
 
+  const canonicalEvidenceVisible = Boolean(data.workItemId && socketSend && integration.lineage
+    && integration.contribution?.state === "ready" && integration.contribution.reviewState === "pending");
   const hasConflict = !!data.mergeConflict;
   const approvalPending = !!data.approvalPending;
 
@@ -179,21 +175,7 @@ function WorktreeSessionChangesPanel({
               </span>
             )}
           </div>
-          <div className="changes-card__files">
-            {diff.files.map((f, i) => (
-              <div key={i} className="changes-file">
-                <span
-                  className="changes-file__status"
-                  style={{ color: fileStatusColor(f.status) }}
-                >
-                  {fileStatusLetter(f.status)}
-                </span>
-                <span className="changes-file__path">{f.file}</span>
-                <span className="changes-add">+{f.insertions}</span>
-                <span className="changes-del">-{f.deletions}</span>
-              </div>
-            ))}
-          </div>
+          {!canonicalEvidenceVisible && <ReviewFiles diff={diff} />}
         </>
       )}
 
@@ -201,8 +183,9 @@ function WorktreeSessionChangesPanel({
         <div className="changes-card__none">No changes yet.</div>
       )}
 
+      {!canonicalEvidenceVisible && <ReviewIdentity diff={diff} sessionKey={sessionKey} loading={loading} error={diffError} />}
       {loadedAt != null && <div className="review-feedback" role="status">Last loaded {new Date(loadedAt).toLocaleTimeString()}</div>}
-      {diffError && <div className="review-feedback" role="alert">Couldn’t load changes: {diffError} <button className="changes-btn" onClick={fetchDiff}>Retry</button></div>}
+      {diffError && <div className="review-feedback" role="alert">Couldn’t load changes: {diffError}</div>}
       {integration.error ? <div className="changes-card__none" role="alert">{integration.error}</div> : null}
       {data.workItemId && integration.lineage && socketSend ? (
         <WorktreeIntegrationControls lineage={integration.lineage} workItemId={data.workItemId}
@@ -210,16 +193,17 @@ function WorktreeSessionChangesPanel({
           {...(socketSubscribe ? { subscribe: socketSubscribe } : {})} />
       ) : null}
 
+      {!data.workItemId && !canDecideFromReview(diff, loading, diffError) && <p className="review-decision-help">Merge unavailable until an identified review is loaded without a refresh error.</p>}
       <div className="changes-card__actions">
         {!data.workItemId && <button
           className="changes-btn changes-btn--merge"
-          disabled={hasConflict || (diff != null && diff.filesChanged === 0)}
+          disabled={hasConflict || !canDecideFromReview(diff, loading, diffError)}
           onClick={() => setConfirm("merge")}
         >
           <GitMerge size={13} strokeWidth={2} aria-hidden /> Merge
         </button>}
         <button className="changes-btn" onClick={fetchDiff}>
-          <RefreshCw size={13} strokeWidth={2} aria-hidden /> Refresh
+          <RefreshCw size={13} strokeWidth={2} aria-hidden /> {diffError ? "Retry" : "Refresh"}
         </button>
         {!data.workItemId && hasConflict && (
           <button className="changes-btn" onClick={() => onOpenInCanvas(nodeId)}>
@@ -238,9 +222,11 @@ function WorktreeSessionChangesPanel({
       {!data.workItemId && confirm === "merge" && (
         <ConfirmModal
           title="Merge worktree changes?"
-          description="Merge this session's reviewed worktree changes into your working tree."
+          description={canDecideFromReview(diff, loading, diffError)
+            ? <>Merge this session's worktree changes into your working tree. Reviewed snapshot <code>{diff?.snapshot?.id}</code>; working files can change after capture.</>
+            : "Review is refreshing or unavailable. Prior evidence is retained; refresh successfully before merging."}
           onClose={() => setConfirm(null)}
-          actions={[{ label: "Merge", variant: "primary", onClick: doMerge }]}
+          actions={canDecideFromReview(diff, loading, diffError) ? [{ label: "Merge", variant: "primary", onClick: doMerge }] : []}
         />
       )}
       {!data.workItemId && confirm === "discard" && (

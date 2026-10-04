@@ -1,3 +1,5 @@
+import { LaunchRunSummary } from "../../components/LaunchRunSummary.tsx";
+import { LegacyConflictReview } from "./LegacyConflictReview.tsx";
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { SwarmcrewsIcon } from "../../components/SwarmcrewsIcon.tsx";
@@ -167,12 +169,12 @@ export function ConfigFooter({
           flexShrink: 0,
         }}
       >
-        <div
+        <button type="button" aria-label="Run setup" aria-expanded={expanded}
           className="leader-config-footer__summary"
           onClick={() => setExpanded(!expanded)}
           onMouseDown={(e) => e.stopPropagation()}
           style={{
-            padding: "4px 10px",
+            padding: "4px 10px", width: "100%", border: 0, background: "transparent", textAlign: "left",
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -267,7 +269,7 @@ export function ConfigFooter({
               transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
             }}
           />
-        </div>
+        </button>
 
         {expanded && (
           <div
@@ -420,6 +422,11 @@ export function ConfigFooter({
                 {hasSession ? " (locked)" : " connected"}
               </div>
             )}
+
+            {!hasSession && <LaunchRunSummary model={`${data.model ?? "opus"} · ${data.harness ?? "claude"}`}
+              changeMode={isWorktreeMode ? "worktree" : "live"} policy={data.sandboxPolicy}
+              effective={data.effectiveSandboxPolicy} skills={(data.skillIds ?? []).length}
+              orchestration={data.orchestrationMode === "plan" ? "Graph — review before start" : "Graph — auto-start safe work"} />}
 
             {wtStatus === "failed" && (
               <div
@@ -821,195 +828,8 @@ export function ConfigFooter({
         )}
 
         {isWorktreeMode && !data.workItemId && data.approvalPending && data.mergeConflict && (
-          <div
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              margin: "0 6px 6px",
-              padding: "10px 12px",
-              background: "var(--danger-bg)",
-              border: "2px solid var(--danger-color)",
-              borderRadius: 8,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 6,
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: "var(--status-error)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span style={{ fontSize: 14 }}>!</span> Merge Conflicts
-              </div>
-              <button
-                onClick={() => onUpdateData({ ...data, mergeConflict: null })}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  fontSize: 14,
-                  padding: "0 2px",
-                  lineHeight: 1,
-                }}
-                title="Dismiss"
-                aria-label="Dismiss merge conflicts"
-              >
-                x
-              </button>
-            </div>
-            {data.mergeConflict.conflicts.length > 0 && (
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--text-muted)",
-                  marginBottom: 8,
-                  fontFamily: "var(--font-mono)",
-                  background: "var(--bg-elevated)",
-                  padding: "6px 8px",
-                  borderRadius: 4,
-                  maxHeight: 80,
-                  overflowY: "auto",
-                }}
-              >
-                {data.mergeConflict.conflicts.map((f, i) => (
-                  <div key={i} style={{ padding: "1px 0" }}>
-                    {f}
-                  </div>
-                ))}
-              </div>
-            )}
-            <div
-              style={{
-                fontSize: 10,
-                color: "var(--text-muted)",
-                marginBottom: 6,
-                lineHeight: 1.4,
-              }}
-            >
-              Choose a resolution strategy:
-            </div>
-            <div
-              style={{ display: data.workItemId ? "none" : "flex", gap: 6, flexWrap: "wrap" }}
-              data-no-drag
-            >
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (socketSend && data.sessionKey && !data.workItemId) {
-                    socketSend({ type: "force_merge", sessionKey: data.sessionKey });
-                    onUpdateData({
-                      ...data,
-                      worktreeStatus: "merging",
-                      mergeConflict: null,
-                      approvalPending: false,
-                    });
-                  }
-                }}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: "var(--accent)",
-                  border: "none",
-                  borderRadius: 6,
-                  color: "var(--text-on-accent)",
-                  cursor: "pointer",
-                  fontFamily: "var(--font-mono)",
-                }}
-                title="Keep canvas branch changes where conflicts occur"
-              >
-                Keep Ours
-              </button>
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (socketSend && data.sessionKey && !data.workItemId) {
-                    socketSend({ type: "theirs_merge", sessionKey: data.sessionKey });
-                    onUpdateData({
-                      ...data,
-                      worktreeStatus: "merging",
-                      mergeConflict: null,
-                      approvalPending: false,
-                    });
-                  }
-                }}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: 11,
-                  fontWeight: 600,
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: 6,
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  fontFamily: "var(--font-mono)",
-                }}
-                title="Keep main branch changes where conflicts occur"
-              >
-                Keep Main
-              </button>
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (socketSend && data.sessionKey && !data.workItemId) {
-                    socketSend({ type: "retry_merge", sessionKey: data.sessionKey });
-                    onUpdateData({
-                      ...data,
-                      worktreeStatus: "merging",
-                      mergeConflict: null,
-                      approvalPending: false,
-                    });
-                  }
-                }}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: 11,
-                  background: "var(--bg-elevated)",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: 6,
-                  color: "var(--text-secondary)",
-                  cursor: "pointer",
-                  fontFamily: "var(--font-mono)",
-                }}
-                title="Re-attempt a clean merge (use after manually resolving conflicts in the worktree)"
-              >
-                Retry
-              </button>
-              <button
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (socketSend && data.sessionKey) setConfirmAction("discard");
-                }}
-                style={{
-                  padding: "5px 12px",
-                  fontSize: 11,
-                  background: "var(--danger-bg)",
-                  border: "1px solid var(--danger-color)",
-                  borderRadius: 6,
-                  color: "var(--status-error)",
-                  cursor: "pointer",
-                  fontFamily: "var(--font-mono)",
-                }}
-              >
-                Discard
-              </button>
-            </div>
-          </div>
+          <LegacyConflictReview data={data} socketSend={socketSend} socketSubscribe={socketSubscribe}
+            onUpdateData={onUpdateData} onDiscard={() => setConfirmAction("discard")} />
         )}
 
         {isWorktreeMode && data.workItemId && integration.lineage && socketSend ? (

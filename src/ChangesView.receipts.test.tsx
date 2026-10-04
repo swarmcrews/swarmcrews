@@ -19,7 +19,7 @@ function setup(live = false) {
   });
   return { latest, reply, send, unmount: view.unmount };
 }
-const diff = (file: string) => ({ filesChanged: 1, insertions: 2, deletions: 0, commits: [], files: [{ file, status: "added", insertions: 2, deletions: 0 }] });
+const diff = (file: string) => ({ filesChanged: 1, insertions: 2, deletions: 0, branch: "main", commits: [], files: [{ file, status: "added", insertions: 2, deletions: 0 }] });
 
 describe("diff receipts", () => {
   it("refreshes live edits while inspected and stops requesting when closed", () => {
@@ -88,4 +88,38 @@ describe("diff receipts", () => {
     } finally { vi.useRealTimers(); }
   });
 
+});
+
+describe("inspectable desktop evidence", () => {
+  it("shows patch, snapshot and retained stale state beside disabled merge", () => {
+    const { latest, reply } = setup();
+    const evidence = { ...diff("very-long-path/actual.ts"),
+      snapshot: { id: `sha256:${"a".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree", runKey: "s", contributionBinding: "unbound", consistency: "sampled" },
+      files: [{ file: "very-long-path/actual.ts", status: "deleted", insertions: 0, deletions: 1, patch: { state: "text", text: "@@ -1 +0 @@\n-removed" } }] };
+    expect(screen.getByRole("button", { name: "Merge" })).toBeDisabled();
+    reply(latest(), { success: true, diff: evidence });
+    fireEvent.click(screen.getByText("very-long-path/actual.ts"));
+    expect(screen.getByText("-removed")).toBeVisible();
+    expect(screen.getByText(/sha256:/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    reply(latest(), { success: false, error: "Offline" });
+    expect(screen.getByText("-removed")).toBeVisible();
+    expect(screen.getByText(/Retained snapshot.*not current/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Merge" })).toBeDisabled();
+  });
+});
+
+it("keeps merge confirmation inert through refresh and closes it on changed snapshot identity", () => {
+  const { latest, reply, send } = setup();
+  const evidence = { ...diff("a.txt"), snapshot: { id: `sha256:${"a".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree", runKey: "s", contributionBinding: "unbound", consistency: "sampled" },
+    files: [{ file: "a.txt", status: "added", insertions: 2, deletions: 0, patch: { state: "text", text: "+actual" } }] };
+  reply(latest(), { success: true, diff: evidence });
+  fireEvent.click(screen.getByRole("button", { name: "Merge" }));
+  expect(screen.getByRole("dialog")).toHaveTextContent(evidence.snapshot.id);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  expect(screen.getByRole("dialog")).toHaveTextContent("refreshing or unavailable");
+  expect(screen.getAllByRole("button", { name: "Merge", hidden: true })).toHaveLength(1);
+  reply(latest(), { success: true, diff: { ...evidence, snapshot: { ...evidence.snapshot, id: `sha256:${"b".repeat(64)}` } } });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: "approve_changes" }));
 });

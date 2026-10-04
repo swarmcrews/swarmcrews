@@ -8,7 +8,7 @@
  *     and the conflict deep-link to canvas
  */
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { act, render, screen, fireEvent } from "@testing-library/react";
 import {
   SessionChangesPanel,
   countReviewableLeaders,
@@ -35,6 +35,7 @@ function renderPanel(data: Partial<LeaderData>, extra?: {
   send?: (d: unknown) => void;
   onUpdate?: (id: string, d: LeaderData) => void;
   onOpen?: (id: string) => void;
+  subscribe?: import("./use-socket.ts").SocketSubscribe;
 }) {
   const full = leaderData({ sessionKey: "s1", worktreeIsolation: true,
     worktreeStatus: "active", ...data });
@@ -44,7 +45,7 @@ function renderPanel(data: Partial<LeaderData>, extra?: {
       sessionKey={full.sessionKey as string}
       data={full}
       socketSend={extra?.send ?? vi.fn()}
-      socketSubscribe={vi.fn(() => () => {})}
+      socketSubscribe={extra?.subscribe ?? vi.fn(() => () => {})}
       onUpdateNodeData={extra?.onUpdate ?? vi.fn()}
       onOpenInCanvas={extra?.onOpen ?? vi.fn()}
     />,
@@ -137,7 +138,14 @@ describe("<SessionChangesPanel />", () => {
   it("merges via approve_changes after confirming", () => {
     const send = vi.fn();
     const onUpdate = vi.fn();
-    renderPanel({ approvalPending: true }, { send, onUpdate });
+    const listeners = new Set<(message: unknown) => void>();
+    const subscribe = Object.assign(((_topic: string, fn: (message: unknown) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; }) as import("./use-socket.ts").SocketSubscribe, { supportsTopics: true as const });
+    renderPanel({ approvalPending: true }, { send, onUpdate, subscribe });
+    const request = send.mock.calls.find(([m]) => m.type === "get_worktree_diff")![0];
+    act(() => { for (const listener of listeners) listener({ type: "control_response", command: "get_worktree_diff", sessionKey: "s1", requestId: request.requestId, success: true,
+      diff: { filesChanged: 1, insertions: 1, deletions: 0, branch: "feature", commits: [],
+        files: [{ file: "a.txt", status: "added", insertions: 1, deletions: 0, patch: { state: "text", text: "+reviewed" } }],
+        snapshot: { id: `sha256:${"b".repeat(64)}`, capturedAt: 1, baseSha: "base", headSha: "head", scope: "worktree", runKey: "s1", contributionBinding: "unbound", consistency: "sampled" } } }); });
     fireEvent.click(screen.getByText("Merge"));
     const mergeButtons = screen.getAllByText("Merge");
     fireEvent.click(mergeButtons[mergeButtons.length - 1]!);

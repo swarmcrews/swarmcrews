@@ -82,3 +82,16 @@ describe("ConfigFooter change-mode selector", () => {
     expect(screen.getByText(/fixed/)).toBeInTheDocument();
   });
 });
+
+it("keeps Canvas context-first launch with a keyboard-operable setup and the same requested/effective summary", () => {
+  const update = vi.fn();
+  render(<ConfigFooter data={{ ...LEADER_DEFAULT_DATA, sessionKey: null, taskName: "Retained Canvas draft" }} onUpdateData={update} />);
+  const setup = screen.getByRole("button", { name: "Run setup" });
+  expect(setup).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(setup);
+  expect(setup).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByRole("region", { name: "Launch summary" })).toHaveTextContent("Resolved when the session starts");
+  fireEvent.click(setup);
+  expect(screen.queryByRole("region", { name: "Launch summary" })).toBeNull();
+  expect(update).not.toHaveBeenCalled();
+});
