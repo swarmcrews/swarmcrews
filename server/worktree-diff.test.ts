@@ -1,218 +1,72 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-interface QueuedResult {
-  ok: boolean;
-  stdout: string;
-  stderr?: string;
-}
-
-const queue: QueuedResult[] = [];
-const observed: { args: string[]; cwd: string }[] = [];
-
-vi.mock("node:child_process", () => {
-  return {
-    execFile: (
-      _file: string,
-      args: string[],
-      options: { cwd: string },
-      cb: (e: Error | null, stdout: string, stderr: string) => void,
-    ) => {
-      observed.push({ args, cwd: options.cwd });
-      const next = queue.shift();
-      if (!next) {
-        queueMicrotask(() => cb(new Error("unmocked"), "", ""));
-        return;
-      }
-      const stdout = next.stdout;
-      const stderr = next.stderr ?? "";
-      queueMicrotask(() =>
-        cb(next.ok ? null : new Error("git failed"), stdout, stderr),
-      );
-    },
-  };
-});
-
+import { afterEach, describe, expect, it } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { exec } from "./worktree-exec.ts";
 import { getDetailedDiff, getWorktreeStatus } from "./worktree-diff.ts";
 import type { WorktreeInfo } from "./worktree-types.ts";
 
-beforeEach(() => {
-  queue.length = 0;
-  observed.length = 0;
+const roots: string[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map(root => fs.rm(root, { recursive: true, force: true }))); });
+async function fixture() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "isolated-diff-")); roots.push(root);
+  await exec(["init", "-b", "main"], root);
+  await exec(["config", "user.name", "Test"], root);
+  await exec(["config", "user.email", "test@example.test"], root);
+  await fs.writeFile(path.join(root, "a.txt"), "base\n");
+  await exec(["add", "."], root); await exec(["commit", "-m", "initial"], root);
+  const worktree = path.join(root, "isolated");
+  await exec(["worktree", "add", "-b", "feature", worktree], root);
+  const info: WorktreeInfo = { path: worktree, branch: "feature", leaderSessionKey: "k", projectPath: root, lifecycle: "active", createdAt: 0 };
+  return { root, worktree, info };
+}
+describe("getDetailedDiff with a real isolated branch", () => {
+  it("uses the final base-to-working delta, not summed intermediate edits", async () => {
+    const { root, worktree, info } = await fixture();
+    await fs.writeFile(path.join(worktree, "a.txt"), "committed\n");
+    await exec(["add", "."], worktree); await exec(["commit", "-m", "branch edit"], worktree);
+    await fs.writeFile(path.join(worktree, "a.txt"), "final\n");
+    await fs.writeFile(path.join(worktree, "new.txt"), "untracked\n");
+    const before = (await exec(["status", "--porcelain=v1", "-z"], worktree)).stdout;
+    const diff = await getDetailedDiff(info);
+    expect(diff).toMatchObject({ filesChanged: 2, insertions: 2, deletions: 1, branch: "feature", snapshot: { scope: "worktree", contributionBinding: "unbound" } });
+    expect(diff.files.find(f => f.file === "a.txt")).toMatchObject({ insertions: 1, deletions: 1, patch: { text: expect.stringContaining("-base\n+final") } });
+    expect(diff.commits[0]).toContain("branch edit");
+    expect(diff.snapshot?.baseSha).toBe((await exec(["rev-parse", "HEAD"], root)).stdout.trim());
+    expect((await exec(["status", "--porcelain=v1", "-z"], worktree)).stdout).toBe(before);
+  });
+  it("reports deleted and binary files without false text hunks", async () => {
+    const { worktree, info } = await fixture();
+    await fs.unlink(path.join(worktree, "a.txt"));
+    await fs.writeFile(path.join(worktree, "binary.bin"), Buffer.from([0, 1]));
+    const diff = await getDetailedDiff(info);
+    expect(diff.files.find(f => f.file === "a.txt")).toMatchObject({ status: "deleted", patch: { text: expect.stringContaining("-base") } });
+    expect(diff.files.find(f => f.file === "binary.bin")).toMatchObject({ patch: { state: "binary" } });
+  });
+  it("fails loudly for a missing branch rather than pretending the review is empty", async () => {
+    const { info } = await fixture();
+    await expect(getDetailedDiff({ ...info, branch: "missing" })).rejects.toThrow("git merge-base");
+  });
 });
-
-afterEach(() => {
-  queue.length = 0;
-  observed.length = 0;
-});
-
-const fakeInfo: WorktreeInfo = {
-  path: "/proj/.canvas-worktrees/k",
-  branch: "canvas/k",
-  leaderSessionKey: "k",
-  createdAt: 0,
-  projectPath: "/proj",
-  lifecycle: "active",
-};
-
 describe("getWorktreeStatus", () => {
-  it("parses files-changed / insertions / deletions from --stat output", async () => {
-    queue.push({
-      ok: true,
-      stdout: [
-        " a.ts | 5 +++--",
-        " b.ts | 3 ---",
-        " 2 files changed, 5 insertions(+), 3 deletions(-)",
-      ].join("\n"),
-    });
-
-    const out = await getWorktreeStatus("/proj/.canvas-worktrees/k");
-
-    expect(out.filesChanged).toBe(2);
-    expect(out.insertions).toBe(5);
-    expect(out.deletions).toBe(3);
-    expect(out.summary).toContain("2 files changed");
-    expect(observed[0]!.args).toEqual(["diff", "--stat"]);
-    expect(observed[0]!.cwd).toBe("/proj/.canvas-worktrees/k");
-  });
-
-  it("treats a 1-file-changed line correctly (singular `file`)", async () => {
-    queue.push({
-      ok: true,
-      stdout: [
-        " a.ts | 1 +",
-        " 1 file changed, 1 insertion(+)",
-      ].join("\n"),
-    });
-    const out = await getWorktreeStatus("/x");
-    expect(out.filesChanged).toBe(1);
-    expect(out.insertions).toBe(1);
-    expect(out.deletions).toBe(0);
-  });
-
-  it("returns zeros + 'No changes' for an empty stdout", async () => {
-    queue.push({ ok: true, stdout: "" });
-    expect(await getWorktreeStatus("/x")).toEqual({
-      filesChanged: 0,
-      insertions: 0,
-      deletions: 0,
-      summary: "No changes",
-    });
-  });
-
-  it("returns zeros + 'No changes' when git fails entirely", async () => {
-    queue.push({ ok: false, stdout: "", stderr: "fatal" });
-    expect(await getWorktreeStatus("/x")).toEqual({
-      filesChanged: 0,
-      insertions: 0,
-      deletions: 0,
-      summary: "No changes",
-    });
+  it("reads singular and plural change stats and clean state", async () => {
+    const { worktree } = await fixture();
+    expect(await getWorktreeStatus(worktree)).toMatchObject({ filesChanged: 0, summary: "No changes" });
+    await fs.writeFile(path.join(worktree, "a.txt"), "one\ntwo\n");
+    expect(await getWorktreeStatus(worktree)).toMatchObject({ filesChanged: 1, insertions: 2, deletions: 1 });
+    expect(await getWorktreeStatus("/nonexistent-review-fixture")).toMatchObject({ filesChanged: 0, summary: "No changes" });
   });
 });
 
-describe("getDetailedDiff", () => {
-  it("aggregates committed numstat, uncommitted numstat, name-status, and commits", async () => {
-    // Order of git calls inside getDetailedDiff:
-    //   1. merge-base HEAD canvas/k          (in projectPath)
-    //   2. diff --numstat <merge-base> canvas/k  (in projectPath)
-    //   3. diff --numstat HEAD               (in worktree path)
-    //   4. diff --name-status <merge-base> canvas/k  (in projectPath)
-    //   5. ls-files --others --exclude-standard -z (in worktree path)
-    //   6. log --oneline <merge-base>..canvas/k (in projectPath)
-    queue.push({ ok: true, stdout: "abc123\n" }); // merge-base
-    queue.push({
-      ok: true,
-      stdout: ["3\t1\tsrc/a.ts", "0\t10\tsrc/b.ts"].join("\n"),
-    }); // committed numstat
-    queue.push({
-      ok: true,
-      stdout: ["2\t0\tsrc/a.ts"].join("\n"),
-    }); // uncommitted numstat (adds to a.ts)
-    queue.push({
-      ok: true,
-      stdout: ["A\tsrc/a.ts", "D\tsrc/b.ts"].join("\n"),
-    }); // name-status
-    queue.push({ ok: true, stdout: "" }); // untracked
-    queue.push({
-      ok: true,
-      stdout: ["abc1234 first commit", "def5678 second"].join("\n"),
-    }); // log
+it("refuses a worktree whose attached branch metadata no longer matches Git", async () => {
+  const { worktree, info } = await fixture();
+  await exec(["switch", "-c", "different-branch"], worktree);
+  await expect(getDetailedDiff(info)).rejects.toThrow("branch changed");
+});
 
-    const out = await getDetailedDiff(fakeInfo);
-
-    // Two unique files. a.ts: committed (3 ins, 1 del) + uncommitted (2 ins, 0 del).
-    // b.ts: committed (0 ins, 10 del). Totals: 5 ins, 11 del.
-    expect(out.filesChanged).toBe(2);
-    expect(out.insertions).toBe(5);
-    expect(out.deletions).toBe(11);
-
-    const aFile = out.files.find((f) => f.file === "src/a.ts")!;
-    expect(aFile.insertions).toBe(5);
-    expect(aFile.deletions).toBe(1);
-    expect(aFile.status).toBe("added");
-
-    const bFile = out.files.find((f) => f.file === "src/b.ts")!;
-    expect(bFile.insertions).toBe(0);
-    expect(bFile.deletions).toBe(10);
-    expect(bFile.status).toBe("deleted");
-
-    expect(out.commits).toEqual(["abc1234 first commit", "def5678 second"]);
-    expect(out.branch).toBe("canvas/k");
-  });
-
-  it("falls back to HEAD when merge-base fails", async () => {
-    queue.push({ ok: false, stdout: "", stderr: "no merge base" });
-    queue.push({ ok: true, stdout: "" });
-    queue.push({ ok: true, stdout: "" });
-    queue.push({ ok: true, stdout: "" });
-    queue.push({ ok: true, stdout: "" });
-    queue.push({ ok: true, stdout: "" });
-
-    const out = await getDetailedDiff(fakeInfo);
-    expect(out.filesChanged).toBe(0);
-    // The merge-base fallback used "HEAD" — the second call's args should
-    // reference HEAD as the base.
-    expect(observed[1]!.args).toEqual([
-      "diff",
-      "--numstat",
-      "HEAD",
-      "canvas/k",
-    ]);
-  });
-
-  it("treats `-` numstat values as binary diffs (zero insertions/deletions)", async () => {
-    queue.push({ ok: true, stdout: "abc\n" }); // merge-base
-    queue.push({
-      ok: true,
-      stdout: "-\t-\timg.png",
-    }); // committed numstat — binary
-    queue.push({ ok: true, stdout: "" }); // uncommitted
-    queue.push({ ok: true, stdout: "M\timg.png" }); // name-status
-    queue.push({ ok: true, stdout: "" }); // untracked
-    queue.push({ ok: true, stdout: "" }); // log
-
-    const out = await getDetailedDiff(fakeInfo);
-    expect(out.filesChanged).toBe(1);
-    expect(out.insertions).toBe(0);
-    expect(out.deletions).toBe(0);
-    expect(out.files[0]!.file).toBe("img.png");
-  });
-
-  it("includes untracked files in the actual diff", async () => {
-    queue.push({ ok: true, stdout: "abc\n" }); // merge-base
-    queue.push({ ok: true, stdout: "" }); // committed numstat
-    queue.push({ ok: true, stdout: "" }); // uncommitted numstat
-    queue.push({ ok: true, stdout: "" }); // name-status
-    queue.push({ ok: true, stdout: "src/new-file.ts\0" }); // untracked
-    queue.push({ ok: true, stdout: "" }); // log
-
-    const out = await getDetailedDiff(fakeInfo);
-
-    expect(out.files).toContainEqual({
-      file: "src/new-file.ts",
-      insertions: 0,
-      deletions: 0,
-      status: "added",
-    });
-  });
+it("keeps the actual-diff provider's explicit HEAD baseline truthful for shared checkouts", async () => {
+  const { root } = await fixture();
+  const diff = await getDetailedDiff({ path: root, projectPath: root, branch: "HEAD", leaderSessionKey: "live", createdAt: 0, lifecycle: "active" });
+  expect(diff.branch).toBe("main");
+  expect(diff.snapshot?.scope).toBe("workspace");
 });

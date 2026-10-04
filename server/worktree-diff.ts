@@ -1,7 +1,6 @@
-import type { WorktreeInfo, GitStatus, FileChange, DetailedDiff } from "./worktree-types.js";
+import type { WorktreeInfo, GitStatus, DetailedDiff } from "./worktree-types.js";
 import { exec } from "./worktree-exec.js";
-import fs from "node:fs";
-import path from "node:path";
+import { readReviewDiff } from "./review-diff.ts";
 
 /**
  * Get a change summary for a worktree by parsing `git diff --stat`.
@@ -49,154 +48,10 @@ export async function getWorktreeStatus(
 export async function getDetailedDiff(
   info: WorktreeInfo,
 ): Promise<DetailedDiff> {
-  const cwd = info.path;
-  const branch = info.branch;
-
-  // Find the merge-base between the worktree branch and the main worktree's HEAD.
-  // The project path's HEAD is the base branch.
-  let mergeBase: string;
-  try {
-    const { stdout } = await exec(
-      ["merge-base", "HEAD", branch],
-      info.projectPath,
-    );
-    mergeBase = stdout.trim();
-  } catch {
-    // Fallback: diff against HEAD of main worktree
-    mergeBase = "HEAD";
-  }
-
-  // Per-file numstat: shows insertions/deletions per file
-  const files: FileChange[] = [];
-  let totalInsertions = 0;
-  let totalDeletions = 0;
-
-  // Build a map of file changes. We process committed changes first (branch vs
-  // merge-base), then layer on any uncommitted changes in the worktree. For files
-  // that appear in both, we sum the stats to reflect the full delta.
-  const fileMap = new Map<string, FileChange>();
-
-  const parseNumstat = (output: string) => {
-    for (const line of output.split("\n").filter(Boolean)) {
-      const parts = line.split("\t");
-      if (parts.length < 3) continue;
-
-      const [ins, del, file] = parts;
-      if (!file) continue;
-
-      const insertions = ins === "-" ? 0 : parseInt(ins!, 10) || 0;
-      const deletions = del === "-" ? 0 : parseInt(del!, 10) || 0;
-
-      const existing = fileMap.get(file);
-      if (existing) {
-        // Accumulate uncommitted changes on top of committed
-        existing.insertions += insertions;
-        existing.deletions += deletions;
-      } else {
-        let status: FileChange["status"] = "modified";
-        if (file.includes(" => ")) status = "renamed";
-        fileMap.set(file, { file, insertions, deletions, status });
-      }
-    }
-  };
-
-  try {
-    // Committed changes on the branch vs merge-base
-    const { stdout: committedStat } = await exec(
-      ["diff", "--numstat", mergeBase, branch],
-      info.projectPath,
-    );
-    parseNumstat(committedStat);
-
-    // Uncommitted changes (staged + unstaged) in the worktree
-    const { stdout: uncommittedStat } = await exec(["diff", "--numstat", "HEAD"], cwd);
-    parseNumstat(uncommittedStat);
-  } catch {
-    // Fallback: empty file list
-  }
-
-  // Enrich file status using name-status (more accurate for add/delete/rename)
-  try {
-    const { stdout: nameStatus } = await exec(
-      ["diff", "--name-status", mergeBase, branch],
-      info.projectPath,
-    );
-    for (const line of nameStatus.split("\n").filter(Boolean)) {
-      const parts = line.split("\t");
-      if (parts.length >= 2) {
-        const statusChar = parts[0]!.trim();
-        const fileName = parts[parts.length - 1]!;
-        const existing = fileMap.get(fileName);
-        if (existing) {
-          if (statusChar === "A") existing.status = "added";
-          else if (statusChar === "D") existing.status = "deleted";
-          else if (statusChar.startsWith("R")) existing.status = "renamed";
-        }
-      }
-    }
-  } catch {
-    // Non-critical
-  }
-
-  // Git diff omits untracked files, but they are part of the actual review and
-  // reconciliation surface. Add them without mutating or staging the worktree.
-  try {
-    const { stdout } = await exec(
-      ["ls-files", "--others", "--exclude-standard", "-z"],
-      cwd,
-    );
-    for (const file of stdout.split("\0").filter(Boolean)) {
-      if (fileMap.has(file)) continue;
-      fileMap.set(file, {
-        file,
-        insertions: countTextLines(path.join(cwd, file)),
-        deletions: 0,
-        status: "added",
-      });
-    }
-  } catch {
-    // Non-critical: reconciliation still reports tracked changes.
-  }
-
-  // Compute totals from the map
-  for (const f of fileMap.values()) {
-    files.push(f);
-    totalInsertions += f.insertions;
-    totalDeletions += f.deletions;
-  }
-
-  // Get commits on this branch since merge-base
-  const commits: string[] = [];
-  try {
-    const { stdout } = await exec(
-      ["log", "--oneline", `${mergeBase}..${branch}`],
-      info.projectPath,
-    );
-    for (const line of stdout.trim().split("\n").filter(Boolean)) {
-      commits.push(line);
-    }
-  } catch {
-    // No commits or error
-  }
-
-  return {
-    filesChanged: files.length,
-    insertions: totalInsertions,
-    deletions: totalDeletions,
-    files,
-    commits,
-    branch,
-  };
-}
-
-function countTextLines(file: string): number {
-  try {
-    const bytes = fs.readFileSync(file);
-    if (bytes.includes(0)) return 0;
-    const text = bytes.toString("utf8");
-    if (text.length === 0) return 0;
-    return text.split(/\r?\n/).length - (/\r?\n$/.test(text) ? 1 : 0);
-  } catch {
-    return 0;
-  }
+  // Fail rather than inventing an empty review or a different base on Git errors.
+  const mergeBase = (await exec(["merge-base", "HEAD", info.branch], info.projectPath)).stdout.trim();
+  const actualBranch = (await exec(["rev-parse", "--abbrev-ref", "HEAD"], info.path)).stdout.trim();
+  if (info.branch !== "HEAD" && actualBranch !== info.branch) throw new Error("Worktree branch changed. Refresh its session metadata before review.");
+  const commits = (await exec(["log", "--max-count=100", "--oneline", `${mergeBase}..HEAD`], info.path)).stdout.trim().split("\n").filter(Boolean);
+  return readReviewDiff(info.path, { baseSha: mergeBase, scope: info.branch === "HEAD" ? "workspace" : "worktree", branch: actualBranch, commits });
 }

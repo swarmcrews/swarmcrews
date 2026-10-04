@@ -30,6 +30,7 @@ import { setModel } from "./set-model.ts";
 import { stopTask } from "./stop-task.ts";
 import { mergeWorktree } from "./merge-worktree.ts";
 import { discardWorktree } from "./discard-worktree.ts";
+import { getIntegrationReviewDiff } from "./get-integration-review-diff.ts";
 import { getWorktreeDiff } from "./get-worktree-diff.ts";
 import { approveChanges } from "./approve-changes.ts";
 import { forceMerge } from "./force-merge.ts";
@@ -136,6 +137,7 @@ export const COMMAND_TABLE = {
   merge_worktree: mergeWorktree,
   discard_worktree: discardWorktree,
   get_worktree_diff: getWorktreeDiff,
+  get_integration_review_diff: getIntegrationReviewDiff,
   approve_changes: approveChanges,
   force_merge: forceMerge,
   theirs_merge: theirsMerge,

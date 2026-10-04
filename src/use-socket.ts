@@ -1,3 +1,4 @@
+import type { IntegrationReviewDiffResponse } from "../shared/integration-review.ts";
 import type { HistoryWindow, HistoryReference } from "../shared/history.ts";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { getAuthToken, clearAuthToken } from "./api.ts";
@@ -21,6 +22,7 @@ import { browserLogger } from "./logging.ts";
 const log = browserLogger.child("websocket");
 
 export type ServerMessage =
+  | IntegrationReviewDiffResponse
   | { type: "socket_reconnected" }
   | { type: "work_item_receipt_pending"; requestId: string }
   | TaskGraphSnapshotEnvelope

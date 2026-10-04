@@ -261,6 +261,9 @@ export const COMMAND_SCHEMAS = {
   get_worktree_lineage_status: command("get_worktree_lineage_status", {
     lineageId: requiredId.optional(), workItemId: requiredId.optional(), runKey: requiredId.optional(),
   }),
+  get_integration_review_diff: z.strictObject({ type: z.literal("get_integration_review_diff"),
+    requestId: requiredId, lineageId: requiredId, contributionId: requiredId.optional(),
+  }),
   list_worktree_lineages: command("list_worktree_lineages", {}),
   // Execution control
   interrupt: sessionScoped("interrupt"),

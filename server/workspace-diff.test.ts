@@ -36,11 +36,11 @@ describe("live workspace changes", () => {
     const diff = await getWorkspaceDiff(root);
     expect(diff).toMatchObject({ filesChanged: 5, insertions: 4, deletions: 2, commits: [], branch: "main" });
     expect(diff.files).toEqual(expect.arrayContaining([
-      { file: "modified.txt", status: "modified", insertions: 2, deletions: 1 },
-      { file: "deleted.txt", status: "deleted", insertions: 0, deletions: 1 },
-      { file: "staged.txt", status: "added", insertions: 1, deletions: 0 },
-      { file: "new\tfile.txt", status: "added", insertions: 1, deletions: 0 },
-      { file: "binary.bin", status: "added", insertions: 0, deletions: 0 },
+      expect.objectContaining({ file: "modified.txt", status: "modified", insertions: 2, deletions: 1 }),
+      expect.objectContaining({ file: "deleted.txt", status: "deleted", insertions: 0, deletions: 1 }),
+      expect.objectContaining({ file: "staged.txt", status: "added", insertions: 1, deletions: 0 }),
+      expect.objectContaining({ file: "new\tfile.txt", status: "added", insertions: 1, deletions: 0 }),
+      expect.objectContaining({ file: "binary.bin", status: "added", insertions: 0, deletions: 0 }),
     ]));
     expect(await exec(["status", "--porcelain=v1", "-z"], root)).toEqual(before);
   });
@@ -91,10 +91,10 @@ describe("live workspace changes", () => {
     await fs.writeFile(path.join(root, "binary.bin"), Buffer.concat([Buffer.alloc(70_000, 10), Buffer.from([0])]));
     await fs.symlink("text.txt", path.join(root, "link"));
     expect((await getWorkspaceDiff(root)).files).toEqual(expect.arrayContaining([
-      { file: "text.txt", insertions: 20_001, deletions: 0, status: "added" },
-      { file: "empty.txt", insertions: 0, deletions: 0, status: "added" },
-      { file: "binary.bin", insertions: 0, deletions: 0, status: "added" },
-      { file: "link", insertions: 1, deletions: 0, status: "added" },
+      expect.objectContaining({ file: "text.txt", insertions: 20_001, deletions: 0, status: "added" }),
+      expect.objectContaining({ file: "empty.txt", insertions: 0, deletions: 0, status: "added" }),
+      expect.objectContaining({ file: "binary.bin", insertions: 0, deletions: 0, status: "added" }),
+      expect.objectContaining({ file: "link", insertions: 1, deletions: 0, status: "added" }),
     ]));
   });
 
@@ -109,7 +109,7 @@ describe("live workspace changes", () => {
     await file.close();
     await fs.appendFile(path.join(root, ".git", "info", "exclude"), "\ngenerated.bin\n");
     expect(await getWorkspaceDiff(root)).toMatchObject({ filesChanged: 1, files: [
-      { file: "tracked.txt", insertions: 1, deletions: 1, status: "modified" },
+      expect.objectContaining({ file: "tracked.txt", insertions: 1, deletions: 1, status: "modified" }),
     ] });
   });
 

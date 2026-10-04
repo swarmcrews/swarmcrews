@@ -1,3 +1,4 @@
+import type { ReviewPatch, ReviewSnapshot } from "../shared/review-diff.ts";
 
 /**
  * Formal worktree lifecycle states.
@@ -44,6 +45,8 @@ export interface GitStatus {
  */
 export interface FileChange {
   file: string;
+  previousFile?: string;
+  patch?: ReviewPatch;
   insertions: number;
   deletions: number;
   status: "added" | "modified" | "deleted" | "renamed";
@@ -54,6 +57,7 @@ export interface FileChange {
  * Used for the approval workflow dashboard.
  */
 export interface DetailedDiff {
+  snapshot?: ReviewSnapshot;
   /** Overall stats */
   filesChanged: number;
   insertions: number;
