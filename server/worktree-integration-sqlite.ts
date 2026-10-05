@@ -373,10 +373,11 @@ export class SqliteWorktreeIntegrationService implements WorktreeIntegrationServ
     } finally { this.resolving.delete(row.work_item_id); }
   }
   async promote(input: { requestId: string; lineageId: string; expectedRevision: number }) {
-    const row = repo.getLineage(this.db, input.lineageId); if (!row || row.revision !== input.expectedRevision) throw new Error("stale lineage revision");
+    const row = repo.getLineage(this.db, input.lineageId); if (!row || row.revision !== input.expectedRevision) throw new WorktreeIntegrationServiceError("conflict", "stale lineage revision", row ? this.state(row.id) : null);
     const target = await this.resolveBase(row.repository_path, row.target_ref);
-    const result = this.command(input.requestId, "promote_lineage", input, () => { repo.enqueueLineage(this.db,
-      { id: id("queue", input.requestId), lineageId: row.id,
+    const result = this.command(input.requestId, "promote_lineage", input, () => {
+      if (repo.getLineage(this.db, row.id)?.revision !== input.expectedRevision) throw new Error("stale lineage revision");
+      repo.enqueueLineage(this.db, { id: id("queue", input.requestId), lineageId: row.id,
         idempotencyKey: input.requestId, expectedTargetSha: target.baseSha,
         at: this.now() }); return this.state(row.id); });
     const queued = result.queue.find((entry) => entry.state === "queued" && entry.kind === "lineage");

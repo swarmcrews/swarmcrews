@@ -10,15 +10,16 @@ import { findContributionByRun, getLineageState } from "./worktree-integration-r
 import { SqliteWorktreeIntegrationService } from "./worktree-integration-sqlite.ts";
 import type { MergeGateVerdict } from "./system-model/gates.ts";
 import { registerWorkspace } from "./workspace-registry.ts";
+import type { resolveWorktreeBase } from "./worktree.ts";
 
 function setup(gates: () => Promise<MergeGateVerdict> = async () =>
-  ({ allowed: true, mode: "off", gates: [] }), projectPath = "/repo") {
+  ({ allowed: true, mode: "off", gates: [] }), projectPath = "/repo",
+  resolveBase: typeof resolveWorktreeBase = async () => ({ targetRef: "refs/heads/main", baseSha: "abc123" })) {
   const db = initDb(":memory:"); ensureWorkItemSchema(db); ensureWorktreeIntegrationSchema(db);
   createWorkItem(db, { id: "work", projectId: "project", projectPath, title: "Task",
     changeMode: "worktree", at: 1 });
   let tick = 10; const service = new SqliteWorktreeIntegrationService(db, () => tick++,
-    async () => ({ targetRef: "refs/heads/main", baseSha: "abc123" }),
-    async () => "head456", undefined, gates);
+    resolveBase, async () => "head456", undefined, gates);
   return { db, service };
 }
 
@@ -363,4 +364,54 @@ it("invalidates explicit waivers when policy changes without a new contribution 
   row = findContributionByRun(db, "one")!; policyDigest = "policy-two";
   await expect(service.reviewContribution({ requestId: "new-policy", contributionId: row.id, expectedRevision: row.revision,
     decision: "approved", actor: "user", summary: "review" })).rejects.toMatchObject({ code: "gate_failed" }); db.close();
+});
+
+it("rejects promotion when final approval advances revision during Git resolution", async () => {
+  let releaseResolution!: () => void;
+  const resolutionPending = new Promise<void>((resolve) => { releaseResolution = resolve; });
+  let enteredResolution!: () => void;
+  const resolutionEntered = new Promise<void>((resolve) => { enteredResolution = resolve; });
+  let holdResolution = false;
+  const { db, service } = setup(undefined, "/repo", async () => {
+    if (holdResolution) { enteredResolution(); await resolutionPending; }
+    return { targetRef: "refs/heads/main", baseSha: "abc123" };
+  });
+  try {
+    await service.bindRun({ workItemId: "work", runKey: "promotion-run" });
+    const contribution = findContributionByRun(db, "promotion-run")!;
+    db.prepare("UPDATE worktree_contributions SET state='integrated',head_sha='head' WHERE id=?").run(contribution.id);
+    db.prepare("UPDATE worktree_lineages SET integration_head_sha='head' WHERE id=?").run(contribution.lineage_id);
+    let line = getLineageState(db, contribution.lineage_id).lineage!;
+    const approved = await service.reviewFinal({ requestId: "first-approval", lineageId: line.id,
+      expectedRevision: line.revision, decision: "approved", actor: "user", summary: "reviewed" });
+    const notifier = vi.fn(); service.setQueueNotifier(notifier);
+    holdResolution = true;
+    // Observe the rejection immediately; no timing sleeps or mocked service modules.
+    const pending = service.promote({ requestId: "stale-promotion", lineageId: line.id,
+      expectedRevision: approved.revision }).then(value => ({ value }), error => ({ error }));
+    await resolutionEntered;
+    const latest = await service.reviewFinal({ requestId: "second-approval", lineageId: line.id,
+      expectedRevision: approved.revision, decision: "approved", actor: "user", summary: "reviewed again" });
+    releaseResolution();
+    expect(await pending).toMatchObject({ error: { code: "conflict", latest: {
+      id: line.id, revision: latest.revision, queue: [] } } });
+    line = getLineageState(db, line.id).lineage!;
+    expect(line.revision).toBe(latest.revision);
+    expect(getLineageState(db, line.id).queue).toHaveLength(0);
+    expect(db.prepare("SELECT 1 FROM worktree_integration_commands WHERE request_id=?").get("stale-promotion")).toBeUndefined();
+    expect(notifier).not.toHaveBeenCalled();
+    await expect(service.promote({ requestId: "fresh-promotion", lineageId: line.id,
+      expectedRevision: latest.revision })).resolves.toMatchObject({ queue: [expect.objectContaining({ kind: "lineage", state: "queued" })] });
+    expect(notifier).toHaveBeenCalledOnce();
+  } finally { releaseResolution(); db.close(); }
+});
+
+it("returns a typed conflict and current snapshot for an initially stale promotion", async () => {
+  const { db, service } = setup();
+  try {
+    const line = await service.createLineage({ requestId: "create-for-stale", workItemId: "work" });
+    await expect(service.promote({ requestId: "already-stale", lineageId: line.id,
+      expectedRevision: line.revision + 1 })).rejects.toMatchObject({ code: "conflict", latest: line });
+    expect(getLineageState(db, line.id).queue).toHaveLength(0);
+  } finally { db.close(); }
 });
