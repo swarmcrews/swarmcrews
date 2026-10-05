@@ -30,6 +30,15 @@ Swarmcrews gives you a spatial interface for orchestrating coding agents:
 - **Project management** — persistent projects with SQLite storage, session history, cost tracking
 - **Multiple agent harnesses** — use Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, or Pi, with each installed harness exposing its own configured model catalog
 
+## Portable alpha (no app build)
+
+The [portable installation guide](./docs/portable-installation.md) covers
+**v0.1.0-alpha.1** archives with bundled Node, checksums, build provenance, and
+verified download-only installers. Provider harnesses and SDKs are **separate
+installs**; Swarmcrews can open before any harness is configured. Alpha assets
+appear under [Releases](https://github.com/swarmcrews/swarmcrews/releases), not
+GitHub's stable `latest` endpoint. Only native-tested targets are published.
+
 ## Guided installation
 
 Choose your host OS. From a checkout containing the installers:

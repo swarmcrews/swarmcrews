@@ -1,0 +1,13 @@
+{
+  "extends": "../../server/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "../..",
+    "outDir": "../../.scratch/release-alpha/compiled",
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [],
+  "files": ["../../server/index.ts"]
+}

@@ -4,8 +4,9 @@ Swarmcrews has three native entrypoints and a shared, dependency-free terminal
 wizard. Choose the path for the **computer that will run the agents**, not the
 computer you use to open the browser.
 
-These currently install **from source** and build locally. They are not prebuilt
-binaries or a published package-manager command.
+These install **from source** and build locally. For compiled application archives
+with bundled Node and separately installed harnesses, use the
+[portable alpha installation guide](./portable-installation.md) instead.
 
 ## Choose your operating system
 

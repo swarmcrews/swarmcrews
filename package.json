@@ -1,7 +1,7 @@
 {
   "name": "swarmcrews",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "license": "Apache-2.0",
   "description": "A spatial workspace for orchestrating coding agents and parallel workflows",
   "keywords": [
@@ -51,9 +51,11 @@
     "audit:prod": "pnpm audit --prod --audit-level high",
     "check:licenses": "node scripts/check-licenses.mjs",
     "system-model:validate": "node --import ./scripts/register-typescript.mjs scripts/system-model-validate.mjs",
-    "verify": "pnpm typecheck && pnpm typecheck:server && pnpm test:installer && pnpm test:run && pnpm check:licenses && pnpm system-model:validate -- --strict && pnpm build",
+    "verify": "pnpm typecheck && pnpm typecheck:server && pnpm test:installer && pnpm test:release && pnpm test:run && pnpm check:licenses && pnpm system-model:validate -- --strict && pnpm build",
     "agent:preflight": "node scripts/agent-workflow-preflight.mjs",
-    "preflight": "node --import ./scripts/register-typescript.mjs scripts/preflight.mjs"
+    "preflight": "node --import ./scripts/register-typescript.mjs scripts/preflight.mjs",
+    "test:release": "node --test scripts/release/*.test.mjs",
+    "release:build": "node scripts/release/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.280",

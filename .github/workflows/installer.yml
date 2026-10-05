@@ -7,13 +7,9 @@ on:
       - 'scripts/install/**'
       - '.github/workflows/installer.yml'
       - 'package.json'
+  # Release promotion requires a successful Installer run at the exact commit.
   push:
     branches: [main]
-    paths:
-      - 'install/**'
-      - 'scripts/install/**'
-      - '.github/workflows/installer.yml'
-      - 'package.json'
 
 permissions:
   contents: read

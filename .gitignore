@@ -32,6 +32,7 @@ dist/
 !/docs/repository-folders.md
 !/docs/getting-started.md
 !/docs/installing.md
+!/docs/portable-installation.md
 !/docs/testing-strategy.md
 # Legacy local audit records remain ignored; do not create new work here.
 /docs/audits/
