@@ -4,7 +4,8 @@ import { HistoryBuffer } from "./history-cache.ts";
 import { historyFactsForHost, recordHistoryEvent } from "./session-history-host.ts";
 import { assertSessionIdentity } from "./leader-identity.ts";
 import { HARNESS_DRAIN, type DrainableHarnessControl } from "./harness/terminal-provenance.ts";
-import { hasWorktreeOperation, trackWorktreeExecution } from "./commands/worktree-operation-lock.ts";
+import { hasWorktreeOperation } from "./commands/worktree-operation-lock.ts";
+import { trackServerExecution } from "./execution-lifecycle.ts";
 /**
  * SessionHost — per-session lifecycle owner.
  *
@@ -214,7 +215,7 @@ export class SessionHost {
       && Boolean(opts.contextCheckpointId);
     if (this.status === "running" && !isCheckpointContinuation) { return; }
     const abortController = new AbortController();
-    const releaseExecution = trackWorktreeExecution(this);
+    const releaseExecution = trackServerExecution(this);
     let executionDrain: Promise<void> | undefined;
     this.terminateDeps = deps;
 
@@ -330,6 +331,7 @@ export class SessionHost {
         prompt: opts.prompt,
       });
 
+      if (abortController.signal.aborted) return;
       const { events, control } = harness.start(startOpts);
       this.eventStream = events;
       this.runControl = control;

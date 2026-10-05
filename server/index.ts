@@ -16,6 +16,10 @@ import { startWorktreeCleanup } from "./worktree-cleanup.ts";
  */
 
 import express from "express";
+import { createPackagedStatic } from "./packaged-static.ts";
+import { createShutdown, finishServerShutdown } from "./shutdown.ts";
+import { shutdownExecutions } from "./execution-lifecycle.ts";
+import { observeOwnedProcesses } from "../shared/owned-processes.mjs";
 import type { Request, Response } from "express";
 import crypto from "crypto";
 import { createServer } from "http";
@@ -67,6 +71,7 @@ import { installTaskGraphPlanningRuntime } from "./task-graph/planning-runtime.t
 import { BROWSER_SECURITY_HEADERS } from "../shared/browser-security-headers.ts";
 
 const log = serverLogger.child("main");
+const stopOwnedProcesses = observeOwnedProcesses();
 
 const AUTH_TOKEN = crypto.randomBytes(32).toString("hex");
 
@@ -74,7 +79,6 @@ log.info("starting", { persistence: "per-project-sqlite" });
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
-
 // The frontend uses the same baseline. Artifact and history responses add
 // their own restrictive resource policies below.
 app.use((_req, res, next) => {
@@ -102,7 +106,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-
+app.use(createPackagedStatic());
 app.get("/api/mcp/oauth/callback", connectionOAuthCallback);
 app.get("/api/auth/token", createAuthTokenHandler(AUTH_TOKEN));
 app.post("/api/auth/token", createAuthTokenHandler(AUTH_TOKEN));
@@ -115,11 +119,8 @@ app.use("/api/projects", authMiddleware, createProjectRoutes({
 app.use("/api/files", authMiddleware, createFileRoutes()); app.use("/api/history", authMiddleware, createHistoryRoutes());
 app.use("/api/readiness", authMiddleware, createReadinessRoutes());
 app.post("/api/server/restart", authMiddleware, (_req: Request, res: Response) => {
+  res.once("finish", () => void shutdownCleanup(42));
   res.json({ ok: true, restarting: true });
-  setTimeout(() => {
-    log.info("restart_requested", { source: "settings" });
-    process.exit(42);
-  }, 100).unref();
 });
 
 // Server-authoritative subscriptions + VAPID keys live in the shared
@@ -344,16 +345,16 @@ server.listen(PORT, HOST, () => {
   }
 });
 
-async function shutdownCleanup(): Promise<void> {
-  log.info("shutdown_requested", { worktrees: "preserved" });
-  stopRuntimeMetrics();
-  stopWorktreeCleanup();
-  gitIntegrationPump.shutdown();
-  liveEditWorkItems.shutdown();
-  taskGraphs.dispose();
-  taskGraphPlanning.dispose();
-  process.exit(0);
-}
-
-process.on("SIGINT", () => void shutdownCleanup());
-process.on("SIGTERM", () => void shutdownCleanup());
+const shutdownCleanup = createShutdown({
+  stopAdmission() {
+    log.info("shutdown_requested", { worktrees: "preserved" });
+    server.close(); for (const client of wss.clients) client.terminate();
+    stopRuntimeMetrics(); stopWorktreeCleanup(); gitIntegrationPump.shutdown();
+    liveEditWorkItems.shutdown(); taskGraphs.dispose(); taskGraphPlanning.dispose();
+    for (const host of registry.values()) host.clearWaitTimer();
+  },
+  drain: shutdownExecutions, cleanupOwned: stopOwnedProcesses, finish: finishServerShutdown,
+  report: error => log.error("shutdown_failed", { error }),
+});
+for (const event of ["SIGINT", "SIGTERM", "disconnect"] as const) process.on(event, () => void shutdownCleanup());
+process.on("message", message => { if (message === "shutdown") void shutdownCleanup(); });

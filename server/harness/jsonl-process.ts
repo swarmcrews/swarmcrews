@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { killOwnedProcess } from "../../shared/owned-processes.mjs";
 
 const MAX_STDERR = 64 * 1024;
 
@@ -42,7 +43,8 @@ export async function* streamJsonlProcess(input: {
     if (process.platform !== "win32" && child.pid) {
       try { process.kill(-child.pid, signal); return; } catch { /* Already exited or no group. */ }
     }
-    child.kill(signal);
+    if (process.platform === "win32" && child.pid) killOwnedProcess(child.pid);
+    else child.kill(signal);
   };
   const onAbort = (): void => {
     if (closed || killTimer) return;
@@ -61,6 +63,7 @@ export async function* streamJsonlProcess(input: {
   const completion = new Promise<number>((resolve) => {
     child.once("close", (code) => {
       closed = true;
+      if (killTimer && child.pid && process.platform !== "win32") killOwnedProcess(child.pid, true);
       clearTimeout(killTimer);
       resolve(code ?? -1);
     });
