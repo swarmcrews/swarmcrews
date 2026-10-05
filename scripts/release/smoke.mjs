@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { waitForOutput, stopTestProcess } from "../test-process.mjs";
 import { isProviderPackage } from "./config.mjs";
+import { commandSpec } from "./command.mjs";
 
 const archive = resolve(process.argv[2]);
 const expected = readFileSync(`${archive}.sha256`, "utf8").split(/\s+/)[0];
@@ -40,9 +41,8 @@ try {
     if (/^(?:CLAUDE|CODEX|COPILOT|OPENCODE|PI_|ANTHROPIC|OPENAI|MINIONS|SWARMCREWS_TEST|VITE_)/.test(key) || key === "HOST") delete env[key];
   }
   const versionOptions = { cwd: home, env, encoding: "utf8", timeout: 10_000 };
-  const version = process.platform === "win32"
-    ? execFileSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `""${join(app, "swarmcrews.cmd")}" --version"`], versionOptions)
-    : execFileSync(join(app, "swarmcrews"), ["--version"], versionOptions);
+  const versionCommand = commandSpec(join(app, process.platform === "win32" ? "swarmcrews.cmd" : "swarmcrews"), ["--version"]);
+  const version = execFileSync(versionCommand.command, versionCommand.args, { ...versionOptions, ...versionCommand.options });
   assert.equal(version.trim(), `Swarmcrews ${manifest.version} (${manifest.target})`);
   // Native SQLite is exercised by the bundled Node, not the build host Node.
   execFileSync(node, ["--input-type=module", "-e", 'import Database from "better-sqlite3"; const db = new Database(process.env.SWARMCREWS_HOME + "-smoke.db"); db.exec("CREATE TABLE smoke (value TEXT)"); db.prepare("INSERT INTO smoke VALUES (?)").run("portable"); if (db.prepare("SELECT value FROM smoke").get().value !== "portable") throw Error("SQLite failed"); db.close();'], { cwd: app, env, stdio: "inherit", timeout: 30_000 });
