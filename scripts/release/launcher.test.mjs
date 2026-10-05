@@ -38,7 +38,9 @@ process.on('SIGTERM',()=>process.exit(0));
       child.stderr.on("data", () => {}); child.stdout.resume();
       const [socket] = await deadline(connected, "provider did not connect");
       const [pid] = await deadline(once(socket, "data"), "provider PID missing"); pids.push(parseInt(pid));
-      const disconnected = once(socket, "close");
+      // Windows taskkill can reset the TCP stream before close; that is a
+      // successful liveness observation, not a failed provider shutdown.
+      const disconnected = new Promise(resolve => socket.once("close", resolve));
       const exit = once(child, "exit");
       if (action === "shutdown") child.send("shutdown");
       else socket.write(action);
@@ -46,7 +48,7 @@ process.on('SIGTERM',()=>process.exit(0));
       if (action === "restart") {
         const replacement = sockets[1] ?? (await deadline(once(listener, "connection"), "replacement did not launch"))[0];
         const [nextPid] = await deadline(once(replacement, "data"), "replacement PID missing"); pids.push(parseInt(nextPid));
-        const closed = once(replacement, "close"); child.send("shutdown"); await deadline(closed, "replacement survived shutdown");
+        const closed = new Promise(resolve => replacement.once("close", resolve)); child.send("shutdown"); await deadline(closed, "replacement survived shutdown");
       }
       const [code] = await deadline(exit, "supervisor did not exit");
       assert.equal(code, action === "fatal" ? 7 : 0);

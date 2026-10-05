@@ -17,7 +17,12 @@ try {
   Invoke-WebRequest -UseBasicParsing -Uri "$Url/$Archive" -OutFile (Join-Path $Stage $Archive) -TimeoutSec 300
   Invoke-WebRequest -UseBasicParsing -Uri "$Url/$Archive.sha256" -OutFile (Join-Path $Stage 'checksum') -TimeoutSec 60
   $Expected = (Get-Content -LiteralPath (Join-Path $Stage 'checksum') -Raw).TrimEnd("`r", "`n")
-  $Digest = (Get-FileHash -LiteralPath (Join-Path $Stage $Archive) -Algorithm SHA256).Hash.ToLowerInvariant()
+  # Use .NET directly: launching Windows PowerShell from pwsh can inherit a
+  # PSModulePath without its Get-FileHash / Expand-Archive script modules.
+  $Hash = [Security.Cryptography.SHA256]::Create()
+  $Stream = [IO.File]::OpenRead((Join-Path $Stage $Archive))
+  try { $Digest = [BitConverter]::ToString($Hash.ComputeHash($Stream)).Replace('-', '').ToLowerInvariant() }
+  finally { $Stream.Dispose(); $Hash.Dispose() }
   if ($Expected -cne "$Digest  $Archive") { throw 'Archive checksum mismatch; refusing installation.' }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $Zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $Stage $Archive))
@@ -31,7 +36,7 @@ try {
       if ($Type -ne 0 -and $Type -ne 0x8000 -and $Type -ne 0x4000) { throw 'Archive contains links or special files.' }
     }
   } finally { $Zip.Dispose() }
-  Expand-Archive -LiteralPath (Join-Path $Stage $Archive) -DestinationPath $Stage
+  [IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $Stage $Archive), $Stage)
   $Extracted = Join-Path $Stage $Base
   if (-not (Test-Path (Join-Path $Extracted 'swarmcrews.cmd')) -or -not (Test-Path (Join-Path $Extracted 'runtime\node.exe'))) { throw 'Incomplete archive.' }
   $Parent = Split-Path -Parent $Destination

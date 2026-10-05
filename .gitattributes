@@ -1,0 +1,4 @@
+# Shell entrypoints must remain executable under sh on every checkout host.
+*.sh text eol=lf
+# Supplemental upstream notices are verified against reviewed byte hashes.
+scripts/release/notices/* text eol=lf

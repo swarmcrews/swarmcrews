@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { releaseTarget, assertReleaseVersion, isProviderPackage, RUNTIME_PACKAGES } from "./config.mjs";
 
 test("only declared native targets and exact alpha tags are accepted", () => {
@@ -10,6 +11,10 @@ test("only declared native targets and exact alpha tags are accepted", () => {
   for (const [version, tag] of [["0.1.0", "v0.1.0"], ["0.1.0-alpha.1", "main"], ["0.1.0-alpha.1", "v0.1.0-alpha.2"]]) {
     assert.throws(() => assertReleaseVersion(version, tag));
   }
+});
+test("release shell scripts and hash-pinned notices retain LF on Windows checkout", () => {
+  const attributes = execFileSync("git", ["check-attr", "eol", "--", "install/portable.sh", "scripts/release/notices/saxes-6.0.0-LICENSE.txt"], { encoding: "utf8" });
+  for (const line of attributes.trim().split(/\r?\n/)) assert.ok(line.endsWith(": lf"), line);
 });
 test("runtime dependency manifest is pinned, complete, and excludes providers", () => {
   const runtime = JSON.parse(readFileSync(new URL("./runtime/package.json", import.meta.url)));
