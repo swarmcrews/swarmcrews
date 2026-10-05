@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { NODE_VERSION, TARGETS, releaseTarget, RUNTIME_PACKAGES, isProviderPackage } from "./config.mjs";
 import { collectLicenses, installedPackage, writeNotices } from "./licenses.mjs";
-import { commandSpec } from "./command.mjs";
+import { createRequire } from "node:module";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const output = resolve(process.argv[2] ?? join(repo, ".scratch/release-alpha/artifacts"));
@@ -26,18 +26,22 @@ const app = join(stage, name);
 mkdirSync(app);
 function run(command, args, cwd = repo) {
   const env = { ...process.env }; delete env.NODE_ENV;
-  const spec = commandSpec(command, args);
-  execFileSync(spec.command, spec.args, { ...spec.options, cwd, stdio: "inherit", env, timeout: 600_000 });
+  execFileSync(command, args, { cwd, stdio: "inherit", env, timeout: 600_000 });
 }
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-run(pnpm, ["build"]);
-run(pnpm, ["exec", "tsc", "-p", "scripts/release/tsconfig.json", "--outDir", app]);
+// Follow installed CLI entries, not Windows package-manager self-update shims.
+const require = createRequire(join(repo, "package.json"));
+const compilerManifest = require.resolve("typescript/package.json");
+const compiler = join(dirname(compilerManifest), JSON.parse(readFileSync(compilerManifest, "utf8")).bin.tsc);
+run(process.execPath, ["scripts/production-build.mjs"]);
+run(process.execPath, [compiler, "-p", "scripts/release/tsconfig.json", "--outDir", app]);
 cpSync(join(repo, "dist"), join(app, "web"), { recursive: true });
 cpSync(join(repo, "server/harness/pi/swarm-tools-extension.mjs"), join(app, "server/harness/pi/swarm-tools-extension.mjs"));
 cpSync(join(repo, "shared/owned-processes.mjs"), join(app, "shared/owned-processes.mjs"));
 for (const file of ["package.json", "package-lock.json"]) cpSync(join(repo, "scripts/release/runtime", file), join(app, file));
-run(npm, ["ci", "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund"], app);
+const npmArgs = ["ci", "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund"];
+if (process.platform === "win32") {
+  run(process.execPath, [join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js"), ...npmArgs], app);
+} else run("npm", npmArgs, app);
 // No package manager metadata or executable wrappers are needed at runtime.
 rmSync(join(app, "package-lock.json"));
 rmSync(join(app, "node_modules/.package-lock.json"), { force: true });
