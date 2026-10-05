@@ -9,7 +9,7 @@
  * architecture test enforces that boundary.
  */
 
-import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { registerHarness } from "../index.ts";
 
 function compareNames(a: string, b: string): number {
@@ -39,6 +39,7 @@ import type {
 } from "../types.ts";
 import { isClaudeToolUseDiagnostic, sdkToNormalized } from "./translate.ts";
 import { wrapTools } from "./tools.ts";
+import { loadSdk } from "./sdk.ts";
 import { getClaudeModels, resolveModelAlias, supportsAdaptiveThinking } from "./models.ts";
 import { buildClaudePrompt } from "./prompt.ts";
 import { checkClaudeReadiness, resolveClaudeRuntime } from "./runtime.ts";
@@ -182,10 +183,11 @@ class ClaudeHarness implements AgentHarness {
     let handle: SdkQueryHandle | null = null;
 
     async function* makeEvents(): AsyncGenerator<NormalizedEvent> {
+      const sdk = await loadSdk();
       const mcpServers: Record<string, unknown> = {};
       for (const [serverName, defs] of sortedRecordEntries(registeredGroups)) {
         if (defs.length > 0) {
-          mcpServers[serverName] = wrapTools(serverName, defs);
+          mcpServers[serverName] = wrapTools(serverName, defs, sdk);
         }
       }
 
@@ -235,7 +237,7 @@ class ClaudeHarness implements AgentHarness {
         // inside the try so a synchronous SDK setup failure is reported
         // as a normalized done(error) instead of bubbling out of the
         // generator.
-        handle = query({
+        handle = sdk.query({
           prompt: typeof sdkPrompt === "string" ? sdkPrompt : (sdkPrompt as never),
           options: options as never,
         }) as unknown as SdkQueryHandle;

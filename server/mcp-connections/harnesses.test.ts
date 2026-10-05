@@ -1,3 +1,4 @@
+import { loadSdk } from "../harness/claude/sdk.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -38,7 +39,7 @@ const options = (): HarnessStartOptions => ({ sessionKey: "adapter-test", cwd: p
 describe("harness-independent connection calls", () => {
   it("Claude's SDK tool and Copilot's native tool call the same broker without external configuration", async () => {
     const defs = createConnectionTools(project, "adapter-test");
-    wrapTools("connections", defs);
+    wrapTools("connections", defs, await loadSdk());
     const claude = await mocks.callbacks.find(t => t.name === "call_tool")!.handler(input);
     expect(JSON.stringify(claude)).toContain("shared broker");
     const native = copilotTools({ connections: defs }, ["mcp__connections__call_tool"]);

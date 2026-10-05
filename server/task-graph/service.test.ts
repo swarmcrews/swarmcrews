@@ -1,3 +1,4 @@
+import { loadSdk } from "../harness/claude/sdk.ts";
 import { taskGraphTestHome } from "./test-helpers.ts";
 import { describe,expect,it,vi } from "vitest";
 import crypto from "node:crypto";
@@ -258,7 +259,8 @@ describe("TaskGraphService central wiring",() => {
     ] });
     const writerTool=createTaskGraphAgentTools(service,"child-run")[0]!;
     expect((writerTool.inputSchema as {shape?:unknown}).shape).toBeDefined();
-    expect(()=>wrapTools("task-graph",[writerTool])).not.toThrow();
+    const claudeSdk = await loadSdk();
+    expect(()=>wrapTools("task-graph",[writerTool],claudeSdk)).not.toThrow();
     expect(writerTool.inputSchema.safeParse(pathArtifact()).success).toBe(true);
     expect(writerTool.inputSchema.safeParse({source:"path",storageRef:"package.json",
       outputName:"result"}).success).toBe(true);

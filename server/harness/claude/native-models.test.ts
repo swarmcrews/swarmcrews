@@ -36,6 +36,7 @@ describe("Claude native model discovery", () => {
     sdk.query.mockReturnValue({ supportedModels: () => new Promise(() => {}), close });
     const controller = new AbortController();
     const result = discoverClaudeModels(runtime, controller.signal);
+    await vi.waitFor(() => expect(sdk.query).toHaveBeenCalledOnce());
     controller.abort();
     await expect(result).rejects.toThrow();
     expect(close).toHaveBeenCalledOnce();

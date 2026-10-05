@@ -8,7 +8,7 @@
  * ClaudeHarness calls this adapter for each registered internal tool group.
  */
 
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import type { createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import type { ZodTypeAny } from "zod/v4";
 import type { NormalizedToolDef } from "../types.ts";
 
@@ -26,21 +26,21 @@ export type McpServerInstance = ReturnType<typeof createSdkMcpServer>;
  * @param serverName  MCP server name, e.g. "task-manager".
  * @param defs        Tool definitions to wrap.
  */
-export function wrapTools(serverName: string, defs: NormalizedToolDef[]): McpServerInstance {
+export function wrapTools(serverName: string, defs: NormalizedToolDef[], sdk: Pick<typeof import("@anthropic-ai/claude-agent-sdk"), "tool" | "createSdkMcpServer">): McpServerInstance {
   // The SDK's `tool()` and `createSdkMcpServer()` are tightly typed via the
   // Anthropic SDK's MCP schema. We bridge through `unknown`/`never` casts
   // because NormalizedToolResult is a deliberately narrower shape than the
   // SDK's full MCP content union — runtime values still satisfy the SDK.
   const sdkTools = defs.map((def) => {
     const rawShape = extractShape(def);
-    return tool(
+    return sdk.tool(
       def.name,
       def.description,
       rawShape as never,
       (async (args: unknown) => def.handler(args)) as never,
     );
   }) as never;
-  return createSdkMcpServer({ name: serverName, tools: sdkTools });
+  return sdk.createSdkMcpServer({ name: serverName, tools: sdkTools });
 }
 
 /**

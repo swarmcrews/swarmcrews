@@ -6,11 +6,12 @@ import { createRequire } from "node:module";
 import type { HarnessReadinessContext, HarnessReadinessProbe } from "../readiness-types.ts";
 import { runProcess, type ProcessRunner } from "../process-runner.ts";
 
-const require = createRequire(import.meta.url);
+import { externalSdkUrl } from "./sdk.ts";
+import { resolveCliRuntime } from "../cli-runtime.ts";
 
 export interface ClaudeRuntime {
   executable: string;
-  source: "env_override" | "sdk_bundled";
+  source: "env_override" | "sdk_bundled" | "path";
 }
 
 function packageCandidates(): string[] {
@@ -21,8 +22,10 @@ function packageCandidates(): string[] {
 }
 
 export function resolveClaudeRuntime(env: NodeJS.ProcessEnv = process.env): ClaudeRuntime | null {
-  const override = env["CLAUDE_CODE_PATH"]?.trim();
-  if (override) return fs.existsSync(override) ? { executable: override, source: "env_override" } : null;
+  const cli = resolveCliRuntime("CLAUDE_CODE_PATH", "claude", env);
+  if (cli || env["CLAUDE_CODE_PATH"]?.trim()) return cli as ClaudeRuntime | null;
+  let require;
+  try { require = createRequire(externalSdkUrl() ?? import.meta.url); } catch { return null; }
   for (const packageName of packageCandidates()) {
     try {
       const packageJson = require.resolve(`${packageName}/package.json`);
@@ -48,6 +51,11 @@ export async function checkClaudeReadiness(
   deps: { resolve?: () => ClaudeRuntime | null; run?: ProcessRunner; discover?: typeof discoverClaudeModels } = {},
 ): Promise<HarnessReadinessProbe> {
   setClaudeModels([]);
+  if (!deps.resolve) {
+    try { externalSdkUrl(); } catch {
+      return { state: "runtime_missing", runtime: { available: false, source: "path" }, auth: { authenticated: false, source: "unknown" } };
+    }
+  }
   const runtime = (deps.resolve ?? resolveClaudeRuntime)();
   const source = runtime?.source ?? (process.env["CLAUDE_CODE_PATH"] ? "env_override" : "sdk_bundled");
   if (!runtime) return { state: "runtime_missing", runtime: { available: false, source }, auth: { authenticated: false, source: "unknown" } };

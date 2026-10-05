@@ -1,3 +1,4 @@
+import { loadSdk, externalSdkUrl } from "./sdk.ts";
 import type { CopilotClient } from "@github/copilot-sdk";
 import { resolveCliRuntime, type CliRuntime } from "../cli-runtime.ts";
 import type { HarnessReadinessContext, HarnessReadinessProbe } from "../readiness-types.ts";
@@ -9,7 +10,7 @@ export function resolveCopilotRuntime(env: NodeJS.ProcessEnv = process.env): Cli
 
 /** Lazy loading keeps a missing SDK from breaking other harnesses at startup. */
 export async function createCopilotClient(runtime: CliRuntime, cwd?: string): Promise<CopilotClient> {
-  const { CopilotClient, RuntimeConnection } = await import("@github/copilot-sdk");
+  const { CopilotClient, RuntimeConnection } = await loadSdk();
   return new CopilotClient({
     connection: RuntimeConnection.forStdio({ path: runtime.executable }),
     ...(cwd ? { workingDirectory: cwd } : {}),
@@ -24,6 +25,11 @@ export async function checkCopilotReadiness(
   const runtime = (deps.resolve ?? resolveCopilotRuntime)();
   const source = runtime?.source ?? (process.env["COPILOT_CLI_PATH"] ? "env_override" : "path");
   setCopilotModels([]);
+  if (!deps.resolve) {
+    try { externalSdkUrl(); } catch {
+      return { state: "runtime_missing", runtime: { available: false, source: "path" }, auth: { authenticated: false, source: "unknown" } };
+    }
+  }
   if (!runtime) return { state: "runtime_missing", runtime: { available: false, source }, auth: { authenticated: false, source: "unknown" } };
   let client: CopilotClient | undefined;
   let version: string | undefined;

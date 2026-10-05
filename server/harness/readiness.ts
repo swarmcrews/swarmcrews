@@ -21,19 +21,19 @@ const progress = new ReadinessProgress();
 
 const REMEDIATION: Record<string, Partial<Record<HarnessReadinessState, HarnessReadiness["remediation"]>>> = {
   copilot: {
-    runtime_missing: { label: "Install Copilot CLI or set COPILOT_CLI_PATH" },
+    runtime_missing: { label: "Install Copilot CLI and SDK; set COPILOT_CLI_PATH and COPILOT_SDK_ROOT for portable installs" },
     unauthenticated: { label: "Sign in to GitHub Copilot", command: "copilot login" },
     probe_timeout: { label: "Retry the Copilot model check" },
     probe_failed: { label: "Check Copilot CLI and SDK installation", command: "copilot --version" },
   },
   claude: {
-    runtime_missing: { label: "Install the Claude Agent SDK runtime" },
+    runtime_missing: { label: "Install Claude CLI and Agent SDK; set CLAUDE_CODE_PATH and CLAUDE_SDK_ROOT for portable installs" },
     unauthenticated: { label: "Sign in to Claude", command: "claude auth login" },
     probe_timeout: { label: "Retry the Claude model check" },
     probe_failed: { label: "Check Claude CLI model discovery", command: "claude --version" },
   },
   codex: {
-    runtime_missing: { label: "Install the Codex CLI or SDK runtime" },
+    runtime_missing: { label: "Install Codex CLI and SDK; set CODEX_PATH and CODEX_SDK_ROOT for portable installs" },
     unauthenticated: { label: "Sign in to Codex", command: "codex login" },
     probe_timeout: { label: "Retry the Codex model check" },
     probe_failed: { label: "Check Codex CLI model discovery", command: "codex --version" },

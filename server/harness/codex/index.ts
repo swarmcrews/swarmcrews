@@ -3,7 +3,7 @@
  * Images become local_image inputs under os.tmpdir()/swarmcrews-codex-attachments/<sessionKey>/.
  */
 
-import { Codex } from "@openai/codex-sdk";
+import { loadSdk } from "./sdk.ts";
 import type {
   CodexOptions,
   Input,
@@ -181,6 +181,7 @@ class CodexHarness implements AgentHarness {
           // typing is satisfied at runtime.
           codexOpts.config = codexConfig as CodexOptions["config"];
         }
+        const { Codex } = await loadSdk();
         const codex = new Codex(codexOpts);
 
         const threadOpts = buildThreadOptions(opts);

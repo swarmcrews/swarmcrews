@@ -25,7 +25,7 @@ describe("wrapTools", () => {
       inputSchema: schema,
       handler: vi.fn(async () => ({ content: [{ type: "text" as const, text: `result_${index}` }] })),
     }));
-    const server = wrapTools("test-server", defs);
+    const server = wrapTools("test-server", defs, { createSdkMcpServer, tool });
 
     expect(server).toMatchObject({ type: "sdk", name: "test-server" });
     expect(tool).toHaveBeenCalledTimes(count);
@@ -58,7 +58,7 @@ describe("wrapTools", () => {
       inputSchema,
       handler: async () => ({ content: [] }),
     };
-    expect(() => wrapTools("s", [def])).toThrow(
+    expect(() => wrapTools("s", [def], { createSdkMcpServer, tool })).toThrow(
       new RegExp(`${name}.*ZodObject.*\\.shape`),
     );
     expect(createSdkMcpServer).not.toHaveBeenCalled();

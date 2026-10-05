@@ -1,10 +1,13 @@
 import * as os from "node:os";
-import { query, type ModelInfo, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import { loadSdk } from "./sdk.ts";
+import type { query, ModelInfo, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import type { ClaudeRuntime } from "./runtime.ts";
 
 /** Initialize only: no user turn, tools, or persisted conversation. Keep stdin
  * open until supportedModels resolves; an empty iterable closes it too early. */
 export async function discoverClaudeModels(runtime: ClaudeRuntime, signal: AbortSignal): Promise<ModelInfo[]> {
+  signal.throwIfAborted();
+  const sdk = await loadSdk();
   signal.throwIfAborted();
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -20,7 +23,7 @@ export async function discoverClaudeModels(runtime: ClaudeRuntime, signal: Abort
     controller.signal.addEventListener("abort", rejectAbort, { once: true });
   });
   try {
-    handle = query({ prompt: prompt(), options: {
+    handle = sdk.query({ prompt: prompt(), options: {
       pathToClaudeCodeExecutable: runtime.executable,
       cwd: os.homedir(),
       abortController: controller,

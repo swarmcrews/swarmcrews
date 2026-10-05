@@ -9,7 +9,7 @@ import type { HarnessReadinessContext, HarnessReadinessProbe } from "../readines
 import { runProcess, type ProcessRunner } from "../process-runner.ts";
 import { resolveCodexCredentials } from "./auth.ts";
 
-const require = createRequire(import.meta.url);
+import { externalSdkUrl } from "./sdk.ts";
 
 export interface CodexRuntime {
   executable: string;
@@ -140,7 +140,7 @@ function resolveBundledCodexExecutable(): string | null {
   const target = TARGETS[`${process.platform}:${process.arch}`];
   if (target) {
     try {
-      const sdkRequire = createRequire(fileURLToPath(import.meta.resolve("@openai/codex-sdk")));
+      const sdkRequire = createRequire(fileURLToPath(externalSdkUrl() ?? import.meta.resolve("@openai/codex-sdk")));
       const codexPackage = sdkRequire.resolve("@openai/codex/package.json");
       const packageJson = createRequire(codexPackage).resolve(`${target[0]}/package.json`);
       const executable = path.join(path.dirname(packageJson), "vendor", target[1], "bin", process.platform === "win32" ? "codex.exe" : "codex");
@@ -155,6 +155,11 @@ export async function checkCodexReadiness(
   deps: { resolve?: () => CodexRuntime | null; run?: ProcessRunner; discover?: typeof discoverCodexModels } = {},
 ): Promise<HarnessReadinessProbe> {
   setCodexModels([]);
+  if (!deps.resolve) {
+    try { externalSdkUrl(); } catch {
+      return { state: "runtime_missing", runtime: { available: false, source: "path" }, auth: { authenticated: false, source: "unknown" } };
+    }
+  }
   const runtime = (deps.resolve ?? resolveCodexRuntime)();
   const source = runtime?.source ?? (process.env["CODEX_PATH"] ? "env_override" : "sdk_bundled");
   if (!runtime) return { state: "runtime_missing", runtime: { available: false, source }, auth: { authenticated: false, source: "unknown" } };
