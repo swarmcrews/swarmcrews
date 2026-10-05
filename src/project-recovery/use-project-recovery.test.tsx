@@ -170,7 +170,8 @@ describe("project recovery at the HTTP boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("remove denied");
     expect(screen.getByRole("button", { name: "Open Alpha" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Retry removal" })).toHaveFocus();
+    // The alert can appear before React flushes the passive focus effect.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry removal" })).toHaveFocus());
     fireEvent.click(screen.getByRole("button", { name: "Retry removal" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("Your project folder and files will remain on disk");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
