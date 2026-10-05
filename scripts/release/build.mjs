@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { NODE_VERSION, TARGETS, releaseTarget, RUNTIME_PACKAGES, isProviderPackage } from "./config.mjs";
 import { collectLicenses, installedPackage, writeNotices } from "./licenses.mjs";
 import { createRequire } from "node:module";
+import { nativeTar } from "./command.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const output = resolve(process.argv[2] ?? join(repo, ".scratch/release-alpha/artifacts"));
@@ -76,7 +77,7 @@ if (!response.ok) throw new Error(`Node download failed: ${response.status}`);
 const bytes = Buffer.from(await response.arrayBuffer());
 if (createHash("sha256").update(bytes).digest("hex") !== config.sha256) throw new Error("Node archive checksum mismatch");
 writeFileSync(join(stage, nodeArchive), bytes);
-run("tar", ["-xf", join(stage, nodeArchive), "-C", stage]);
+run(nativeTar(), ["-xf", join(stage, nodeArchive), "-C", stage]);
 mkdirSync(join(app, "runtime"));
 const nodeExe = process.platform === "win32" ? "node.exe" : "node";
 cpSync(join(stage, nodeName, process.platform === "win32" ? nodeExe : `bin/${nodeExe}`), join(app, "runtime", nodeExe));
@@ -91,7 +92,7 @@ writeFileSync(join(app, "release.json"), JSON.stringify({ version: pkg.version, 
 cpSync(join(repo, "docs/portable-installation.md"), join(app, "INSTALL.md"));
 const extension = process.platform === "win32" ? "zip" : "tar.gz";
 const archive = join(output, `${name}.${extension}`);
-run("tar", process.platform === "win32" ? ["-a", "-cf", archive, "-C", stage, name] : ["-czf", archive, "-C", stage, name]);
+run(nativeTar(), process.platform === "win32" ? ["-a", "-cf", archive, "-C", stage, name] : ["-czf", archive, "-C", stage, name]);
 const sha256 = createHash("sha256").update(readFileSync(archive)).digest("hex");
 writeFileSync(`${archive}.sha256`, `${sha256}  ${name}.${extension}\n`);
 rmSync(stage, { recursive: true, force: true });

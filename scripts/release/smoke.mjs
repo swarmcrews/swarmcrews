@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { waitForOutput, stopTestProcess } from "../test-process.mjs";
 import { isProviderPackage } from "./config.mjs";
-import { commandSpec } from "./command.mjs";
+import { commandSpec, nativeTar } from "./command.mjs";
 
 const archive = resolve(process.argv[2]);
 const expected = readFileSync(`${archive}.sha256`, "utf8").split(/\s+/)[0];
@@ -19,7 +19,7 @@ const scratch = mkdtempSync(join(tmpdir(), "swarmcrews portable "));
 let child;
 let ws;
 try {
-  execFileSync("tar", ["-xf", archive, "-C", scratch], { timeout: 120_000 });
+  execFileSync(nativeTar(), ["-xf", archive, "-C", scratch], { timeout: 120_000 });
   const names = readdirSync(scratch);
   assert.equal(names.length, 1);
   const app = join(scratch, names[0]);

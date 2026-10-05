@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { spawnSync, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { releaseTarget } from "./config.mjs";
+import { nativeTar } from "./command.mjs";
 
 for (const scenario of ["verified", "corrupt", "existing"]) {
   test(`native download-only installer: ${scenario}`, () => {
@@ -18,7 +19,7 @@ for (const scenario of ["verified", "corrupt", "existing"]) {
       writeFileSync(join(tree, win ? "swarmcrews.cmd" : "swarmcrews"), "must not execute");
       const node = join(tree, "runtime", win ? "node.exe" : "node"); writeFileSync(node, "fixture runtime"); chmodSync(node, 0o755);
       const archive = join(root, `${name}.${win ? "zip" : "tar.gz"}`);
-      execFileSync("tar", win ? ["-a", "-cf", archive, "-C", root, name] : ["-czf", archive, "-C", root, name]);
+      execFileSync(nativeTar(), win ? ["-a", "-cf", archive, "-C", root, name] : ["-czf", archive, "-C", root, name]);
       const checksum = join(root, "checksum");
       const digest = scenario === "corrupt" ? "0".repeat(64) : createHash("sha256").update(readFileSync(archive)).digest("hex");
       writeFileSync(checksum, `${digest}  ${name}.${win ? "zip" : "tar.gz"}\n`);

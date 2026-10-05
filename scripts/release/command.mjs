@@ -1,3 +1,10 @@
+import { win32 } from "node:path";
+
+// Git Bash's GNU tar treats drive letters as remote hosts and cannot read ZIP.
+export function nativeTar(platform = process.platform, systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? "C:\\Windows") {
+  return platform === "win32" ? win32.join(systemRoot, "System32", "tar.exe") : "tar";
+}
+
 // cmd.exe has its own quoting rules; Node's default Windows argv escaping
 // would inject backslashes into the already-quoted /c command string.
 export function commandSpec(command, args, platform = process.platform) {

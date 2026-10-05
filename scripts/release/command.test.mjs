@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { commandSpec } from "./command.mjs";
+import { commandSpec, nativeTar } from "./command.mjs";
 
 test("Windows batch invocations use verbatim cmd quoting and reject shell expansion", () => {
   const spec = commandSpec("pnpm.cmd", ["exec", "tsc", "--outDir", "C:\\path with spaces\\output"], "win32");
@@ -28,4 +28,9 @@ test("native command execution preserves space-containing paths and arguments", 
     const output = execFileSync(spec.command, spec.args, { ...spec.options, encoding: "utf8", timeout: 10_000 });
     assert.deepEqual(JSON.parse(output), ["argument with spaces"]);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("Windows ZIP extraction uses native tar even under Git Bash", () => {
+  assert.equal(nativeTar("win32", "D:\\Windows"), "D:\\Windows\\System32\\tar.exe");
+  assert.equal(nativeTar("linux"), "tar");
 });
