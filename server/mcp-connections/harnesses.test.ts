@@ -19,7 +19,12 @@ vi.mock("../mcp-bridge/server.ts", () => ({ getBridgeServer: async () => ({ regi
 vi.mock("../harness/pi/runtime.ts", () => ({ resolvePiRuntime: () => ({ executable: "pi" }), checkPiReadiness: vi.fn() }));
 vi.mock("../harness/opencode/runtime.ts", () => ({ resolveOpenCodeRuntime: () => ({ executable: "opencode" }), checkOpenCodeReadiness: vi.fn() }));
 vi.mock("../harness/jsonl-process.ts", () => ({ streamJsonlProcess: (opts: unknown) => mocks.launch(opts) }));
-vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ tool: (name: string, _description: string, _schema: unknown, handler: (args: unknown) => Promise<unknown>) => { const result = { name, handler }; mocks.callbacks.push(result); return result; }, createSdkMcpServer: (config: unknown) => config }));
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ createSdkMcpServer: (config: unknown) => ({ config,
+  instance: { registerTool: (name: string, _schema: unknown, handler: (args: unknown) => Promise<unknown>) => {
+    mocks.callbacks.push({ name, handler });
+    return { enabled: true };
+  }, server: { setRequestHandler: vi.fn() } },
+}) }));
 import "../harness/pi/index.ts";
 import "../harness/opencode/index.ts";
 import { getHarness } from "../harness/index.ts";

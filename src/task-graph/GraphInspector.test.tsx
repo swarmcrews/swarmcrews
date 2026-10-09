@@ -96,6 +96,14 @@ describe("GraphSummaryCard", () => {
 });
 
 describe("GraphInspector", () => {
+  it.each(["topology", "waterfall", "plan", "evidence"] as const)("omits the run continuity footer from the %s view", (initialTab) => {
+    render(<GraphInspector snapshot={createGraphFixture(10)} initialTab={initialTab} onClose={vi.fn()} onAction={vi.fn()} />);
+
+    expect(screen.getByRole("tabpanel")).toBeInTheDocument();
+    expect(screen.queryByText("Run continuity")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Graph stage and checkpoint continuity")).not.toBeInTheDocument();
+  });
+
   it("reserves the details rail for a selection and returns its space when closed", () => {
     render(<GraphInspector snapshot={createGraphFixture(10)} onClose={vi.fn()} onAction={vi.fn()} />);
     expect(document.body.querySelector(".tg-workspace")).toHaveClass("is-detail-collapsed");

@@ -7,7 +7,6 @@ import { ViewportOverlay } from "../components/ViewportOverlay.tsx";
 import { randomUuid } from "../random-id.ts";
 import { ContextLineage, findProducer } from "./ContextLineage.tsx";
 import { formatDuration } from "./GraphSummaryCard.tsx";
-import { IterationTrack } from "./IterationTrack.tsx";
 import { ModelLabel } from "./ModelLabel.tsx";
 import { filterNodes, summarizeGraph, whyNotRunning } from "./model.ts";
 import { NodeState } from "./NodeState.tsx";
@@ -311,8 +310,6 @@ export function GraphInspector({
               {tab === "queue" ? <WorkQueue nodes={filteredNodes} onSelect={(id) => selectNode(id)} {...(filter === "all" ? {} : { onClearFilter: () => setFilter("all") })} /> : null}
               {tab === "timeline" ? <Timeline snapshot={snapshot} onSelect={(id) => selectNode(id, true)} /> : null}
             </main>
-
-            {tab === "topology" || tab === "waterfall" || tab === "plan" || tab === "evidence" ? <IterationTrack snapshot={snapshot} onSelectNode={(id) => selectNode(id, true)} onSelectEvidence={selectEvidence} /> : null}
           </section>
 
           {detailOpen ? selected ? (

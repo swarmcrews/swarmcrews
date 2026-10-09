@@ -89,6 +89,26 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   });
 }
 
+test('image preview keeps the mobile Send button reachable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWorkspace(page);
+  await page.getByRole('button', { name: /Improve mobile layouts and usability/ }).click();
+  // A phone-sized screenshot must become a thumbnail, not displace the composer.
+  const image = await page.screenshot();
+  await page.getByLabel('File attachments', { exact: true }).setInputFiles({
+    name: 'mobile-layout.png', mimeType: 'image/png', buffer: image,
+  });
+  const preview = page.getByRole('img', { name: 'mobile-layout.png', exact: true });
+  await expect(preview).toBeVisible();
+  expect((await preview.boundingBox()).height).toBeLessThanOrEqual(56);
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeEnabled();
+  await expect(send).toBeInViewport({ ratio: 1 });
+  await expectContained(page);
+  await send.click();
+  await expect(preview).toHaveCount(0);
+});
+
 test('chat composer and transcript fit above an on-screen keyboard', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openWorkspace(page);

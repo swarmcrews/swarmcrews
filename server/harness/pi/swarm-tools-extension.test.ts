@@ -44,12 +44,19 @@ describe("Pi native tool bridge", () => {
       params: { name: "write", arguments: { value: "test" } } });
   });
 
-  it.each([
-    { jsonrpc: "2.0", id: "call", error: { message: "Permission denied" } },
-    { jsonrpc: "2.0", id: "call", result: { isError: true, content: [{ type: "text", text: "Permission denied" }] } },
-  ])("surfaces remote errors", async body => {
-    fetchMock.mockResolvedValue(new Response(JSON.stringify(body)));
+  it("surfaces protocol errors", async () => {
+    fetchMock.mockResolvedValue(Response.json({ jsonrpc: "2.0", id: "call", error: { message: "Permission denied" } }));
     await expect(tool.execute("call", {})).rejects.toThrow("Permission denied");
+  });
+
+  it("preserves tool failure data instead of throwing it away", async () => {
+    const result = { isError: true, content: [{ type: "text", text: "Permission denied" }],
+      structuredContent: { cursor: null, allowed: false } };
+    fetchMock.mockResolvedValue(Response.json({ jsonrpc: "2.0", id: "call", result }));
+    const native = await tool.execute("call", {}) as { content: Array<{ text: string }> };
+    expect(native).toMatchObject({ isError: true, structuredContent: result.structuredContent,
+      details: { structuredContent: result.structuredContent } });
+    expect(JSON.parse(native.content[0]!.text)).toEqual(result);
   });
 
   it.each([{}, { jsonrpc: "2.0", id: "other", result: { content: [] } },
@@ -74,4 +81,14 @@ describe("Pi native tool bridge", () => {
     await expect(tool.execute("call", {})).rejects.toThrow("Swarmcrews tool connection failed (500)");
     await expect(tool.execute("call", {})).rejects.not.toThrow("Retry the task");
   });
+  it("projects structured-only values into model content and persisted details", async () => {
+    const structuredContent = { cursor: null, rows: [{ value: null }] };
+    const result = { content: [{ type: "text", text: "One item" }], structuredContent };
+    fetchMock.mockResolvedValue(Response.json({ jsonrpc: "2.0", id: "call", result }));
+    const native = await tool.execute("call", {}) as { content: Array<{ text: string }>; details: unknown; structuredContent: unknown };
+    expect(JSON.parse(native.content[0]!.text)).toEqual(result);
+    expect(native.details).toEqual({ structuredContent });
+    expect(native.structuredContent).toEqual(structuredContent);
+  });
+
 });

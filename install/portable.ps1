@@ -1,7 +1,7 @@
-param([string]$Destination = (Join-Path $env:LOCALAPPDATA 'Swarmcrews\0.1.0-alpha.1'))
+param([string]$Destination = (Join-Path $env:LOCALAPPDATA 'Swarmcrews\0.1.0-alpha.2'))
 # Download only; never builds the app, installs harnesses, or starts a process.
 $ErrorActionPreference = 'Stop'
-$Version = '0.1.0-alpha.1'
+$Version = '0.1.0-alpha.2'
 if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') {
   throw 'This release supports Windows x64 only; use the source installation guide.'
 }

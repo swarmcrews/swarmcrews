@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
+import { ArrowRight, ArrowUp, Check, ChevronRight, Folder, FolderOpen, MapPin, X } from "lucide-react";
 import { getRepositoryPathSuggestions } from "../api.ts";
 import type { RepositoryDirectory, RepositoryPathSuggestions } from "../../shared/repository-paths.ts";
 import "./repository-path-picker.css";
@@ -38,6 +39,7 @@ export function RepositoryPathPicker({
 }: RepositoryPathPickerProps) {
   const id = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const requestId = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const suppressFocus = useRef(false);
@@ -105,6 +107,19 @@ export function RepositoryPathPicker({
     return () => { window.clearTimeout(timer); abort.abort(); };
   }, [lookup, disabled]);
 
+  // Keep keyboard navigation inside the list's scroll area. scrollIntoView
+  // would also move the surrounding form/page and hide the path input.
+  useEffect(() => {
+    const list = listRef.current;
+    const row = list?.children[activeIndex];
+    if (!list || !row) return;
+    const bounds = list.getBoundingClientRect();
+    const active = row.getBoundingClientRect();
+    if (active.height > bounds.height) list.scrollTop += active.top - bounds.top;
+    else if (active.top < bounds.top) list.scrollTop -= bounds.top - active.top;
+    else if (active.bottom > bounds.bottom) list.scrollTop += active.bottom - bounds.bottom;
+  }, [activeIndex, result]);
+
   function select(entry: RepositoryDirectory) {
     onChange(entry.path);
     close();
@@ -137,12 +152,15 @@ export function RepositoryPathPicker({
 
   return (
     <div className={`repository-path-picker ${className}`}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && open) { event.preventDefault(); close(); focusInput(); }
+      }}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) close(); }}>
       <div className="repository-path-picker__label-row">
         <label htmlFor={id}>Folders on the server</label>
         <button type="button" className="repository-path-picker__browse" disabled={disabled}
           onClick={() => request(value, "browse")} aria-expanded={open} aria-controls={`${id}-panel`}>
-          Browse
+          <FolderOpen size={15} aria-hidden="true" /> Browse
         </button>
       </div>
       <p id={`${id}-help`} className="repository-path-picker__help">Paths are on the machine running Swarmcrews, not this browser’s device. Use ~ for the server user’s home folder.</p>
@@ -154,11 +172,17 @@ export function RepositoryPathPicker({
         onFocus={() => { if (!suppressFocus.current && !lookup) request(value, "complete", 200); }}
         onChange={(event) => { onChange(event.currentTarget.value); request(event.currentTarget.value, "complete", 200); }}
         onKeyDown={onKeyDown} />
+      {!open && value.trim() && <div className="repository-path-picker__selection">
+        <span>Repository path</span><span className="repository-path-picker__value">{value}</span>
+      </div>}
       {open && (
         <div id={`${id}-panel`} className="repository-path-picker__panel" role="region" aria-label="Server folder suggestions">
           <div className="repository-path-picker__toolbar">
-            <button type="button" onClick={() => request("", "browse")}>Browse locations</button>
-            <button type="button" aria-label="Close folder picker" onClick={() => { close(); focusInput(); }}>Close</button>
+            <strong>{lookup.mode === "browse" ? "Browse folders" : "Matching folders"}</strong>
+            <div>
+              <button type="button" onClick={() => request("", "browse")}><MapPin size={14} aria-hidden="true" /> Browse locations</button>
+              <button type="button" aria-label="Close folder picker" onClick={() => { close(); focusInput(); }}><X size={16} aria-hidden="true" /></button>
+            </div>
           </div>
           {loading && <div className="repository-path-picker__state" role="status">Loading folders…</div>}
           {error && (isUntrustedRequest ? (
@@ -166,11 +190,14 @@ export function RepositoryPathPicker({
               Folder browsing was blocked for this address. Open Swarmcrews through localhost or the server’s Tailscale address. You can still type or paste a repository path.
             </div>
           ) : (
-            <div className="repository-path-picker__state repository-path-picker__state--error" role="alert">{folderErrorMessage(error)} You can still type or paste a path.</div>
+            <div className="repository-path-picker__state repository-path-picker__state--error" role="alert">
+              <p>{folderErrorMessage(error)} You can still type or paste a path.</p>
+              <button type="button" onClick={() => request(lookup.path, lookup.mode)}>Retry folders</button>
+            </div>
           ))}
           {!loading && !error && result && (
             <>
-              {result.roots.length > 0 && (
+              {result.roots.length > 0 && !result.directory && (
                 <div className="repository-path-picker__roots" aria-label="Server roots">
                   {result.roots.map((root) => <button key={root.path} type="button" title={root.path} onClick={() => request(root.path, "browse")}>{root.path}</button>)}
                 </div>
@@ -180,14 +207,22 @@ export function RepositoryPathPicker({
                   {result.breadcrumbs.map((crumb) => <button key={crumb.path} type="button" title={crumb.path} onClick={() => request(crumb.path, "browse")}>{crumb.name}</button>)}
                 </nav>
               )}
-              {result.parent && <button type="button" className="repository-path-picker__parent" onClick={() => request(result.parent!, "browse")}>Up one folder</button>}
-              {result.directory && <button type="button" className="repository-path-picker__use" onClick={() => select({ name: result.directory!, path: result.directory! })}>Use this folder</button>}
-              <ul id={`${id}-list`} role="listbox" aria-label="Folders" className="repository-path-picker__entries">
+              {result.directory && <div className="repository-path-picker__directory">
+                <div><span>Current folder</span><span className="repository-path-picker__directory-path">{result.directory}</span></div>
+                <button type="button" className="repository-path-picker__use" onClick={() => select({ name: result.directory!, path: result.directory! })}><Check size={15} aria-hidden="true" /> Use this folder</button>
+              </div>}
+              <div className="repository-path-picker__list-heading">
+                <span>{entries.length} {entries.length === 1 ? "folder" : "folders"}{result.truncated ? " shown" : ""}</span>
+                {result.parent && <button type="button" className="repository-path-picker__parent" onClick={() => request(result.parent!, "browse")}><ArrowUp size={14} aria-hidden="true" /> Up one folder</button>}
+              </div>
+              <ul ref={listRef} id={`${id}-list`} role="listbox" aria-label="Folders" className="repository-path-picker__entries">
                 {entries.map((entry, index) => (
                   <li key={entry.path} role="option" id={`${id}-option-${index}`} aria-selected={index === activeIndex}
                     tabIndex={0} onClick={() => activate(entry)}
                     onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); activate(entry); } }}>
-                    <span>{entry.name}</span><small>{entry.path}</small>
+                    <Folder className="repository-path-picker__folder-icon" size={18} aria-hidden="true" />
+                    <div className="repository-path-picker__entry-copy"><span>{entry.name}</span><small>{entry.path}</small></div>
+                    {lookup.mode === "browse" ? <ChevronRight size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}
                   </li>
                 ))}
               </ul>
@@ -195,6 +230,9 @@ export function RepositoryPathPicker({
                 ? "No browsing locations are available. Check SWARMCREWS_BROWSE_ROOTS and folder permissions on the server. You can still type or paste a path."
                 : !result.directory ? "Choose a browsing location." : "No matching folders."}</div>}
               {result.truncated && <div className="repository-path-picker__state">More folders are available; type more to narrow the list.</div>}
+              {entries.length > 0 && <div className="repository-path-picker__keyboard-help">
+                <span>↑ ↓ to navigate</span><span>{lookup.mode === "browse" ? "Enter to explore · Esc to close" : "Enter to select · Esc to close"}</span>
+              </div>}
             </>
           )}
         </div>

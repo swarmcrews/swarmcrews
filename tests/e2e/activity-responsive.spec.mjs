@@ -100,7 +100,7 @@ test("keeps conversation, supporting context, and navigation usable across sizes
   await expect(page.locator('.act-main')).toBeVisible();
 });
 
-test("keeps Launch visible while prompt and all settings remain reachable", async ({ page }) => {
+test("keeps contextual Launch, prompt and all settings reachable", async ({ page }) => {
   await page.getByRole('button', { name: 'New', exact: true }).click();
   const panel = page.getByRole('region', { name: 'New leader' });
   const prompt = panel.getByLabel('Leader prompt', { exact: true });
@@ -110,16 +110,20 @@ test("keeps Launch visible while prompt and all settings remain reachable", asyn
 
   for (const [width, height] of [...sizes, [1366, 650]]) {
     await page.setViewportSize({ width, height });
+    // Launch now belongs to the goal card rather than a viewport-wide sticky footer.
+    await launch.scrollIntoViewIfNeeded();
     await expectContained(launch, width, height);
     const settings = panel.getByRole('complementary', { name: 'Run setup' });
     await settings.locator('.leader-launch-advanced > summary').click();
     const lastSetting = settings.getByRole('checkbox').last();
     await lastSetting.scrollIntoViewIfNeeded();
     await expect(lastSetting).toBeInViewport();
+    await launch.scrollIntoViewIfNeeded();
     await expectContained(launch, width, height);
     await prompt.scrollIntoViewIfNeeded();
     await expect(prompt).toBeInViewport();
     await expect(prompt).toHaveValue('Review the responsive application layout.');
+    await launch.scrollIntoViewIfNeeded();
     await expectContained(launch, width, height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   }

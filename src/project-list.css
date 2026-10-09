@@ -155,6 +155,12 @@
   gap: 6px;
 }
 
+/* Folder discovery owns the full form width; registration stays below it. */
+.project-list-fields > .repository-path-picker {
+  display: block;
+  grid-column: 1 / -1;
+}
+
 .project-list-field > span {
   color: var(--text-dim);
   font: 600 11px/1.2 var(--font-mono);
@@ -162,7 +168,7 @@
   text-transform: uppercase;
 }
 
-.project-list-field input {
+.project-list-field:not(.repository-path-picker) input {
   width: 100%;
   min-width: 0;
   height: 40px;
@@ -176,11 +182,11 @@
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.project-list-field input::placeholder {
+.project-list-field:not(.repository-path-picker) input::placeholder {
   color: var(--text-dim);
 }
 
-.project-list-field input:focus-visible {
+.project-list-field:not(.repository-path-picker) input:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 13%, transparent);
 }
@@ -188,7 +194,7 @@
 .project-list-primary-action {
   display: inline-flex;
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
   gap: 7px;
   align-items: center;
   justify-content: center;

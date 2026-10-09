@@ -19,6 +19,38 @@ const windowsResult = {
 beforeEach(() => { vi.mocked(getRepositoryPathSuggestions).mockReset(); });
 
 describe("RepositoryPathPicker", () => {
+  it("shows the full typed path outside the input and identifies the current browsing folder", async () => {
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
+    render(<RepositoryPathPicker value={"C:\\work\\a-very-long-repository-name"} onChange={vi.fn()} />);
+    expect(screen.getByText("C:\\work\\a-very-long-repository-name")).toHaveClass("repository-path-picker__value");
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(await screen.findByText("Browse folders")).toBeVisible();
+    // The heading is immediate; the directory arrives with the async response.
+    expect(await screen.findByText("C:\\work", { exact: true })).toHaveClass("repository-path-picker__directory-path");
+    expect(screen.getByText("Enter to explore · Esc to close")).toBeVisible();
+  });
+
+  it("retries a failed browse request without changing the typed path", async () => {
+    vi.mocked(getRepositoryPathSuggestions).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(windowsResult);
+    const onChange = vi.fn();
+    render(<RepositoryPathPicker value={"C:\\work"} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Retry folders" }));
+    expect(await screen.findByRole("option", { name: /demo/i })).toBeVisible();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("closes from a focused folder row with Escape and restores input focus", async () => {
+    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
+    render(<RepositoryPathPicker value="C:\\work" onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
+    const option = await screen.findByRole("option");
+    option.focus();
+    fireEvent.keyDown(option, { key: "Escape" });
+    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
   it("retains returned Windows paths exactly and selects with the keyboard", async () => {
     vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
     const onChange = vi.fn();

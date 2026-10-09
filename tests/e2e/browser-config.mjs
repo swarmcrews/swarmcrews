@@ -20,7 +20,7 @@ export function createBrowserConfig({ smoke = false } = {}) {
   return defineConfig({
     ...(smoke
       ? { testMatch: "**/clean-clone.smoke.spec.mjs" }
-      : { testIgnore: "**/clean-clone.smoke.spec.mjs" }),
+      : { testIgnore: ["**/clean-clone.smoke.spec.mjs", "**/*.production.spec.mjs"] }),
     testDir: "./tests/e2e",
     fullyParallel: false,
     workers: 1,

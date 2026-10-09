@@ -2467,7 +2467,7 @@
   container-type: inline-size;
   container-name: leader-launch;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
 }
 .leader-launch-layout {
@@ -2498,9 +2498,8 @@
   box-sizing: border-box;
 }
 .leader-launch-work {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  align-content: stretch;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
   min-height: 0;
@@ -2555,9 +2554,11 @@
   cursor: pointer;
 }
 .leader-launch-starters button:hover { border-color: var(--border-hover); background: var(--bg-elevated); color: var(--text-primary); }
+.leader-launch-work > * { flex-shrink: 0; }
 .leader-launch-prompt {
   display: flex;
-  min-height: 0;
+  flex: 1 0 150px;
+  min-height: 150px;
   overflow: hidden;
   border: 1px solid var(--border-default);
   border-radius: 9px;
@@ -2702,10 +2703,9 @@
 .leader-launch-skill > label input { margin: 0; accent-color: var(--accent); }
 .leader-launch-skill-icon { font-size: var(--text-size-body); line-height: 1.4; }
 .leader-launch-skill > label strong { display: block; font-size: var(--text-size-ui); }
-.leader-launch-skill-vars { display: grid; gap: 9px; margin: 10px 0 0 48px; padding-top: 10px; border-top: 1px solid var(--border-default); }
+.leader-launch-skill-vars { display: grid; gap: 9px; }
 .leader-launch-skill-vars label { display: grid; gap: 5px; }
 .leader-launch-skill-vars label > span { color: var(--text-secondary); font-size: var(--text-size-ui); font-weight: 600; }
-.leader-launch-skill-vars label em { color: var(--status-error); font-style: normal; }
 .leader-launch-skill-vars textarea { min-height: 68px; padding-block: 8px; resize: vertical; }
 .leader-launch-empty-skills { margin: 0; padding: 12px; border: 1px dashed var(--border-default); border-radius: 9px; color: var(--text-muted); font-size: var(--text-size-ui); text-align: center; }
 .leader-launch-notice, .leader-launch-error { padding: 9px 11px; border-radius: 8px; font-size: var(--text-size-ui); }
@@ -2736,10 +2736,6 @@
     max-height: none;
     overflow: visible;
     border-radius: 11px;
-  }
-  .leader-launch-work {
-    grid-template-rows: auto;
-    align-content: center;
   }
   .leader-launch-work,
   .leader-launch-config { padding: 14px; }
@@ -3039,9 +3035,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px clamp(14px, 2cqi, 24px);
+  padding: 12px 0 0;
   border-top: 1px solid var(--border-default);
-  background: var(--bg-secondary);
+  background: var(--bg-surface);
 }
 .leader-launch-footer > span { color: var(--text-muted); font-size: var(--text-size-ui); }
 .leader-launch-footer button { min-height: 40px; flex-shrink: 0; }
@@ -3116,7 +3112,7 @@
   .act-composer { padding: 8px 12px; }
   .act-launch-head { padding: 10px 12px; }
   .leader-launch-layout { padding: 8px; }
-  .leader-launch-footer { padding: 8px 12px; }
+  .leader-launch-footer { padding-top: 8px; }
 }
 
 @media (max-width: 700px) and (max-height: 620px) {
@@ -3211,16 +3207,15 @@
 .act-launch-head > .act-draft-back { grid-column: 1 / -1; justify-self: start; }
 
 /* A short reading viewport must not be consumed by frozen launch chrome.
-   Let its heading scroll with the form; the primary footer remains reachable. */
+   Let its heading and contextual launch action scroll with the form. */
 @media (max-height: 700px) and (max-width: 760px) {
   .act-launch-panel { grid-template-rows: auto auto; align-content: start; overflow-y: auto; scroll-padding-block: 1rem 6rem; }
   .act-launch-inputs { overflow: visible; }
-  .act-launch-inputs .leader-launch-form { height: auto; overflow: visible; grid-template-rows: auto auto; }
+  .act-launch-inputs .leader-launch-form { height: auto; overflow: visible; grid-template-rows: auto; }
   .act-launch-inputs .leader-launch-layout { height: auto; overflow: visible; }
   .act-launch-inputs .leader-launch-primary { height: auto; max-height: none; overflow: visible; }
   .act-launch-inputs .leader-launch-work,
   .act-launch-inputs .leader-launch-config { overflow: visible; }
-  .act-launch-inputs .leader-launch-footer { position: sticky; bottom: 0; z-index: 2; }
 }
 @container leader-launch (max-width: 28rem) {
   .leader-launch-footer { flex-wrap: wrap; }
@@ -3260,3 +3255,16 @@
 .leader-launch-advanced > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 4px; }
 .leader-launch-config .leader-launch-field > select { min-height: 44px; }
 .leader-launch-skill > label { min-height: 44px; }
+
+/* Keep launch requirements and submission in the goal card, not in advanced setup. */
+.leader-launch-inputs { display: grid; gap: 10px; min-width: 0; }
+.leader-launch-inputs h4 { margin: 0; font-size: var(--text-size-ui); }
+.leader-launch-inputs p { margin: 0; color: var(--text-secondary); font-size: var(--text-size-ui); }
+.leader-launch-inputs fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.leader-launch-inputs legend { margin-bottom: 6px; font-size: var(--text-size-ui); font-weight: 600; }
+.leader-launch-skill-vars small { margin-left: 4px; color: var(--text-secondary); font-size: var(--text-size-caption); font-weight: 400; }
+.leader-launch-footer > [data-needs-input="true"] { color: var(--status-warning); }
+/* Stop stays labeled even when navigation actions collapse to icons. */
+.act-toolbar-btn.act-stop-btn { width: auto; padding: 0 10px; color: var(--status-error); }
+.act-toolbar-btn.act-stop-btn span { display: inline; }
+.act-stop-btn:disabled { opacity: .45; cursor: not-allowed; }

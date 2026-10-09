@@ -924,6 +924,10 @@ function Inspector({
           </div>
         </div>
         <div className="act-inspector-topactions">
+          <button className="act-toolbar-btn act-stop-btn" type="button" disabled={!isRunning}
+            onClick={() => onStopSession(session.sessionKey)} title="Stop session">
+            <Square size={12} fill="currentColor" aria-hidden /><span>Stop</span>
+          </button>
           {activityCollapsed && <button
             className="act-toolbar-btn act-activity-toggle"
             type="button"
@@ -1427,16 +1431,6 @@ function Inspector({
                 <RotateCcw size={14} strokeWidth={2.25} aria-hidden />
               </button>
             )}
-            <button
-              className="act-icon-action act-icon-action--danger"
-              type="button"
-              disabled={!isRunning}
-              onClick={() => onStopSession(session.sessionKey)}
-              aria-label="Stop"
-              title="Stop"
-            >
-              <Square size={12} fill="currentColor" aria-hidden />
-            </button>
           </div>
         </section>
       </div>

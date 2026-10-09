@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod/v4";
+import { toolDescriptor } from "../tool-contract.ts";
 import { getBridgeServer } from "../../mcp-bridge/server.ts";
 import type { McpBridgeRegistration } from "../../mcp-bridge/registry.ts";
 import type {
@@ -146,8 +146,8 @@ class PiHarness implements AgentHarness {
           manifestDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "swarmcrews-pi-tools-"));
           env["SWARMCREWS_PI_TOOLS_FILE"] = path.join(manifestDirectory, "tools.json");
           fs.writeFileSync(env["SWARMCREWS_PI_TOOLS_FILE"], JSON.stringify(Object.entries(groups).flatMap(([group, defs]) => defs.map(def => ({
-            name: `mcp__${group}__${def.name}`, label: def.name, sourceName: def.name, description: def.description,
-            inputSchema: z.toJSONSchema(def.inputSchema), url: bridge!.urlFor(group),
+            ...toolDescriptor(def), name: `mcp__${group}__${def.name}`, label: def.name, sourceName: def.name,
+            url: bridge!.urlFor(group),
           })))), { mode: 0o600 });
           args.push("--extension", fileURLToPath(new URL("./swarm-tools-extension.mjs", import.meta.url)));
         }

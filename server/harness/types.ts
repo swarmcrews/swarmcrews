@@ -162,8 +162,11 @@ export interface HarnessStartOptions {
 
 /** Result returned by a normalized tool handler. */
 export interface NormalizedToolResult {
-  /** Content blocks — matches the current MCP wire shape. */
+  /** Concise model-facing presentation; not the machine-readable contract. */
   content: Array<{ type: "text"; text: string }>;
+  /** Machine JSON: explicit nulls retained. Plain records/dense arrays, finite
+   * numbers except -0, depth <= 100; no accessors, hidden keys or cycles. */
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
@@ -183,11 +186,10 @@ export interface NormalizedToolAnnotations {
  * Harness-agnostic tool definition. Each harness translates this to its native
  * format inside registerTools().
  *
- *   Claude  → createSdkMcpServer / tool() via server/harness/claude/tools.ts
- *   OpenAI  → function-calling JSON schema + in-process dispatch table
- *
- * Zod is the canonical schema language; harnesses that need JSON Schema call
- * zodToJsonSchema(def.inputSchema) internally.
+ * Claude registers Zod schemas with its public MCP server; other transports use
+ * shared draft-7 descriptors. Inputs must be representable as JSON Schema;
+ * provider-side validation can be stricter than Zod coercion. Handlers receive
+ * parsed inputs and must not repeat non-idempotent input normalization.
  */
 export interface NormalizedToolDef {
   /** Tool name, e.g. "plan_task". */
@@ -195,6 +197,9 @@ export interface NormalizedToolDef {
   description: string;
   /** Zod schema — the single source of truth, converted per-harness. */
   inputSchema: ZodTypeAny;
+  /** Portable object-root contract; nest records/unions inside this envelope.
+   * No output transforms. Failures may omit data; supplied data must match. */
+  outputSchema?: import("zod/v4").ZodObject;
   /** Optional MCP/App safety hints advertised in tools/list descriptors. */
   annotations?: NormalizedToolAnnotations;
   handler: (input: unknown) => Promise<NormalizedToolResult>;

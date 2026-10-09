@@ -1,10 +1,10 @@
 // Isolated visual fixture: no real sessions, projects, or provider calls.
-export async function openResponsiveFixture(page, { assistantText, nodes = [], edges = [] } = {}) {
+export async function openResponsiveFixture(page, { assistantText, nodes = [], edges = [], skills = [] } = {}) {
   const project = {
     id: "layout-review", workspaceId: "layout-review", name: "Layout Review",
     path: "C:/sample/layout-review", sourceRoot: "C:/sample/layout-review",
     hasSidecar: true, lastOpened: new Date().toISOString(), nodes, graph: { edges },
-    transform: { x: 0, y: 0, scale: 1 }, settings: {}, skills: [],
+    transform: { x: 0, y: 0, scale: 1 }, settings: {}, skills,
   };
   const titles = [
     "Improve responsive layouts across laptop screens",
@@ -36,7 +36,7 @@ export async function openResponsiveFixture(page, { assistantText, nodes = [], e
     else if (path === "/api/projects") json = [project];
     else if (path === `/api/projects/${project.id}`) json = project;
     else if (path === "/api/readiness") json = { harnesses: [] };
-    else if (path.includes("skills")) json = [];
+    else if (path.includes("skills")) json = skills;
     else if (path.includes("context")) json = { content: "" };
     return route.fulfill({ json });
   });

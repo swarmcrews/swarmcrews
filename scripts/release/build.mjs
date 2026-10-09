@@ -8,6 +8,7 @@ import { NODE_VERSION, TARGETS, releaseTarget, RUNTIME_PACKAGES, isProviderPacka
 import { collectLicenses, installedPackage, writeNotices } from "./licenses.mjs";
 import { createRequire } from "node:module";
 import { nativeTar } from "./command.mjs";
+import { copyHarnessAssets } from "./harness-assets.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const output = resolve(process.argv[2] ?? join(repo, ".scratch/release-alpha/artifacts"));
@@ -36,7 +37,7 @@ const compiler = join(dirname(compilerManifest), JSON.parse(readFileSync(compile
 run(process.execPath, ["scripts/production-build.mjs"]);
 run(process.execPath, [compiler, "-p", "scripts/release/tsconfig.json", "--outDir", app]);
 cpSync(join(repo, "dist"), join(app, "web"), { recursive: true });
-cpSync(join(repo, "server/harness/pi/swarm-tools-extension.mjs"), join(app, "server/harness/pi/swarm-tools-extension.mjs"));
+copyHarnessAssets(repo, app);
 cpSync(join(repo, "shared/owned-processes.mjs"), join(app, "shared/owned-processes.mjs"));
 for (const file of ["package.json", "package-lock.json"]) cpSync(join(repo, "scripts/release/runtime", file), join(app, file));
 const npmArgs = ["ci", "--ignore-scripts", "--omit=dev", "--omit=optional", "--no-audit", "--no-fund"];

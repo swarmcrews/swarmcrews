@@ -103,8 +103,7 @@
 .tg-flow-node:focus-visible,
 .tg-plan-row:focus-visible,
 .tg-queue-row:focus-visible,
-.tg-task-chip:focus-visible,
-.tg-iteration-step:focus-visible {
+.tg-task-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -701,25 +700,6 @@ button.tg-task-chip,
 .tg-transfer-manifest span { color: var(--text-muted); font: var(--text-size-caption) var(--font-mono); }
 .tg-transfer-manifest strong { margin-top: 4px; font-size: var(--text-size-ui); }
 
-/* Stage / checkpoint continuity */
-.tg-iteration-track { display: grid; min-height: 60px; grid-template-columns: 126px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 10px; border-top: 1px solid var(--border-default); background: var(--bg-secondary); }
-.tg-iteration-summary strong,
-.tg-iteration-summary span { display: block; }
-.tg-iteration-summary strong { font-size: var(--text-size-ui); }
-.tg-iteration-summary span { margin-top: 3px; color: var(--text-muted); font: var(--text-size-caption) var(--font-mono); }
-.tg-iteration-steps { position: relative; display: flex; align-items: flex-start; justify-content: center; gap: 4px; overflow-x: auto; }
-.tg-iteration-steps::before { position: absolute; top: 10px; right: 4%; left: 4%; height: 1px; background: var(--border-hover); content: ""; }
-.tg-iteration-step { position: relative; z-index: 1; display: flex; min-width: 58px; align-items: center; flex-direction: column; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--text-dim); cursor: pointer; font: var(--text-size-caption) var(--font-mono); }
-.tg-iteration-dot { display: grid; width: 21px; height: 21px; place-items: center; border: 1px solid var(--border-hover); border-radius: 50%; background: var(--bg-secondary); }
-.tg-iteration-step--done { color: var(--success-color); }
-.tg-iteration-step--done .tg-iteration-dot { border-color: var(--success-color); }
-.tg-iteration-step--active { color: var(--status-creating); }
-.tg-iteration-step--active .tg-iteration-dot { border-color: var(--status-creating); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-creating) 15%, transparent); }
-.tg-iteration-step--attention { color: var(--danger-color); }
-.tg-iteration-step--attention .tg-iteration-dot { border-color: var(--danger-color); }
-.tg-iteration-step--checkpoint .tg-iteration-dot { border-radius: 4px; transform: rotate(45deg); }
-.tg-iteration-note { color: var(--text-muted); font: var(--text-size-caption) var(--font-mono); white-space: nowrap; }
-
 /* Overview, queue and timeline */
 .tg-overview { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 14px; }
 .tg-metrics { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 8px; }
@@ -853,8 +833,6 @@ button.tg-task-chip,
   .tg-rail-scrim { position: absolute; z-index: 19; inset: 0; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: color-mix(in srgb, var(--bg-primary) 58%, transparent); }
   .tg-header-actions .tg-view-toggle { display: none; }
   .tg-close { min-width: 44px; min-height: 44px; }
-  .tg-iteration-note { display: none; }
-  .tg-iteration-track { grid-template-columns: 100px minmax(0, 1fr); }
 }
 
 @media (max-width: 650px) {
@@ -892,10 +870,6 @@ button.tg-task-chip,
   /* The adjacent reading line names the attempt and its blocker. */
   .tg-queue-row .tg-blocker { display: none; }
   .tg-queue-row__meta { display: none; }
-  .tg-iteration-track { grid-template-columns: 1fr; }
-  .tg-iteration-track { padding-bottom: max(7px, env(safe-area-inset-bottom)); }
-  .tg-iteration-summary { display: none; }
-  .tg-iteration-step { min-width: 42px; font-size: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

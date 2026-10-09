@@ -1,7 +1,7 @@
 {
   "name": "swarmcrews",
   "private": true,
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "license": "Apache-2.0",
   "description": "A spatial workspace for orchestrating coding agents and parallel workflows",
   "keywords": [
@@ -78,7 +78,7 @@
     "@fontsource/space-mono": "5.3.0",
     "@github/copilot-sdk": "1.0.13",
     "@lezer/highlight": "1.2.3",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@openai/codex-sdk": "^0.156.1",
     "ajv": "8.20.0",
     "better-sqlite3": "^13.0.3",
@@ -113,13 +113,15 @@
     "vitest": "4.1.11"
   },
   "overrides": {
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "proxy-addr": "2.0.8"
   },
   "pnpm": {
     "overrides": {
       "fast-uri": "3.1.8",
       "ip-address": "10.7.3",
-      "qs": "6.16.0"
+      "qs": "6.16.0",
+      "proxy-addr": "2.0.8"
     },
     "onlyBuiltDependencies": [
       "esbuild"

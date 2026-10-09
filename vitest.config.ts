@@ -14,6 +14,11 @@ import path from "node:path";
  */
 
 const ROOT = path.resolve(import.meta.dirname);
+// Agent/commit-hook processes can inherit NODE_ENV=production from the app.
+// These suites need React's act() and Node-backed jsdom setup, not production
+// React or Vite's production browser-external stubs. Set this before Vite
+// resolves its environments; worker-only test.env is too late for transforms.
+process.env["NODE_ENV"] = "test";
 
 export default defineConfig({
   test: {
@@ -81,6 +86,7 @@ export default defineConfig({
             "src/**/*.test.tsx",
             "src/**/*.dom.test.ts",
             "tests/contracts/test-storage.test.ts",
+            "tests/contracts/test-runtime.test.ts",
           ],
           exclude: ["node_modules/**", "dist/**", ".canvas-worktrees/**"],
         },

@@ -56,7 +56,25 @@ export function jsonResult(
   };
 }
 
-/** Serialize as compact JSON with null/undefined object fields elided. */
+/**
+ * Machine data and display text are independent. Unlike jsonResult's display
+ * compaction, this preserves explicit nulls. Invocation validates JSON safety.
+ */
+export function structuredResult(
+  data: Record<string, unknown>,
+  opts?: { text?: string; isError?: boolean },
+): NormalizedToolResult {
+  return {
+    content: [{ type: "text", text: opts?.text ?? JSON.stringify(data) }],
+    structuredContent: data,
+    ...(opts?.isError ? { isError: true } : {}),
+  };
+}
+
+// Shared JS also runs inside Pi's standalone extension; no TypeScript loader.
+export { toolResultText } from "./tool-result-text.mjs";
+
+/** Serialize display-only JSON with null/undefined object fields elided. */
 export function compactJson(value: unknown): string {
   return JSON.stringify(stripAbsent(value));
 }

@@ -139,6 +139,8 @@ jobs:
         run: pnpm test:smoke
       - name: Test repository folder picker on desktop and mobile
         run: pnpm exec playwright test tests/e2e/repository-path-picker.spec.mjs
+      - name: Test production mobile styles and layout
+        run: pnpm exec playwright test --config playwright.production.config.mjs
       - name: Upload browser diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1

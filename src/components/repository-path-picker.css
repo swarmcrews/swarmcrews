@@ -1,25 +1,57 @@
 .repository-path-picker { min-width: 0; }
-.repository-path-picker__label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.repository-path-picker__label-row label { color: var(--text-dim); font: 600 11px/1.2 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; }
-.repository-path-picker__help { margin: 4px 0 6px; color: var(--text-muted); font: 400 11px/1.3 var(--font-sans); }
-.repository-path-picker input { width: 100%; min-width: 0; height: 40px; box-sizing: border-box; padding: 8px 11px; color: var(--text-primary); font: 500 13px/1.35 var(--font-mono); background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-control); outline: none; }
-.repository-path-picker input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent); }
-.repository-path-picker__browse, .repository-path-picker__roots button, .repository-path-picker__crumbs button, .repository-path-picker__parent, .repository-path-picker__use { border: 1px solid var(--border-default); border-radius: var(--radius-control); color: var(--text-secondary); background: var(--bg-elevated); cursor: pointer; }
-.repository-path-picker__browse { min-height: 26px; padding: 3px 8px; font: 600 11px/1 var(--font-sans); }
-.repository-path-picker__panel { margin-top: 6px; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--bg-secondary); }
-.repository-path-picker__roots, .repository-path-picker__crumbs { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-default); }
-.repository-path-picker__roots button, .repository-path-picker__crumbs button, .repository-path-picker__parent, .repository-path-picker__use { min-height: 25px; padding: 3px 7px; font: 500 11px/1.1 var(--font-mono); }
-.repository-path-picker__parent, .repository-path-picker__use { margin: 6px 0 0 8px; }
-.repository-path-picker__use { color: var(--accent); }
-.repository-path-picker__entries { max-height: 180px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
-.repository-path-picker__entries li { display: grid; min-width: 0; gap: 2px; padding: 9px 10px; color: var(--text-primary); text-align: left; cursor: pointer; }
-.repository-path-picker__entries li[aria-selected="true"], .repository-path-picker__entries li:hover { background: var(--state-hover); }
-.repository-path-picker__entries span { overflow-wrap: anywhere; }
-.repository-path-picker__toolbar { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; }
-.repository-path-picker__toolbar button { padding: 5px; color: var(--text-secondary); background: transparent; border: 0; cursor: pointer; }
-.repository-path-picker button:focus-visible, .repository-path-picker__entries li:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.repository-path-picker__roots button, .repository-path-picker__crumbs button { max-width: 100%; overflow-wrap: anywhere; }
-.repository-path-picker__entries small { overflow: hidden; color: var(--text-muted); font: 11px/1.2 var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.repository-path-picker__state { padding: 8px 10px; color: var(--text-muted); font: 12px/1.35 var(--font-sans); }
+.repository-path-picker__label-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.repository-path-picker__label-row label { color: var(--text-secondary); font: 600 .8125rem/1.3 var(--font-sans); }
+.repository-path-picker__help { margin: 4px 0 8px; color: var(--text-secondary); font: 400 .75rem/1.5 var(--font-sans); }
+.repository-path-picker input { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 10px 12px; color: var(--text-primary); font: 500 .875rem/1.5 var(--font-mono); background: var(--bg-primary); border: 1px solid var(--border-default); border-radius: var(--radius-control); outline: none; }
+.repository-path-picker input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent); }
+.repository-path-picker button { display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; gap: 6px; min-height: 36px; max-width: 100%; padding: 7px 10px; color: var(--text-secondary); font: 550 .75rem/1.4 var(--font-sans); background: var(--bg-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-control); cursor: pointer; overflow-wrap: anywhere; }
+.repository-path-picker button svg { flex-shrink: 0; }
+.repository-path-picker button:hover:not(:disabled) { color: var(--text-primary); background: var(--state-hover); border-color: var(--border-hover); }
+.repository-path-picker button:disabled { opacity: .5; cursor: not-allowed; }
+.repository-path-picker .repository-path-picker__browse { color: var(--text-primary); }
+.repository-path-picker__selection { display: grid; gap: 3px; margin-top: 4px; }
+.repository-path-picker__selection > span:first-child { color: var(--text-secondary); font: 500 .75rem/1.4 var(--font-sans); }
+.repository-path-picker__value { color: var(--text-primary); font: 400 .8125rem/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.repository-path-picker__panel { margin-top: 8px; overflow: hidden; border: 1px solid var(--border-hover); border-radius: 8px; background: var(--bg-secondary); }
+.repository-path-picker__toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; padding: 8px 12px; border-bottom: 1px solid var(--border-default); background: var(--bg-surface); }
+.repository-path-picker__toolbar strong { color: var(--text-primary); font: 600 .8125rem/1.4 var(--font-sans); }
+.repository-path-picker__toolbar > div { display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 4px; margin-left: auto; }
+.repository-path-picker__toolbar button { background: transparent; border-color: transparent; }
+.repository-path-picker__toolbar button:first-child { flex-shrink: 1; min-width: 0; }
+.repository-path-picker__roots, .repository-path-picker__crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--border-default); }
+.repository-path-picker__roots button { font-family: var(--font-mono); text-align: left; flex-shrink: 1; }
+.repository-path-picker__crumbs { gap: 0; }
+.repository-path-picker__crumbs button { background: transparent; border-color: transparent; text-align: left; flex-shrink: 1; }
+.repository-path-picker__crumbs button:not(:last-child)::after { content: "/"; margin-left: 6px; color: var(--text-muted); }
+.repository-path-picker__directory { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px; border-bottom: 1px solid var(--border-default); }
+.repository-path-picker__directory > div { display: grid; flex: 1 1 220px; min-width: 0; gap: 4px; }
+.repository-path-picker__directory > div > span:first-child { color: var(--text-secondary); font: 500 .75rem/1.4 var(--font-sans); }
+.repository-path-picker__directory-path { color: var(--text-primary); font: 500 .8125rem/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.repository-path-picker .repository-path-picker__use { color: var(--text-on-accent); background: var(--accent); border-color: var(--accent); }
+.repository-path-picker .repository-path-picker__use:hover { color: var(--text-on-accent); background: var(--accent); border-color: var(--accent); filter: brightness(1.08); }
+.repository-path-picker__list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 6px 12px; }
+.repository-path-picker__list-heading > span { color: var(--text-secondary); font: 500 .75rem/1.4 var(--font-sans); }
+.repository-path-picker .repository-path-picker__parent { background: transparent; border-color: transparent; }
+.repository-path-picker__entries { position: relative; max-height: 20rem; margin: 0; padding: 4px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; list-style: none; }
+.repository-path-picker__entries li { display: grid; grid-template-columns: 20px minmax(0, 1fr) 16px; align-items: center; min-width: 0; min-height: 64px; box-sizing: border-box; gap: 12px; padding: 10px 12px; color: var(--text-primary); border-left: 3px solid transparent; border-radius: 4px; text-align: left; cursor: pointer; }
+.repository-path-picker__entries li + li { margin-top: 2px; }
+.repository-path-picker__entries li:hover { background: var(--state-hover); }
+.repository-path-picker__entries li[aria-selected="true"] { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated)); }
+.repository-path-picker__entries li > svg { color: var(--text-secondary); }
+.repository-path-picker__entries li[aria-selected="true"] > svg { color: var(--accent); }
+.repository-path-picker__entry-copy { display: grid; min-width: 0; gap: 4px; }
+.repository-path-picker__entry-copy > span { color: var(--text-primary); font: 600 .875rem/1.4 var(--font-sans); overflow-wrap: anywhere; }
+.repository-path-picker__entries small { display: block; color: var(--text-secondary); font: 400 .8125rem/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.repository-path-picker button:focus-visible, .repository-path-picker__entries li:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.repository-path-picker__state { padding: 14px 12px; color: var(--text-secondary); font: 400 .8125rem/1.5 var(--font-sans); overflow-wrap: anywhere; }
+.repository-path-picker__state p { margin: 0 0 10px; }
 .repository-path-picker__state--error { color: var(--status-error); }
 .repository-path-picker__state--info { color: var(--info-color); background: var(--info-bg); }
+.repository-path-picker__keyboard-help { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; padding: 10px 12px; color: var(--text-secondary); font: 400 .75rem/1.5 var(--font-sans); border-top: 1px solid var(--border-default); }
+
+@media (max-width: 600px) {
+  .repository-path-picker button { min-height: 40px; }
+  .repository-path-picker__entries { max-height: 16rem; }
+  .repository-path-picker__entries li { gap: 8px; padding: 10px 8px; }
+  .repository-path-picker__toolbar { padding: 8px; }
+}

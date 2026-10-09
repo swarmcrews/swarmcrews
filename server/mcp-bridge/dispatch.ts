@@ -14,12 +14,8 @@
  * spinning up the network stack.
  */
 
-import { z } from "zod/v4";
-import type {
-  NormalizedToolAnnotations,
-  NormalizedToolDef,
-  NormalizedToolResult,
-} from "../harness/types.ts";
+import type { NormalizedToolDef } from "../harness/types.ts";
+import { invokeTool, toolDescriptor } from "../harness/tool-contract.ts";
 
 // MCP protocol version we implement and report from `initialize`.
 export const PROTOCOL_VERSION = "2025-06-18";
@@ -164,7 +160,7 @@ export async function dispatchMethod(
       return {
         jsonrpc: "2.0",
         id,
-        result: { tools: tools.map(toMcpToolDescriptor) },
+        result: { tools: tools.map(toolDescriptor) },
       };
 
     case "tools/call":
@@ -208,88 +204,9 @@ async function handleToolsCall(
     };
   }
 
-  let result: NormalizedToolResult;
-  try {
-    const parsedArgs = def.inputSchema.safeParse(args ?? {});
-    if (!parsedArgs.success) {
-      return {
-        jsonrpc: "2.0",
-        id,
-        result: {
-          content: [
-            {
-              type: "text",
-              text: `Tool "${name}" received invalid arguments: ${formatZodIssues(parsedArgs.error.issues)}`,
-            },
-          ],
-          isError: true,
-        },
-      };
-    }
-    result = await def.handler(parsedArgs.data);
-  } catch (err) {
-    return {
-      jsonrpc: "2.0",
-      id,
-      result: {
-        content: [{ type: "text", text: `Tool "${name}" threw: ${errorMessage(err)}` }],
-        isError: true,
-      },
-    };
-  }
-  return { jsonrpc: "2.0", id, result };
-}
-
-/**
- * Convert a NormalizedToolDef to the MCP `tools/list` descriptor shape:
- * `{ name, description, inputSchema: <JSON Schema> }`. Zod v4's
- * `z.toJSONSchema` is the canonical converter.
- */
-function toMcpToolDescriptor(def: NormalizedToolDef): {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: Required<Pick<
-    NormalizedToolAnnotations,
-    "readOnlyHint" | "destructiveHint" | "openWorldHint"
-  >> &
-    Pick<NormalizedToolAnnotations, "idempotentHint">;
-} {
-  const inputSchema = z.toJSONSchema(def.inputSchema) as Record<string, unknown>;
-  return {
-    name: def.name,
-    description: def.description,
-    inputSchema,
-    annotations: normalizeAnnotations(def.annotations),
-  };
-}
-
-function normalizeAnnotations(
-  annotations: NormalizedToolAnnotations | undefined,
-): Required<Pick<
-  NormalizedToolAnnotations,
-  "readOnlyHint" | "destructiveHint" | "openWorldHint"
->> &
-  Pick<NormalizedToolAnnotations, "idempotentHint"> {
-  return {
-    readOnlyHint: annotations?.readOnlyHint ?? false,
-    destructiveHint: annotations?.destructiveHint ?? false,
-    openWorldHint: annotations?.openWorldHint ?? false,
-    ...(annotations?.idempotentHint !== undefined
-      ? { idempotentHint: annotations.idempotentHint }
-      : {}),
-  };
+  return { jsonrpc: "2.0", id, result: await invokeTool(def, args) };
 }
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function formatZodIssues(issues: z.core.$ZodIssue[]): string {
-  return issues
-    .map((issue) => {
-      const path = issue.path.length > 0 ? issue.path.join(".") : "<root>";
-      return `${path}: ${issue.message}`;
-    })
-    .join("; ");
 }

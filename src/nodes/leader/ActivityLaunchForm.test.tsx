@@ -1,7 +1,8 @@
 import { act, createRef, useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HarnessListProvider } from "../../use-harness-list.tsx";
+import { registerSkill, unregisterSkill } from "../../skills/registry.ts";
 import { ActivityLaunchForm } from "./ActivityLaunchForm.tsx";
 import { LEADER_DEFAULT_DATA, type LeaderData } from "./types.ts";
 
@@ -215,5 +216,62 @@ describe("Activity launch model picker", () => {
     expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("opus");
     expect(screen.getByText("Selected model unavailable")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Launch leader" })).toBeDisabled();
+  });
+});
+
+
+describe("Activity launch contextual controls", () => {
+  afterEach(() => unregisterSkill("launch-input-test"));
+
+  it("exposes selected skill inputs beside the goal, including before a goal is entered", () => {
+    registerSkill({ id: "launch-input-test", name: "Release checks", description: "Check a release",
+      category: "testing", icon: "", accentColor: "#888888", template: "{{target}} {{notes}} {{mode}}",
+      variables: [
+        { name: "target", label: "Target", type: "text", required: true },
+        { name: "notes", label: "Notes", type: "textarea", required: true },
+        { name: "mode", label: "Mode", type: "select", required: true, options: [{ value: "safe", label: "Safe" }] },
+      ] });
+    let receive: ((message: unknown) => void) | undefined;
+    const submit = vi.fn(); const keyDown = vi.fn();
+    function Probe() {
+      const [data, setData] = useState<LeaderData>({ ...LEADER_DEFAULT_DATA, skillIds: ["launch-input-test"] });
+      const [input, setInput] = useState("");
+      return <ActivityLaunchForm nodeId="required" data={data} input={input} slashCommands={[]}
+        promptPlaceholder="Goal" submitDisabled={false} submitActive textareaRef={createRef<HTMLTextAreaElement>()}
+        onInputChange={setInput} onKeyDown={keyDown} onSubmit={submit}
+        onUpdate={patch => setData(previous => ({ ...previous, ...patch }))} />;
+    }
+    render(<HarnessListProvider connected send={vi.fn()} subscribe={listener => {
+      receive = listener; return () => undefined;
+    }}><Probe /></HarnessListProvider>);
+    act(() => receive?.({ type: "harness_list", harnesses: [{ name: "claude", capabilities: { permissionPrompts: true },
+      models: [{ id: "opus", label: "Opus" }], builtInTools: [], commands: [], agents: [], account: { provider: "anthropic" } }] }));
+    const advanced = screen.getByText("Orchestration & skills").closest("details")!;
+    expect(advanced).not.toHaveAttribute("open");
+    expect(screen.getByRole("status", { name: "Launch readiness" })).toHaveTextContent("Complete required skill inputs");
+    const settings = screen.getByRole("group", { name: "Release checks" });
+    expect(settings.closest("details")).toBeNull();
+    for (const name of ["Target", "Notes", "Mode"]) {
+      expect(within(settings).getByLabelText(new RegExp(name))).toBeRequired();
+    }
+    expect(screen.getByLabelText(/Mode Required/)).toHaveValue("");
+    const launch = screen.getByRole("button", { name: "Launch leader" });
+    expect(launch.closest(".leader-launch-work")).toContainElement(screen.getByPlaceholderText("Goal"));
+    fireEvent.change(screen.getByPlaceholderText("Goal"), { target: { value: "Ship it" } });
+    fireEvent.keyDown(screen.getByPlaceholderText("Goal"), { key: "Enter" });
+    expect(keyDown).not.toHaveBeenCalled();
+    expect(launch).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Target Required/), { target: { value: "release" } });
+    fireEvent.change(screen.getByLabelText(/Notes Required/), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText(/Mode Required/), { target: { value: "safe" } });
+    expect(launch).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Notes Required/), { target: { value: "Verify first" } });
+    expect(launch).toBeEnabled();
+    fireEvent.click(launch);
+    expect(submit).toHaveBeenCalledOnce();
+    fireEvent.click(advanced.querySelector("summary")!);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Release checks" }));
+    expect(screen.queryByRole("group", { name: "Release checks" })).not.toBeInTheDocument();
+    expect(launch).toBeEnabled();
   });
 });

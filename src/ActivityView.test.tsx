@@ -2701,6 +2701,9 @@ describe("ActivityView", () => {
     fireEvent.click(screen.getByRole("button", { name: /running one/i }));
     const stop = screen.getByRole("button", { name: /^stop$/i });
     expect(stop).toBeEnabled();
+    expect(stop.closest(".act-inspector-topbar")).not.toBeNull();
+    expect(stop).toHaveTextContent("Stop");
+    expect(stop.closest(".act-context-panel")).toBeNull();
     fireEvent.click(stop);
     expect(onStopSession).toHaveBeenCalledWith("run1");
   });

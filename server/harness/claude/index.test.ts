@@ -8,7 +8,8 @@ import { getRunInvocation, startRunInvocation } from "../../work-item-invocation
 const sdkMock = vi.hoisted(() => ({
   query: vi.fn(),
   createSdkMcpServer: vi.fn(),
-  tool: vi.fn(),
+  registerTool: vi.fn(),
+  setRequestHandler: vi.fn(),
 }));
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => sdkMock);
@@ -106,19 +107,11 @@ beforeEach(() => {
   disablePersistence();
   sdkMock.query.mockReset();
   sdkMock.createSdkMcpServer.mockReset();
-  sdkMock.tool.mockReset();
+  sdkMock.registerTool.mockReset().mockReturnValue({ enabled: true });
+  sdkMock.setRequestHandler.mockReset();
   sdkMock.createSdkMcpServer.mockImplementation((config: unknown) => ({
-    kind: "mock-mcp-server",
-    config,
+    kind: "mock-mcp-server", config, instance: { registerTool: sdkMock.registerTool, server: { setRequestHandler: sdkMock.setRequestHandler } },
   }));
-  sdkMock.tool.mockImplementation(
-    (name: string, description: string, inputSchema: unknown, handler: unknown) => ({
-      name,
-      description,
-      inputSchema,
-      handler,
-    }),
-  );
 });
 
 afterEach(() => {
@@ -263,22 +256,11 @@ describe("ClaudeHarness.start()", () => {
     );
 
     expect(sdkMock.createSdkMcpServer).toHaveBeenCalledTimes(1);
-    expect(sdkMock.createSdkMcpServer).toHaveBeenCalledWith({
-      name: "internal",
-      tools: [
-        expect.objectContaining({ name: "alpha" }),
-      ],
-    });
+    expect(sdkMock.createSdkMcpServer).toHaveBeenCalledWith({ name: "internal" });
+    expect(sdkMock.registerTool.mock.calls.map(call => call[0])).toEqual(["alpha"]);
     expect(lastQueryOptions()["mcpServers"]).toEqual({
-      internal: {
-        kind: "mock-mcp-server",
-        config: {
-          name: "internal",
-          tools: [
-            expect.objectContaining({ name: "alpha" }),
-              ],
-        },
-      },
+      internal: { kind: "mock-mcp-server", config: { name: "internal" },
+        instance: { registerTool: sdkMock.registerTool, server: { setRequestHandler: sdkMock.setRequestHandler } } },
       external: externalServer,
     });
   });
@@ -310,17 +292,9 @@ describe("ClaudeHarness.start()", () => {
       "Read",
     ]);
     expect(sdkMock.createSdkMcpServer.mock.calls.map((call) => call[0])).toEqual([
-      {
-        name: "alpha",
-        tools: [expect.objectContaining({ name: "beta" })],
-      },
-      {
-        name: "zeta",
-        tools: [
-          expect.objectContaining({ name: "gamma" }),
-        ],
-      },
+      { name: "alpha" }, { name: "zeta" },
     ]);
+    expect(sdkMock.registerTool.mock.calls.map(call => call[0])).toEqual(["beta", "gamma"]);
     expect(Object.keys(lastQueryOptions()["mcpServers"] as Record<string, unknown>)).toEqual([
       "alpha",
       "local",

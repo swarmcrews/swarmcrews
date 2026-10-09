@@ -1,7 +1,7 @@
 #!/bin/sh
 # Download-only installer: no source checkout, build, package manager or harness setup.
 set -eu
-version=0.1.0-alpha.1
+version=0.1.0-alpha.2
 if [ "${1:-}" = "--help" ]; then
   printf '%s\n' "Usage: sh portable.sh [new-install-directory]" "Downloads Swarmcrews $version; does not install harnesses or start the app."
   exit 0

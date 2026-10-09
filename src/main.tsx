@@ -64,9 +64,12 @@ if (window.location.pathname === "/file-view") {
   // history, so Back doesn't bounce them between shells.
   window.location.replace(buildMobileRedirectUrl(window.location));
 } else {
-  const RootApp = lazy(() =>
-    view === "mobile" ? import("./mobile/MobileApp.tsx") : import("./App.tsx"),
-  );
+  // Keep each import in its own loader. A conditional inside one loader can
+  // collapse Vite's CSS preload lists onto the desktop branch in production,
+  // mounting MobileApp without its stylesheet (dev style injection hides it).
+  const RootApp = view === "mobile"
+    ? lazy(() => import("./mobile/MobileApp.tsx"))
+    : lazy(() => import("./App.tsx"));
 
   createRoot(document.getElementById("root")!).render(
     <StrictMode>

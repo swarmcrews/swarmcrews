@@ -33,8 +33,10 @@ export function connectionError(error: unknown): string {
   if ((error as { code?: string })?.code === "MCP_REDIRECT") return "The server redirected to another address. Enter its final MCP URL and test again.";
   if (error instanceof UnauthorizedError || (error as { code?: number })?.code === 401) return "Sign in or update your credentials, then test the connection again.";
   if ((error as { code?: string })?.code === "ENOENT") return "Command not found on the Swarmcrews host. Check the command and install its runtime.";
-  if (error instanceof Error && /timeout|timed out|aborted/i.test(error.message)) return "The server did not respond in time. Check its address or command and retry.";
-  return "Could not complete the MCP request. Check the server, credentials and configuration, then retry.";
+  const outcome = "Side effects may already have occurred; inspect state before retrying.";
+  if (error instanceof Error && (error.name === "AbortError" || /aborted/i.test(error.message))) return `The MCP request was cancelled. ${outcome}`;
+  if (error instanceof Error && /timeout|timed out/i.test(error.message)) return `The server did not respond in time. ${outcome}`;
+  return `Could not confirm the MCP request outcome. Check the server, credentials and configuration. ${outcome}`;
 }
 export function recordConnectionFailure(project: string, id: string, error: unknown): ConnectionStatus {
   const status: ConnectionStatus = { state: error instanceof UnauthorizedError || (error as { code?: number })?.code === 401 ? "auth_required" : "error",

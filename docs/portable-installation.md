@@ -14,7 +14,7 @@ and Windows Server 2022 x64. Linux/Windows ARM64 archives are not provided.
 
 ## Download-only installers
 
-For **v0.1.0-alpha.1**, download and inspect the installer at that exact tag before
+For **v0.1.0-alpha.2**, download and inspect the installer at that exact tag before
 running it. These installers verify the archive's SHA-256, reject unsafe archive
 paths, and require a **new** destination. They never fall back to building source,
 install a harness, launch the app, or change your PATH. An unavailable release or
@@ -23,17 +23,17 @@ failed download stops installation; there is no fallback to `main` or `latest`.
 Linux/macOS (curl, tar, and a SHA-256 utility required):
 
 ```sh
-curl --fail --location https://raw.githubusercontent.com/swarmcrews/swarmcrews/v0.1.0-alpha.1/install/portable.sh -o swarmcrews-portable.sh
+curl --fail --location https://raw.githubusercontent.com/swarmcrews/swarmcrews/v0.1.0-alpha.2/install/portable.sh -o swarmcrews-portable.sh
 # Inspect swarmcrews-portable.sh, then:
-sh swarmcrews-portable.sh "$HOME/.local/opt/swarmcrews-0.1.0-alpha.1"
+sh swarmcrews-portable.sh "$HOME/.local/opt/swarmcrews-0.1.0-alpha.2"
 ```
 
 Windows PowerShell:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/swarmcrews/swarmcrews/v0.1.0-alpha.1/install/portable.ps1 -OutFile swarmcrews-portable.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/swarmcrews/swarmcrews/v0.1.0-alpha.2/install/portable.ps1 -OutFile swarmcrews-portable.ps1
 # Inspect swarmcrews-portable.ps1, then:
-.\\swarmcrews-portable.ps1 -Destination "$env:LOCALAPPDATA\\Swarmcrews\\0.1.0-alpha.1"
+.\\swarmcrews-portable.ps1 -Destination "$env:LOCALAPPDATA\\Swarmcrews\\0.1.0-alpha.2"
 ```
 
 Run without root/Administrator privileges. These are unsigned portable packages,

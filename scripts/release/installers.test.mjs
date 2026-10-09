@@ -13,7 +13,8 @@ for (const scenario of ["verified", "corrupt", "existing"]) {
     const root = mkdtempSync(join(tmpdir(), "portable-installer-"));
     try {
       const target = releaseTarget();
-      const name = `swarmcrews-0.1.0-alpha.1-${target}`;
+      const { version } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+      const name = `swarmcrews-${version}-${target}`;
       const win = process.platform === "win32";
       const tree = join(root, name); mkdirSync(join(tree, "runtime"), { recursive: true });
       writeFileSync(join(tree, win ? "swarmcrews.cmd" : "swarmcrews"), "must not execute");

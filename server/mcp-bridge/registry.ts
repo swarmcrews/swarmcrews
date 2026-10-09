@@ -22,6 +22,7 @@
 
 import { randomBytes } from "node:crypto";
 import type { NormalizedToolDef } from "../harness/types.ts";
+import { toolDescriptor } from "../harness/tool-contract.ts";
 
 /**
  * What a caller receives from `BridgeRegistry.register()`. Stable for the
@@ -103,6 +104,10 @@ export class BridgeRegistry {
           "(usually done by the bridge HTTP server when it starts).",
       );
     }
+
+    // Fail before publishing a callable definition or invalidating a live token.
+    // Discovery must not be required to uncover an unsupported output contract.
+    for (const definitions of Object.values(groups)) for (const def of definitions) toolDescriptor(def);
 
     // Replace any prior registration for this sessionKey (and invalidate its token).
     const prior = this.entries.get(sessionKey);

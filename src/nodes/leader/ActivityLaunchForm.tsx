@@ -59,9 +59,10 @@ function SkillVariables({
         const id = `leader-launch-skill-${skill.id}-${variable.name}`;
         return (
           <label key={variable.name} htmlFor={id}>
-            <span>{variable.label}{variable.required ? <em> *</em> : null}</span>
+            <span>{variable.label} <small>{variable.required ? "Required" : "Optional"}</small></span>
             {variable.type === "select" ? (
-              <select id={id} value={value} onChange={(event) => onChange(variable.name, event.target.value)}>
+              <select id={id} required={variable.required} value={value} onChange={(event) => onChange(variable.name, event.target.value)}>
+                <option value="">Select an option…</option>
                 {(variable.options ?? []).map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
@@ -69,6 +70,7 @@ function SkillVariables({
             ) : variable.type === "textarea" ? (
               <textarea
                 id={id}
+                required={variable.required}
                 rows={2}
                 value={value}
                 placeholder={variable.placeholder}
@@ -77,6 +79,7 @@ function SkillVariables({
             ) : (
               <input
                 id={id}
+                required={variable.required}
                 value={value}
                 placeholder={variable.placeholder}
                 onChange={(event) => onChange(variable.name, event.target.value)}
@@ -150,7 +153,7 @@ export function ActivityLaunchForm({
       ?? variable.defaultValue ?? "").trim()));
   const attachments = useContext(PromptAttachmentsContext);
   const readiness = pending ? "Starting leader…" : unavailableReason
-    || (!input.trim() && !attachments?.items.length ? "Describe a goal to launch" : missingVariable ? "Complete required skill settings"
+    || (missingVariable ? "Complete required skill inputs" : !input.trim() && !attachments?.items.length ? "Describe a goal to launch"
       : !harnessesLoaded ? "Checking model availability…"
       : !activeHarness || !selectedModel ? "Selected model unavailable"
       : submitDisabled ? "Launch unavailable" : "Ready to launch");
@@ -232,7 +235,27 @@ export function ActivityLaunchForm({
               />
             </div>
 
+            {selectedSkills.some(skill => skill.variables.length > 0) && (
+              <section className="leader-launch-inputs" aria-label="Selected skill inputs">
+                <h4>Skill inputs</h4>
+                <p>Complete required inputs before launching.</p>
+                {selectedSkills.filter(skill => skill.variables.length > 0).map(skill => (
+                  <fieldset key={skill.id}>
+                    <legend>{skill.name}</legend>
+                    <SkillVariables skill={skill} values={data.skillValues?.[skill.id] ?? {}}
+                      onChange={(name, value) => updateSkillValue(skill.id, name, value)} />
+                  </fieldset>
+                ))}
+              </section>
+            )}
             {data.error ? <div className="leader-launch-error" role="alert">{data.error}</div> : null}
+            <footer className="leader-launch-footer">
+              <span role="status" aria-label="Launch readiness" data-needs-input={missingVariable}>{readiness}</span>
+              <button type="button" className="act-launch-btn" disabled={!ready}
+                onClick={() => { if (ready) onSubmit(); }}>
+                {pending ? "Starting leader…" : "Launch leader"}
+              </button>
+            </footer>
           </div>
 
           <aside className="leader-launch-config" aria-label="Run setup">
@@ -378,13 +401,6 @@ export function ActivityLaunchForm({
                             <strong>{skill.name}</strong>
                           </span>
                         </label>
-                        {selected ? (
-                          <SkillVariables
-                            skill={skill}
-                            values={data.skillValues?.[skill.id] ?? {}}
-                            onChange={(name, value) => updateSkillValue(skill.id, name, value)}
-                          />
-                        ) : null}
                       </div>
                     );
                   })}
@@ -396,13 +412,6 @@ export function ActivityLaunchForm({
           </aside>
         </section>
       </div>
-      <footer className="leader-launch-footer">
-        <span role="status">{readiness}</span>
-        <button type="button" className="act-launch-btn" disabled={!ready}
-          onClick={() => { if (ready) onSubmit(); }}>
-          {pending ? "Starting leader…" : "Launch leader"}
-        </button>
-      </footer>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { toolResultText } from "../tool-result-text.mjs";
 
 /** Pi-native tools backed by Swarmcrews. No external MCP initialization here. */
 export default function registerSwarmcrewsTools(pi) {
@@ -7,6 +8,8 @@ export default function registerSwarmcrewsTools(pi) {
   for (const tool of config) {
     pi.registerTool({
       name: tool.name, label: tool.label, description: tool.description, parameters: tool.inputSchema,
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+      ...(tool.annotations ? { annotations: tool.annotations } : {}),
       async execute(_id, args, signal) {
         const response = await fetch(tool.url, {
           method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${bearer}` },
@@ -18,8 +21,17 @@ export default function registerSwarmcrewsTools(pi) {
         if (!body || body.jsonrpc !== "2.0" || body.id !== _id) throw new Error("Invalid Swarmcrews tool response.");
         if (body.error) throw new Error(body.error.message || "Swarmcrews tool failed");
         if (!Array.isArray(body.result?.content)) throw new Error("Invalid Swarmcrews tool result.");
-        if (body.result?.isError) throw new Error(body.result.content?.map(block => block.text || "").join("\n") || "Swarmcrews tool failed");
-        return { content: body.result.content, details: {} };
+        const result = body.result;
+        const structured = result.structuredContent !== undefined;
+        // Pi's ordinary model/history projection does not retain structuredContent.
+        // Text carries the complete data; details also retain it for native replay/UI.
+        // Direct callers/events still receive the original machine channel.
+        return {
+          content: structured ? [{ type: "text", text: toolResultText(result) }] : result.content,
+          details: structured ? { structuredContent: result.structuredContent } : {},
+          ...(structured ? { structuredContent: result.structuredContent } : {}),
+          ...(result.isError ? { isError: true } : {}),
+        };
       },
     });
   }

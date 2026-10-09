@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createConnectionTools, installConnectionTools } from "./tools.ts";
-import { inspectConnection, invokeConnection, closeConnectionScope, invalidateConnection, connectionStatus } from "./runtime.ts";
+import { inspectConnection, invokeConnection, closeConnectionScope, invalidateConnection, connectionStatus, connectionError } from "./runtime.ts";
 import { saveMcpServer } from "../mcp-server-store.ts";
 import { redactEntry, restoreSecrets, saveCredentials, readCredentials, connectionRevision } from "./credentials.ts";
 import type { McpServerEntry } from "../../shared/mcp-servers/types.ts";
@@ -25,7 +25,26 @@ describe("Swarmcrews-owned MCP runtime", () => {
     const call = await tools.find(t => t.name === "call_tool")!.handler({ connectionId: "fixture", name: "echo", arguments: { message: "Swarmcrews E2E" } });
     expect(call.isError).not.toBe(true);
     expect(JSON.parse(call.content[0]!.text)).toMatchObject({ content: [{ text: "Swarmcrews E2E" }], structuredContent: { session: "fixture-1" } });
+    expect(call.structuredContent).toEqual({ result: JSON.parse(call.content[0]!.text) });
+    expect(tools.every(tool => tool.outputSchema !== undefined)).toBe(true);
+    expect(tools.find(t => t.name === "call_tool")!.outputSchema!.safeParse(call.structuredContent).success).toBe(true);
     expect(connectionStatus(project, entry()).state).toBe("ready");
+  });
+  it.each([false, true])("preserves external nulls and structured data on isError=%s", async isError => {
+    const upstream = createMcpFixtureFetch();
+    const external = { content: [{ type: "text", text: "Partial result" }],
+      structuredContent: { cursor: null, rows: [{ value: null }] }, ...(isError ? { isError: true } : {}) };
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body ?? "{}"));
+      if (request.method === "tools/call") return Response.json({ jsonrpc: "2.0", id: request.id, result: external });
+      return upstream(input, init);
+    });
+    saveMcpServer(project, entry());
+    const tool = createConnectionTools(project, "test-a").find(t => t.name === "call_tool")!;
+    const result = await tool.handler({ connectionId: "fixture", name: "echo", arguments: {} });
+    expect(result.structuredContent).toEqual({ result: external });
+    expect(result.isError === true).toBe(isError);
+    expect(tool.outputSchema!.safeParse(result.structuredContent).success).toBe(true);
   });
   it("resolves an isolated child agent's catalog from the registered source project", async () => {
     saveMcpServer(project, entry());
@@ -72,7 +91,7 @@ describe("Swarmcrews-owned MCP runtime", () => {
     expect((await tools.find(t => t.name === "call_tool")!.handler({ connectionId: "fixture", name: "echo", arguments: {} })).isError).toBe(true);
     expect(connectionStatus(project, entry()).state).toBe("untested");
   });
-  it("bounds model results explicitly and never connects after cancellation", async () => {
+  it("bounds external JSON (not final wire bytes) and never connects after cancellation", async () => {
     saveMcpServer(project, entry());
     const controller = new AbortController();
     const cancelled = createConnectionTools(project, "test-a", controller.signal);
@@ -82,6 +101,7 @@ describe("Swarmcrews-owned MCP runtime", () => {
     const tools = createConnectionTools(project, "test-a");
     const result = await tools.find(t => t.name === "call_tool")!.handler({ connectionId: "fixture", name: "echo", arguments: { message: "a".repeat(1_000_001) } });
     expect(result.isError).toBe(true); expect(result.content[0]!.text).toContain("exceeds 1 MB");
+    expect(result.content[0]!.text).toContain("inspect state before retrying");
   });
   it("redacts credentials and never reuses OAuth tokens after endpoint changes", () => {
     const remote: McpServerEntry = { id: "fixture", name: "Remote", transport: "http", url: "https://example.com/mcp", headers: { Authorization: "Bearer secret" }, oauth: { clientSecret: "private" } };
@@ -92,4 +112,35 @@ describe("Swarmcrews-owned MCP runtime", () => {
     expect(readCredentials(project, remote)?.tokens?.access_token).toBe("access");
     expect(readCredentials(project, { ...remote, url: "https://other.example/mcp" })).toBeUndefined();
   });
+  it.each([new Error("timeout"), new DOMException("Aborted", "AbortError"), new Error("schema validation")])(
+    "does not advise blindly retrying uncertain external effects", error => {
+      const message = connectionError(error);
+      expect(message).toContain("may already have occurred");
+      expect(message).toContain("inspect state before retrying");
+      if (error.name === "AbortError") expect(message).toContain("cancelled");
+    });
+
+  it("warns of uncertain effects when the real SDK rejects a completed remote result", async () => {
+    const upstream = createMcpFixtureFetch();
+    let completed = 0;
+    vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body ?? "{}"));
+      if (request.method === "tools/list") return Response.json({ jsonrpc: "2.0", id: request.id, result: { tools: [{
+        name: "mutate", inputSchema: { type: "object" }, outputSchema: { type: "object", properties: { receipt: { type: "string" } }, required: ["receipt"] },
+      }] } });
+      if (request.method === "tools/call") {
+        completed++;
+        return Response.json({ jsonrpc: "2.0", id: request.id, result: { content: [], structuredContent: { receipt: 42 } } });
+      }
+      return upstream(input, init);
+    });
+    saveMcpServer(project, entry());
+    await inspectConnection(project, "fixture", "test-a");
+    const tool = createConnectionTools(project, "test-a").find(t => t.name === "call_tool")!;
+    const result = await tool.handler({ connectionId: "fixture", name: "mutate", arguments: {} });
+    expect(completed).toBe(1);
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain("inspect state before retrying");
+  });
+
 });

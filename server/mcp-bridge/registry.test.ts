@@ -217,4 +217,11 @@ describe("BridgeRegistry", () => {
     const bare = new BridgeRegistry();
     expect(() => bare.register({ sessionKey: "s1", groups: {} })).toThrow(/urlBuilder/);
   });
+  it("rejects unsupported output schemas before replacing a live registration", () => {
+    const original = registry.register({ sessionKey: "s1", groups: { g: [makeDef("valid")] } });
+    const invalid = { ...makeDef("invalid"), outputSchema: z.record(z.string(), z.string()) } as unknown as NormalizedToolDef;
+    expect(() => registry.register({ sessionKey: "s1", groups: { g: [invalid] } })).toThrow(/invalid.*outputSchema.*ZodObject/);
+    expect(registry.lookup({ sessionKey: "s1", group: "g", bearerToken: original.bearerToken }).ok).toBe(true);
+  });
+
 });
