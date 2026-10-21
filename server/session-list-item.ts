@@ -1,3 +1,5 @@
+import { sessionApprovalChildren } from "./session-crew.ts";
+import type { ApprovalChild } from "../shared/session-crew.ts";
 /**
  * SessionListItem — the compact per-session shape broadcast to clients in
  * `session_list` messages, plus the pure builder that derives it from a
@@ -52,6 +54,7 @@ export interface SessionListItem {
    */
   lastActivityAt: number | null;
   reviewLifecycle?: SessionReviewLifecycle;
+  approvalChildren?: ApprovalChild[];
   activeMinions: Array<{
     taskId: string;
     title: string;
@@ -137,6 +140,7 @@ export function buildSessionListItem(
     lastActivityAt,
     reviewLifecycle: { ...s.reviewLifecycle, finalReport: null,
       reviewReason: s.reviewLifecycle.reviewReason?.slice(0, 512) ?? null },
+    approvalChildren: s.workItemId && s.runKind === "primary" ? sessionApprovalChildren(key) : [],
     activeMinions: s.taskState
       ? Array.from(s.taskState.tasks.entries())
           .filter(

@@ -318,3 +318,10 @@ export function topicMatches(filter: string, envelopeTopic: string): boolean {
   if (filter === "*") return true;
   return filter === envelopeTopic;
 }
+
+/** Read invalidation only. Clients refetch the authoritative parent snapshot. */
+export const sessionCrewInvalidatedEnvelopeSchema = wsEnvelopeSchema.extend({
+  type: z.literal("session_crew_invalidated"),
+  sessionKey: z.string().min(1),
+}).refine(envelope => envelope.topic === `session:${envelope.sessionKey}`,
+  { message: "crew invalidation topic must match parent" });

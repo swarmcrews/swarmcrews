@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi, beforeAll } from "vitest";
 
@@ -27,6 +27,7 @@ beforeAll(() => {
 interface ProbeProps {
   socket: ReturnType<typeof createReplaySocket>["socket"];
   initial: MinionData;
+  socketSend?: (message: unknown) => void;
   onState?: (d: MinionData) => void;
 }
 
@@ -34,7 +35,7 @@ interface ProbeProps {
  * Stateful wrapper that holds MinionData and re-renders the node on
  * each `onUpdateData`. Mirrors how Canvas hosts a node in production.
  */
-function Probe({ socket, initial, onState }: ProbeProps) {
+function Probe({ socket, initial, onState, socketSend }: ProbeProps) {
   const [data, setData] = useState<MinionData>(initial);
   const node: CanvasNode = {
     id: "minion-test",
@@ -52,9 +53,7 @@ function Probe({ socket, initial, onState }: ProbeProps) {
       onState?.(nextData);
     },
     socketSubscribe: socket.subscribe,
-    socketSend: () => {
-      /* no-op — auto-advance attempts a send when there's a next task */
-    },
+    socketSend: socketSend ?? socket.send,
   };
   return <MinionNodeRenderer {...props} />;
 }
@@ -350,5 +349,21 @@ describe("MinionNode: ignores messages for other sessionKeys", () => {
     ]);
 
     expect(onState).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Canvas direct tool approvals", () => {
+  it("shows only this session's invocation and sends its exact identity without opening settings or logs", async () => {
+    const { socket, replay } = createReplaySocket();
+    render(<Probe socket={socket} initial={makeInitialData()} />);
+    const request = { id: "direct-approval", sessionKey: "minion-task-a", tool: "Direct command", reason: "Confirm invocation", details: "pwd", expiresAt: Date.now() + 60_000 };
+    await pump(replay, [{ message: { type: "tool_approval_snapshot", sessionKey: "foreign", requests: [{ ...request, sessionKey: "foreign", tool: "Foreign command" }] } },
+      { message: { type: "tool_approval_snapshot", sessionKey: request.sessionKey, requests: [request] } }]);
+    expect(screen.queryByText("Foreign command")).toBeNull();
+    expect(screen.getByText("Allow once · this action only")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: request.sessionKey,
+      approvalId: request.id, approvalDecision: "deny" }));
   });
 });

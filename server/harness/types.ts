@@ -9,6 +9,7 @@
  * consume one wire contract.
  */
 
+import type { RequestToolApproval } from "../../shared/tool-approval.ts";
 import type { ZodTypeAny } from "zod/v4";
 import type { HarnessModelInfo } from "../../shared/harness-model.ts";
 import type { RunMutationCoordination } from "../mutation-coordination.ts";
@@ -33,8 +34,10 @@ export interface HarnessCapabilities {
   promptCaching: boolean;
   /** Whether the harness speaks native MCP (vs. a function-calling shim). */
   mcp: boolean;
-  /** Whether the harness can defer tool calls to a permission prompt. */
+  /** Whether the harness exposes the legacy permission-mode controls. */
   permissionPrompts: boolean;
+  /** Native tool asks can be answered through the application, once per invocation. */
+  toolApprovalRequests?: boolean;
   /** Whether the harness can resume by session ID. */
   resume: boolean;
   /** Whether the harness emits content_block_delta-style streaming partials. */
@@ -112,6 +115,8 @@ export interface HarnessStartOptions {
    * in `buildHarnessStartOpts`.
    */
   sessionKey: string;
+  /** Native asks only; does not override tool, filesystem or enterprise policy. */
+  requestToolApproval?: RequestToolApproval;
   /** Working directory for the agent session. */
   cwd: string;
   /** Initial prompt string or async stream of user turns. */

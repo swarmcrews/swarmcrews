@@ -1,3 +1,4 @@
+import { claudePermissionHandler } from "./permissions.ts";
 /**
  * ClaudeHarness — AgentHarness implementation for the Anthropic Claude SDK.
  *
@@ -58,6 +59,7 @@ const CLAUDE_CAPABILITIES: HarnessCapabilities = {
   promptCaching: true,
   mcp: true,
   permissionPrompts: true,
+  toolApprovalRequests: true,
   resume: true,
   partialMessages: true,
   builtInFilesystem: true,
@@ -195,8 +197,10 @@ class ClaudeHarness implements AgentHarness {
         cwd: opts.cwd,
         resume: opts.resumeId,
         allowedTools: [...opts.allowedTools].sort(compareNames),
+        tools: opts.allowedTools.filter(name => !name.startsWith("mcp__")).sort(compareNames),
         // permissionMode: Claude consumes the normalized mode verbatim.
         permissionMode: opts.permissionMode ?? "auto",
+        canUseTool: claudePermissionHandler(opts),
         abortController,
         includePartialMessages: true,
         systemPrompt: opts.systemPrompt,

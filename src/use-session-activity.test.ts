@@ -519,3 +519,12 @@ describe("initial session loading", () => {
     expect(reduceSessionActivity(state, { type: "socket_reconnected" })).toBe(state);
   });
 });
+
+
+it("keeps the canonical approval projection separate from legacy crew counts through inventory and sync", () => {
+  const approvalChildren = [{ sessionKey: "graph-child", taskId: "node", attemptId: "attempt", attemptNumber: 1, title: "Graph child" }];
+  let state = reduceSessionActivity(emptyState(), { type: "session_list", sessions: [session({ approvalChildren, activeMinions: [] })] });
+  expect(state.sessions[0]).toMatchObject({ approvalChildren, activeMinions: [] });
+  state = reduceSessionActivity(state, { type: "sync_response", sessionKey: "s1", found: true, approvalChildren: [], activeMinions: [] });
+  expect(state.sessions[0]).toMatchObject({ approvalChildren: [], activeMinions: [] });
+});

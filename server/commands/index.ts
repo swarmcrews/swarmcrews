@@ -1,3 +1,4 @@
+import { getToolApprovals, respondToolApproval } from "./respond-tool-approval.ts";
 /**
  * WebSocket command registry + dispatcher.
  *
@@ -67,6 +68,8 @@ import type { WebSocket } from "ws";
  * checker will flag any missing entry.
  */
 export const COMMAND_TABLE = {
+  get_tool_approvals: getToolApprovals,
+  respond_tool_approval: respondToolApproval,
   // Session lifecycle
   create_session: createSession,
   send_message: sendMessage,

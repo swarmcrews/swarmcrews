@@ -524,6 +524,18 @@ describe("useSocket — send", () => {
     ]);
   });
 
+  it("never queues a tool approval while disconnected", async () => {
+    let captured = null as ProbeState | null;
+    const notifications: unknown[] = [];
+    render(<Probe url="ws://x" onState={s => { captured = s; }}
+      onSubscribe={subscribe => { subscribe(msg => notifications.push(msg)); }} />);
+    await flushAsync();
+    act(() => captured!.send({ type: "respond_tool_approval", sessionKey: "s", approvalId: "a", approvalDecision: "allow_once" }));
+    expect(notifications).toContainEqual({ type: "socket_disconnected" });
+    act(() => lastFake().triggerOpen());
+    expect(lastFake().sent).toEqual([]);
+  });
+
   it("queues messages sent before the socket is OPEN and flushes them in order on open", async () => {
     // Regression: tapping "Launch leader" fires `create_session` while the
     // socket may still be CONNECTING. Previously the message was dropped and

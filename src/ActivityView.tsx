@@ -1,3 +1,4 @@
+import { CrewToolApprovals } from "./components/CrewToolApprovals.tsx";
 import { activeWorkspaceId, GLOBAL_WORKSPACE_ID, readWorkspaces } from "./canvas-zones.ts";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
 import { ChatLinkScope } from "./components/ChatLink.tsx";
@@ -976,6 +977,7 @@ function Inspector({
       </header>
 
       <div className="act-compact-navigation" role="group" aria-label="Session view">
+      <CrewToolApprovals approvalChildren={session.approvalChildren} members={minions} sessionKey={session.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />
         <button ref={conversationToggle} type="button" aria-pressed={compactPane === "conversation"}
           onClick={() => setCompactPane("conversation")}>Conversation</button>
         <button type="button" aria-pressed={compactPane === "context"}

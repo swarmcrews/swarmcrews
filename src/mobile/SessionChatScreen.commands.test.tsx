@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createReplaySocket } from "../../tests/harness/ws-replay.ts";
 import { clearAuthToken } from "../api.ts";
 import type { SocketSubscribe } from "../use-socket.ts";
 import { SessionChatScreen, type SessionViewMemory } from "./SessionChatScreen.tsx";
@@ -108,4 +109,41 @@ describe("mobile iteration commands", () => {
     expect(screen.queryByRole("button", { name: "/ Commands" })).not.toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+
+describe("mobile crew tool approvals", () => {
+  it("exposes planned and unplanned child approvals in chat without selecting a child", async () => {
+    mockProject();
+    const { socket, replay } = createReplaySocket();
+    const child = { taskId: "child-task", title: "Mobile child", sessionKey: "mobile-child", status: "running" };
+    render(<SessionChatScreen sessionKey={session.sessionKey} session={{ ...session, activeMinions: [child], taskPlan: [
+      { taskId: "planned", title: "Planned child", description: "", priority: "high", executor: "minion", status: "running",
+        minionSessionKey: "planned-child", result: null, createdAt: 1, completedAt: null },
+    ] }} subscribe={socket.subscribe} send={socket.send} onBack={() => {}} />);
+    expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "mobile-child" });
+    expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "planned-child" });
+    const request = { id: "mobile-approval", sessionKey: "mobile-child", tool: "Child command", reason: "Confirm invocation", details: "pwd", expiresAt: Date.now() + 60_000 };
+    await act(async () => replay([
+      { message: { type: "tool_approval_snapshot", sessionKey: "foreign", requests: [{ ...request, sessionKey: "foreign", tool: "Foreign command" }] } },
+      { message: { type: "tool_approval_snapshot", sessionKey: request.sessionKey, requests: [request] } },
+    ]));
+    expect(screen.queryByText("Foreign command")).toBeNull();
+    expect(screen.getByRole("region", { name: "Tool approvals for Mobile child" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "mobile-child", approvalId: "mobile-approval", approvalDecision: "allow_once" }));
+  });
+});
+
+it("mobile discovers graph-only approval children after chat is mounted", async () => {
+  mockProject();
+  const { socket, replay } = createReplaySocket();
+  render(<SessionChatScreen sessionKey={session.sessionKey} session={{ ...session, activeMinions: [], taskPlan: [] }} subscribe={socket.subscribe} send={socket.send} onBack={() => {}} />);
+  await act(async () => replay([{ message: { type: "sync_response", sessionKey: session.sessionKey, found: true, taskPlan: [], activeMinions: [], approvalChildren: [
+    { sessionKey: "graph-child", taskId: "node", title: "Graph child", attemptId: "attempt", attemptNumber: 1 },
+  ] } as import("../use-socket.ts").ServerMessage }]));
+  expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "graph-child" });
+  await act(async () => replay([{ message: { type: "tool_approval_snapshot", sessionKey: "graph-child", requests: [{ id: "ask", sessionKey: "graph-child", tool: "Graph command", reason: "Confirm", details: "pwd", expiresAt: Date.now() + 60_000 }] } }]));
+  fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+  expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "graph-child", approvalId: "ask", approvalDecision: "allow_once" }));
 });

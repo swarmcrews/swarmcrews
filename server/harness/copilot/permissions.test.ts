@@ -87,3 +87,39 @@ describe("Copilot permission decisions", () => {
     expect(await decide({ ...request, managedApprovalRequired: true })).toEqual({ kind: "user-not-available" });
   });
 });
+
+describe("Copilot interactive adapter", () => {
+  it.each(["always", "on-request"] as const)("explicit %s policy takes precedence over acceptEdits", async approvalPolicy => {
+    const requestToolApproval = vi.fn().mockResolvedValue("deny");
+    const sandboxPolicy = resolveHarnessSandboxPolicy({ worktreeScoped: true,
+      requested: { filesystemScope: "workspace-write", approvalPolicy } });
+    expect(await setup({ permissionMode: "acceptEdits", sandboxPolicy, requestToolApproval }).decide(write)).toEqual({ kind: "reject" });
+    expect(requestToolApproval).toHaveBeenCalledOnce();
+  });
+  it.each([write, shell])("asks once for eligible $kind actions", async (request) => {
+    const requestToolApproval = vi.fn().mockResolvedValue("allow_once");
+    const f = setup({ permissionMode: "default", requestToolApproval });
+    expect(await f.decide(request)).toEqual({ kind: "approve-once" });
+    expect(requestToolApproval).toHaveBeenCalledWith(expect.objectContaining({ tool: request.kind, input: request }), f.controller.signal);
+    requestToolApproval.mockResolvedValueOnce("deny");
+    expect(await f.decide(request)).toEqual({ kind: "reject" });
+  });
+  it("never asks to override enterprise, bypass, filesystem, missing-sandbox or unknown-tool restrictions", async () => {
+    const requestToolApproval = vi.fn().mockResolvedValue("allow_once");
+    const opts = { permissionMode: "default" as const, requestToolApproval };
+    for (const request of [{ ...shell, managedApprovalRequired: true }, { ...shell, requestSandboxBypass: true },
+      { ...write, fileName: "/etc/example" }]) {
+      expect(await setup(opts).decide(request)).toEqual({ kind: "user-not-available" });
+    }
+    expect(await setup(opts, false).decide(shell)).toEqual({ kind: "user-not-available" });
+    expect(await setup({ ...opts, permissionMode: "plan" }).decide(write)).toEqual({ kind: "user-not-available" });
+    expect(requestToolApproval).not.toHaveBeenCalled();
+  });
+  it("rechecks cancellation after the user replies", async () => {
+    const requestToolApproval = vi.fn().mockResolvedValue("allow_once");
+    const f = setup({ permissionMode: "default", requestToolApproval });
+    const decision = f.decide(shell);
+    f.controller.abort();
+    expect(await decision).toEqual({ kind: "reject" });
+  });
+});

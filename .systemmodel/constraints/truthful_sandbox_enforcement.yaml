@@ -6,6 +6,10 @@ applies_to:
   flows: []
   surfaces: []
   files:
+    - shared/tool-approval.ts
+    - server/tool-approvals.ts
+    - server/commands/respond-tool-approval.ts
+    - server/harness/claude/permissions.ts
     - shared/workspace-contracts.ts
     - server/harness/types.ts
     - server/harness/sandbox-policy.ts
@@ -16,9 +20,9 @@ applies_to:
     - server/harness/copilot/permissions.ts
     - src/nodes/leader/SandboxPolicyControls.tsx
 severity: critical
-agent_instruction: Keep Git change mode separate from process sandbox policy; honor an explicit sandbox policy before legacy plan mode, default to workspace-write, and require explicit unrestricted access. Codex uses its native policy. Copilot must apply its native per-session sandbox before prompting on create and resume, deny bypass, check in-process file writes, and fail closed on policy setup errors. Verify native backend behavior with the opt-in integration test before asserting live enforcement; mocked RPC tests alone are insufficient. Label unsupported axes unmanaged.
+agent_instruction: "Keep Git change mode separate from process sandbox policy; honor an explicit sandbox policy before legacy plan mode, default to workspace-write, and require explicit unrestricted access. Codex uses its native policy. Copilot must apply its native per-session sandbox before prompting on create and resume, deny bypass, check in-process file writes, and fail closed on policy setup errors. Verify native backend behavior with the opt-in integration test before asserting live enforcement; mocked RPC tests alone are insufficient. Label unsupported axes unmanaged. Interactive tool approval is an invocation-only capability, separate from permission-mode configuration: retain hard policy denials, never grant session permissions, fence stale/duplicate replies, and settle callbacks denied on timeout, abort or terminal. Reconnect reads live callbacks only; never persist approval authority or queue offline decisions."
 review_gate: gate.sandbox_guarantees
-suggested_tests: [ shared/workspace-contracts.test.ts, server/harness/sandbox-policy.test.ts, server/harness/codex/index.test.ts, server/harness/codex/options.test.ts, src/nodes/leader/SandboxPolicyControls.test.tsx ]
+suggested_tests: [ server/tool-approvals.test.ts, server/session-tool-approvals.test.ts, server/harness/claude/permissions.test.ts, server/harness/copilot/permissions.test.ts, tests/contracts/tool-approval.test.ts, shared/workspace-contracts.test.ts, server/harness/sandbox-policy.test.ts, server/harness/codex/index.test.ts, server/harness/codex/options.test.ts, src/nodes/leader/SandboxPolicyControls.test.tsx ]
 evidence: [ decision.portable_workspace_roots ]
 domain: domain.platform
 scope: domain

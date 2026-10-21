@@ -31,6 +31,9 @@ it("recovers and persists an offscreen leader's session before hydrating its con
   const subscriptions = socket.subscriberCount;
   expect(subscriptions).toBeGreaterThan(0);
   expect(socket.sent).toContainEqual({ type: "sync_session", sessionKey: "leader-offscreen" });
+  // Conversation and canonical approval roster both recover while offscreen.
+  // Visibility hydration must not restart either recovery subscription.
+  const initialSyncs = socket.sent.filter(msg => (msg as { type: string }).type === "sync_session").length;
   const feed = screen.getByLabelText("Conversation messages");
   expect(feed.firstElementChild).toBeEmptyDOMElement(); // Retain the scroll/content shells.
   await act(() => replay([{ message: {
@@ -47,5 +50,5 @@ it("recovers and persists an offscreen leader's session before hydrating its con
   expect(screen.getByText("Recovered while offscreen")).toBeInTheDocument();
   expect(screen.getByLabelText("Conversation messages")).toBe(feed);
   expect(socket.subscriberCount).toBe(subscriptions);
-  expect(socket.sent.filter((msg: unknown) => (msg as { type: string }).type === "sync_session")).toHaveLength(1);
+  expect(socket.sent.filter(msg => (msg as { type: string }).type === "sync_session")).toHaveLength(initialSyncs);
 });

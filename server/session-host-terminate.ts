@@ -85,6 +85,7 @@ export async function terminateSessionHost(
 
   // Capture the close promise BEFORE nulling runControl so we can await it
   // after the synchronous teardown is complete.
+  host.toolApprovals.end();
   const runControl = host.runControl;
   let closePromise: Promise<void> | undefined;
   if ((reason === "close" || reason === "remove") && runControl?.close) {

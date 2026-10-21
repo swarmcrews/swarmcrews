@@ -1,3 +1,4 @@
+import { ToolApprovalPanel } from "../components/ToolApprovalPanel.tsx";
 import { ThinkingGroup } from "../components/ThinkingGroup.tsx";
 import { ThinkingStream } from "../components/ThinkingStream.tsx";
 import { EMPTY_THINKING_STREAM, thinkingStreamPatch } from "../thinking-stream.ts";
@@ -952,6 +953,7 @@ export function MinionNodeRenderer({
         />
       )}
 
+      <ToolApprovalPanel sessionKey={data.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />
       <StatusBannerStack banners={banners} onDismiss={dismissBanner} />
 
       {activeTask && (

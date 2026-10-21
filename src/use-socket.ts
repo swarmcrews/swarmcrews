@@ -1,3 +1,5 @@
+import type { ApprovalChild } from "../shared/session-crew.ts";
+import type { ToolApprovalRequest, ToolApprovalSnapshot } from "../shared/tool-approval.ts";
 import type { IntegrationReviewDiffResponse } from "../shared/integration-review.ts";
 import type { HistoryWindow, HistoryReference } from "../shared/history.ts";
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
@@ -22,6 +24,9 @@ import { browserLogger } from "./logging.ts";
 const log = browserLogger.child("websocket");
 
 export type ServerMessage =
+  | { type: "session_crew_invalidated"; sessionKey: string }
+  | ToolApprovalSnapshot
+  | { type: "socket_disconnected" }
   | IntegrationReviewDiffResponse
   | { type: "socket_reconnected" }
   | { type: "work_item_receipt_pending"; requestId: string }
@@ -49,7 +54,7 @@ export type ServerMessage =
   | { type: "session_compacted"; sessionKey: string; checkpointId?: string; trigger?: "proactive" | "context_recovery"; oldSessionId: string | null; newSessionId: string | null; contextTokensBefore?: number; contextWindowTokens?: number; ratioBefore?: number; timestamp: number }
   | { type: "session_error"; sessionKey: string; error: string; fullError?: string }
   | { type: "sdk_event"; sessionKey: string; runKey?: string; workItemId?: string | null; event: NormalizedEvent; timestamp?: number; historyId?: number; historyRef?: HistoryReference }
-  | { type: "sync_response"; sessionKey: string; runKey?: string; workItemId?: string | null; runKind?: "primary" | "child"; parentRunKey?: string | null; taskId?: string | null; found: boolean; archived?: boolean; status?: string; sessionId?: string | null; cwd?: string; totalCost?: number; turns?: number; usageTotals?: SessionUsageTotals; lastError?: string | null; lastErrorFull?: string | null; events?: SyncEvent[]; history?: HistoryWindow; afterHistoryId?: number; model?: string | null; permissionMode?: string | null; sandboxPolicy?: SandboxResolution | null; initData?: Record<string, unknown>; taskName?: string | null; role?: "leader" | "minion" | "default"; activeMinions?: ActiveMinion[]; taskPlan?: SyncTaskRecord[]; renderState?: RenderState | null; worktree?: { path: string; branch: string } | null; approval?: { requested?: boolean; summary?: string; diff?: unknown; graceUntil?: number } | null; harness?: string; harnessCapabilities?: HarnessCapabilities | null; reviewLifecycle?: SessionReviewLifecycle }
+  | { type: "sync_response"; sessionKey: string; runKey?: string; workItemId?: string | null; runKind?: "primary" | "child"; parentRunKey?: string | null; taskId?: string | null; found: boolean; archived?: boolean; status?: string; sessionId?: string | null; cwd?: string; totalCost?: number; turns?: number; usageTotals?: SessionUsageTotals; lastError?: string | null; lastErrorFull?: string | null; events?: SyncEvent[]; history?: HistoryWindow; afterHistoryId?: number; model?: string | null; permissionMode?: string | null; sandboxPolicy?: SandboxResolution | null; toolApprovals?: ToolApprovalRequest[]; initData?: Record<string, unknown>; taskName?: string | null; role?: "leader" | "minion" | "default"; activeMinions?: ActiveMinion[]; approvalChildren?: ApprovalChild[]; taskPlan?: SyncTaskRecord[]; renderState?: RenderState | null; worktree?: { path: string; branch: string } | null; approval?: { requested?: boolean; summary?: string; diff?: unknown; graceUntil?: number } | null; harness?: string; harnessCapabilities?: HarnessCapabilities | null; reviewLifecycle?: SessionReviewLifecycle }
   | { type: "control_response"; command: string; sessionKey: string | null; requestId: string | null; success: boolean; error?: string; [key: string]: unknown }
   | { type: "session_cleared"; sessionKey: string }
   | { type: "session_task_name"; sessionKey: string; taskName: string }
@@ -102,6 +107,8 @@ export interface HarnessCapabilities {
   promptCaching: boolean;
   mcp: boolean;
   permissionPrompts: boolean;
+  /** Native tool asks can be answered through the application, once per invocation. */
+  toolApprovalRequests?: boolean;
   resume: boolean;
   partialMessages: boolean;
   builtInFilesystem: boolean;
@@ -146,6 +153,7 @@ export interface SessionInfo {
   taskName?: string | null;
   role?: "leader" | "minion" | "default";
   activeMinions?: ActiveMinion[];
+  approvalChildren?: ApprovalChild[];
   taskPlan?: SyncTaskRecord[];
   renderState?: RenderState | null;
   /** Registered harness driving this session (e.g. "claude", "echo"). */
@@ -377,6 +385,7 @@ export function useSocket(url: string): SocketHandle {
       ws.onclose = () => {
         connectingRef.current = false;
         setConnected(false);
+        for (const listener of listenersRef.current) listener.fn({ type: "socket_disconnected" });
         // Clear cached auth token so the next reconnect fetches a fresh one
         // (the server generates a new token on every restart)
         clearAuthToken();
@@ -449,6 +458,12 @@ export function useSocket(url: string): SocketHandle {
     const serialized = JSON.stringify(data);
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(serialized);
+      return;
+    }
+
+    // Invocation decisions must never be queued for an unseen reconnect.
+    if (command.type === "respond_tool_approval") {
+      for (const listener of listenersRef.current) listener.fn({ type: "socket_disconnected" });
       return;
     }
 

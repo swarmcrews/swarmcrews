@@ -1,3 +1,4 @@
+import { ToolApprovals } from "./tool-approvals.ts";
 import { beginSessionDecisionTurn } from "./session-decision-wait.ts";
 import { replaceCanvasAttachments } from "./continuity-attachments.ts";
 import { HistoryBuffer } from "./history-cache.ts";
@@ -129,6 +130,7 @@ export class SessionHost {
 
   /** Registered harness name for this session (e.g. "claude"). */
   harnessName = "claude";
+  readonly toolApprovals: ToolApprovals;
   abortController: AbortController = new AbortController();
   eventStream: AsyncIterable<NormalizedEvent> | null = null;
   runControl: HarnessRunControl | null = null;
@@ -158,7 +160,7 @@ export class SessionHost {
   /** Fence late stream/finalizer callbacks before deleting durable state. */
   markRemoved(): void { this.removed = true; this.historyBuffer.clear(); }
   constructor(id: string, cwd: string) {
-    this.id = id;
+    this.id = id; this.toolApprovals = new ToolApprovals(id);
     this.runKey = id;
     this.cwd = cwd;
   }
@@ -316,9 +318,6 @@ export class SessionHost {
       // Register tools with the harness (grouped by MCP server name).
       harness.registerTools(toolResult.toolGroups);
 
-      // Continuity and the user bubble above retain the original request.
-      // Automatic compaction changes the provider context for this invocation,
-      // never schedules an invocation of its own after a completed response.
       opts = buildDeferredCompactionStartOptions(this, opts) ?? opts;
       const { startOpts } = buildHarnessStartOpts({
         host: this,
@@ -332,6 +331,7 @@ export class SessionHost {
       });
 
       if (abortController.signal.aborted) return;
+      if (harness.capabilities.toolApprovalRequests) startOpts.requestToolApproval = this.toolApprovals.begin(abortController.signal, event => deps.bus.emitToSession(this.id, { ...event }));
       const { events, control } = harness.start(startOpts);
       this.eventStream = events;
       this.runControl = control;
@@ -387,6 +387,7 @@ export class SessionHost {
       }
       drainQueuedWorkItemGuidance(this, deps);
     } finally {
+      this.toolApprovals.end(abortController.signal);
       if (executionDrain) void executionDrain.then(releaseExecution, releaseExecution);
       else releaseExecution();
     }

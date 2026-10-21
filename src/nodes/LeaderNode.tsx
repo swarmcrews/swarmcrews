@@ -1,3 +1,4 @@
+import { CrewToolApprovals } from "../components/CrewToolApprovals.tsx";
 import { ConnectionsPicker } from "../mcp-connections/ConnectionsPicker.tsx";
 import { ChatLinkScope } from "../components/ChatLink.tsx";
 import { LiveChangesPanel } from "../LiveChangesPanel.tsx";
@@ -987,8 +988,7 @@ export function LeaderNodeRenderer({
       {runConfiguration ? `Model: ${runConfiguration.model ?? "Not recorded"} · Harness: ${runConfiguration.harness ?? "Not recorded"} · Permissions: ${runConfiguration.permissionMode ?? "Not recorded"}` : "Loading run configuration…"}
       {fullscreen ? connectionsPicker : toolbarSkills}
     </div>;
-  // Fullscreen's header/drawer only display these fields. Never persist their
-  // unknown sentinels or send them as runtime settings through its callbacks.
+  // Display-only unknown sentinels must not become persisted runtime settings.
   const fullscreenData = data.sessionKey ? { ...data, model: runConfiguration?.model ? data.model : "Not recorded",
     harness: runConfiguration?.harness ? data.harness ?? "Not recorded" : "Not recorded",
     permissionMode: (runConfiguration?.permissionMode ? data.permissionMode : "Not recorded") as PermissionMode } : data;
@@ -1105,7 +1105,7 @@ export function LeaderNodeRenderer({
         </div>
       </header>
 
-      {runtimeToolbar()}
+      <CrewToolApprovals members={minionTasks.map(task => ({ sessionKey: task.minionSessionKey, title: task.title }))} sessionKey={data.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />{runtimeToolbar()}
 
       <StatusBannerStack banners={banners} onDismiss={dismissBanner} />
       {launchNotice ? <div role="status" style={{ padding: "6px 10px", fontSize: 11, background: "var(--warning-bg)", color: "var(--text-primary)" }}>{launchNotice}</div> : null}
@@ -1269,7 +1269,7 @@ export function LeaderNodeRenderer({
           toolbarSlot={runtimeToolbar(true)}
           bannerSlot={
             <>
-              <StatusBannerStack banners={banners} onDismiss={dismissBanner} />
+              <CrewToolApprovals members={minionTasks.map(task => ({ sessionKey: task.minionSessionKey, title: task.title }))} sessionKey={data.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} /><StatusBannerStack banners={banners} onDismiss={dismissBanner} />
               {launchNotice ? <div role="status" style={{ padding: "6px 10px", fontSize: 11, background: "var(--warning-bg)", color: "var(--text-primary)" }}>{launchNotice}</div> : null}
             </>
           }

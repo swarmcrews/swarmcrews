@@ -1,3 +1,4 @@
+import { sessionApprovalChildren } from "../session-crew.ts";
 import { subscribeConnectionSession } from "../session-subscriptions.ts";
 import { persistenceDb } from "../session-persist.ts";
 import { readHistoryPage } from "../session-history.ts";
@@ -59,6 +60,9 @@ export const syncSession: CommandHandler = (ctx, cmd, ws) => {
   }
 
   const db = persistenceDb();
+  const approvalChildren = sessionApprovalChildren(host.runKey, db);
+  // Subscribe even before the child host exists: graph allocation precedes launch.
+  for (const child of approvalChildren) subscribeConnectionSession(ws, child.sessionKey);
   // Without a durable log, buffered events have no row IDs: an incremental
   // filter would discard them all. Explicitly replace from the bounded tail.
   const page = db ? (cmd.afterHistoryId !== undefined
@@ -88,6 +92,8 @@ export const syncSession: CommandHandler = (ctx, cmd, ws) => {
     model: host.model,
     permissionMode: host.permissionMode,
     sandboxPolicy: host.sandboxPolicy,
+    toolApprovals: host.toolApprovals.snapshot(),
+    approvalChildren,
     initData: host.initData,
     worktree: host.worktree,
     approval: host.taskState?.approval ?? null,

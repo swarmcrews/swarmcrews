@@ -1,3 +1,4 @@
+import { ToolApprovalPanel } from "../components/ToolApprovalPanel.tsx";
 import { ThinkingStream } from "../components/ThinkingStream.tsx";
 import { thinkingStreamPatch, type ThinkingStreamState } from "../thinking-stream.ts";
 import { useState, useEffect, useRef, useCallback, useSyncExternalStore } from "react";
@@ -1008,9 +1009,8 @@ export function ClaudeSessionRenderer({
           )}
         </div>
       </div>
-
+      <ToolApprovalPanel sessionKey={data.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />
       <StatusBannerStack banners={banners} onDismiss={dismissBanner} />
-
       <SessionToolbar
         sessionKey={data.sessionKey}
         status={data.status}

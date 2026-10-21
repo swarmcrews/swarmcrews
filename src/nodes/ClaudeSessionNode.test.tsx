@@ -1,4 +1,4 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
@@ -27,6 +27,7 @@ beforeAll(() => {
 interface ProbeProps {
   socket: ReturnType<typeof createReplaySocket>["socket"];
   initial: ClaudeSessionData;
+  socketSend?: (message: unknown) => void;
   onState?: (d: ClaudeSessionData) => void;
 }
 
@@ -43,7 +44,7 @@ interface ProbeProps {
  * via the `states` array rather than the final merged state, so the
  * last-writer-wins behavior of synchronous replay does not mask bugs.
  */
-function Probe({ socket, initial, onState }: ProbeProps) {
+function Probe({ socket, initial, onState, socketSend }: ProbeProps) {
   const [data, setData] = useState<ClaudeSessionData>(initial);
   const node: CanvasNode = {
     id: "claude-session-test",
@@ -61,9 +62,7 @@ function Probe({ socket, initial, onState }: ProbeProps) {
       onState?.(nextData);
     },
     socketSubscribe: socket.subscribe,
-    socketSend: () => {
-      /* no-op — the renderer may call sync_session on mount */
-    },
+    socketSend: socketSend ?? socket.send,
   };
   return <ClaudeSessionRenderer {...props} />;
 }
@@ -615,3 +614,19 @@ describe("ClaudeSessionNode: streaming delta handling", () => {
     } }]);
     expect(states.at(-1)?.messages.map(m => m.content)).toEqual(["Keep earlier output", "Missed output"]);
   });
+
+
+describe("Canvas direct tool approvals", () => {
+  it("shows only this session's invocation and sends its exact identity without opening settings or logs", async () => {
+    const { socket, replay } = createReplaySocket();
+    render(<Probe socket={socket} initial={makeInitialData()} />);
+    const request = { id: "direct-approval", sessionKey: "session-1", tool: "Direct command", reason: "Confirm invocation", details: "pwd", expiresAt: Date.now() + 60_000 };
+    await pump(replay, [{ message: { type: "tool_approval_snapshot", sessionKey: "foreign", requests: [{ ...request, sessionKey: "foreign", tool: "Foreign command" }] } },
+      { message: { type: "tool_approval_snapshot", sessionKey: request.sessionKey, requests: [request] } }]);
+    expect(screen.queryByText("Foreign command")).toBeNull();
+    expect(screen.getByText("Allow once · this action only")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: request.sessionKey,
+      approvalId: request.id, approvalDecision: "deny" }));
+  });
+});

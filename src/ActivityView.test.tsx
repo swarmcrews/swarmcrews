@@ -2753,3 +2753,41 @@ describe("Activity loading", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 });
+
+
+describe("Activity crew tool approvals", () => {
+  it("makes child requests actionable in the leader inspector and excludes foreign crews", () => {
+    const { subscribe, emit } = makeSubscribe();
+    const send = vi.fn();
+    const leader = session({ sessionKey: "crew", role: "leader", taskName: "Approval crew", activeMinions: [
+      { taskId: "child-task", title: "Patch child", sessionKey: "child", status: "running" },
+    ] });
+    render(<ActivityView sessions={[leader, session({ sessionKey: "foreign", role: "minion" })]}
+      nodes={[]} {...noop} socketSend={send} socketSubscribe={subscribe} />);
+    fireEvent.click(within(activityList()).getByRole("button", { name: /Approval crew/i }));
+    expect(send).toHaveBeenCalledWith({ type: "get_tool_approvals", sessionKey: "child" });
+    const request = { id: "child-approval", sessionKey: "child", tool: "Child command", reason: "Confirm invocation", details: "pwd", expiresAt: Date.now() + 60_000 };
+    emit({ type: "tool_approval_snapshot", sessionKey: "foreign", requests: [{ ...request, sessionKey: "foreign", tool: "Foreign command" }] });
+    emit({ type: "tool_approval_snapshot", sessionKey: "child", requests: [request] });
+    expect(screen.queryByText("Foreign command")).toBeNull();
+    const panel = screen.getByRole("region", { name: "Tool approvals for Patch child" });
+    expect(panel).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Allow once" }));
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "child", approvalId: "child-approval", approvalDecision: "allow_once" }));
+  });
+});
+
+it("Activity discovers graph-only approval children after the inspector is mounted", () => {
+  const { subscribe, emit } = makeSubscribe();
+  const send = vi.fn();
+  const leader = session({ sessionKey: "crew", role: "leader", taskName: "Graph-only crew", taskPlan: [], activeMinions: [] });
+  render(<ActivityView sessions={[leader]} nodes={[]} {...noop} socketSend={send} socketSubscribe={subscribe} />);
+  fireEvent.click(within(activityList()).getByRole("button", { name: /Graph-only crew/i }));
+  emit({ type: "sync_response", sessionKey: "crew", found: true, taskPlan: [], activeMinions: [], approvalChildren: [
+    { sessionKey: "graph-child", taskId: "node", title: "Graph child", attemptId: "attempt", attemptNumber: 1 },
+  ] });
+  expect(send).toHaveBeenCalledWith({ type: "get_tool_approvals", sessionKey: "graph-child" });
+  emit({ type: "tool_approval_snapshot", sessionKey: "graph-child", requests: [{ id: "ask", sessionKey: "graph-child", tool: "Graph command", reason: "Confirm", details: "pwd", expiresAt: Date.now() + 60_000 }] });
+  fireEvent.click(within(screen.getByRole("region", { name: "Tool approvals for Graph child" })).getByRole("button", { name: "Allow once" }));
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "graph-child", approvalId: "ask", approvalDecision: "allow_once" }));
+});

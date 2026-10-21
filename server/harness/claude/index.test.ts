@@ -211,6 +211,7 @@ describe("ClaudeHarness.start()", () => {
       cwd: "/tmp/workspace",
       resume: "resume-123",
       allowedTools: ["mcp__internal__alpha", "Read"],
+      tools: ["Read"],
       systemPrompt: "system prompt",
       model: "claude-sonnet-5",
       includePartialMessages: true,

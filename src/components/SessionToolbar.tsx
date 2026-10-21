@@ -493,6 +493,7 @@ export function ModelSelectionMenu({
       {isOpen && (
         <div
           role={expanded ? "group" : "dialog"}
+          className="model-selection-panel"
           data-scroll-capture
           aria-label={expanded ? triggerLabel : `${triggerLabel} menu`}
           onMouseDown={(e) => e.stopPropagation()}

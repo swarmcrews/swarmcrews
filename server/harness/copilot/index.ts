@@ -14,7 +14,7 @@ export class CopilotHarness implements AgentHarness {
   readonly exposure = "production" as const;
   readonly capabilities: HarnessCapabilities = {
     mutationInterception: "observe_only", thinking: true, promptCaching: true,
-    mcp: false, permissionPrompts: false, resume: true, partialMessages: true,
+    mcp: false, toolApprovalRequests: true, permissionPrompts: false, resume: true, partialMessages: true,
     builtInFilesystem: true,
     // Native per-session sandbox plus path checks for in-process file tools.
     sandboxEnforcement: { filesystem: ["read-only", "workspace-write", "unrestricted"], approval: true },

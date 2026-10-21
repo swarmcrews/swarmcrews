@@ -1274,3 +1274,46 @@ describe("LeaderNode: unknown run configuration is not a launch default", () => 
     expect(states.at(-1)?.harness).toBeUndefined();
   });
 });
+
+
+describe("Canvas crew tool approvals", () => {
+  it.each([false, true])("exposes all children outside the selected minion tab (fullscreen: %s)", async fullscreen => {
+    const { socket, replay } = createReplaySocket();
+    const task: LeaderData["taskPlan"][number] = { taskId: "child", title: "Canvas child", description: "", priority: "high", executor: "minion", status: "running",
+      minionSessionKey: "canvas-child", result: null, cost: 0, createdAt: 1, completedAt: null, sessionSummary: "" };
+    render(<Probe socket={socket} socketSend={socket.send} initial={makeInitialData({ taskPlan: [task,
+      { ...task, taskId: "unselected", title: "Other child", minionSessionKey: "other-child" },
+      { ...task, taskId: "leader", title: "Leader work", executor: "leader", minionSessionKey: "not-a-child" },
+    ] })} />);
+    if (fullscreen) fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "canvas-child" });
+    expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "other-child" });
+    expect(socket.sent).not.toContainEqual({ type: "get_tool_approvals", sessionKey: "not-a-child" });
+    const request = { id: "canvas-approval", sessionKey: "other-child", tool: "Child command", reason: "Confirm invocation", details: "pwd", expiresAt: Date.now() + 60_000 };
+    await pump(replay, [
+      { message: { type: "tool_approval_snapshot", sessionKey: "foreign", requests: [{ ...request, sessionKey: "foreign", tool: "Foreign command" }] } },
+      { message: { type: "tool_approval_snapshot", sessionKey: request.sessionKey, requests: [request] } },
+    ]);
+    expect(screen.queryByText("Foreign command")).toBeNull();
+    const surface = fullscreen ? within(screen.getByTestId("leader-fullscreen-overlay")) : screen;
+    const panel = surface.getByRole("region", { name: "Tool approvals for Other child" });
+    expect(panel).toBeVisible();
+    fireEvent.click(within(panel).getByRole("button", { name: "Allow once" }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "other-child", approvalId: "canvas-approval", approvalDecision: "allow_once" }));
+  });
+});
+
+describe("Canvas canonical graph-only approvals", () => {
+  it.each([false, true])("discovers a child via parent sync with no legacy plan (fullscreen: %s)", async fullscreen => {
+    const { socket, replay } = createReplaySocket();
+    render(<Probe socket={socket} socketSend={socket.send} initial={makeInitialData({ taskPlan: [] })} />);
+    if (fullscreen) fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
+    await pump(replay, [{ message: { type: "sync_response", sessionKey: "leader-1", found: true, taskPlan: [], activeMinions: [],
+      approvalChildren: [{ sessionKey: "graph-child", taskId: "node", title: "Graph child", attemptId: "attempt", attemptNumber: 1 }] } as ServerMessage }]);
+    expect(socket.sent).toContainEqual({ type: "get_tool_approvals", sessionKey: "graph-child" });
+    await pump(replay, [{ message: { type: "tool_approval_snapshot", sessionKey: "graph-child", requests: [{ id: "ask", sessionKey: "graph-child", tool: "Graph command", reason: "Confirm", details: "pwd", expiresAt: Date.now() + 60_000 }] } }]);
+    const surface = fullscreen ? within(screen.getByTestId("leader-fullscreen-overlay")) : screen;
+    fireEvent.click(within(surface.getByRole("region", { name: "Tool approvals for Graph child" })).getByRole("button", { name: "Allow once" }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "respond_tool_approval", sessionKey: "graph-child", approvalId: "ask", approvalDecision: "allow_once" }));
+  });
+});

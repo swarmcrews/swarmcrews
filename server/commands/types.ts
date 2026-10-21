@@ -82,6 +82,8 @@ export type WsCommandType =
   | "interrupt_session"
   | "close_session"
   // Configuration control
+  | "get_tool_approvals"
+  | "respond_tool_approval"
   | "set_permission_mode"
   | "set_model"
   // Task control
@@ -161,6 +163,8 @@ export interface WsCommand {
   /** Explicit provider-neutral execution boundary for new launches. */
   sandboxPolicy?: SandboxPolicy;
   permissionMode?: string;
+  approvalId?: string;
+  approvalDecision?: "allow_once" | "deny";
   systemPrompt?: string;
   role?: SessionRole;
   /** Skill IDs tagged on a leader session; gate opt-in tools. */

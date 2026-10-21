@@ -26,6 +26,7 @@ function makeHandler(command: "interrupt" | "interrupt_session"): CommandHandler
       unsupportedByHarness(ws, command, host, cmd.requestId);
       return;
     }
+    host.toolApprovals.end();
     fn.call(host.runControl)
       .then(() => sendControlResponse(ws, command, host.id, cmd.requestId))
       .catch((err: unknown) =>

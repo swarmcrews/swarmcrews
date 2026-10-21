@@ -39,6 +39,7 @@ export async function consumeProviderInvocation(input: {
   try {
     for await (const event of events) {
       if (abortController.signal.aborted) break;
+      if (event.kind === "done") host.toolApprovals.end(abortController.signal);
       // Creating an iterable or a thread does not prove prompt acceptance. Wakes
       // require model output/tool activity or a successful terminal response.
       if (provesProviderAcceptance(event)) { input.onAccepted?.(); input.onAccepted = undefined; }
@@ -72,6 +73,7 @@ export async function consumeProviderInvocation(input: {
   } finally {
     // An aborted, failed, or incomplete handoff must not restart this run or
     // capture the final answer of an unrelated future invocation.
+    host.toolApprovals.end(abortController.signal);
     if (!completedNormally) discardCheckpointHandoff(host);
   }
   if (deferredDone && !abortController.signal.aborted && host.abortController === abortController) {

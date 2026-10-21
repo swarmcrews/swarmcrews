@@ -81,6 +81,8 @@ function command<T extends WsCommandType>(type: T, fields: z.ZodRawShape) {
 const sessionScoped = (type: WsCommandType) => command(type, { sessionKey });
 
 export const COMMAND_SCHEMAS = {
+  get_tool_approvals: command("get_tool_approvals", { sessionKey: requiredId }),
+  respond_tool_approval: command("respond_tool_approval", { sessionKey: requiredId, requestId: z.string().uuid(), approvalId: z.string().uuid(), approvalDecision: z.enum(["allow_once", "deny"]) }),
   // Session lifecycle
   create_session: command("create_session", {
     sessionKey,

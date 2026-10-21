@@ -53,6 +53,7 @@ function sessionWithSyncResponse(session: SessionInfo, msg: Extract<ServerMessag
     ...(msg.harness !== undefined ? { harness: msg.harness } : {}),
     ...(msg.harnessCapabilities !== undefined ? { harnessCapabilities: msg.harnessCapabilities } : {}),
     ...(msg.taskPlan !== undefined ? { taskPlan: msg.taskPlan } : {}),
+    ...(msg.approvalChildren !== undefined ? { approvalChildren: msg.approvalChildren } : {}),
     ...(msg.activeMinions !== undefined ? { activeMinions: msg.activeMinions } : {}),
     ...(msg.renderState !== undefined ? { renderState: msg.renderState } : {}),
     ...(msg.reviewLifecycle !== undefined &&

@@ -1,3 +1,4 @@
+import { CrewToolApprovals } from "../components/CrewToolApprovals.tsx";
 import { ThinkingStream } from "../components/ThinkingStream.tsx";
 import { useMobileCommandPicker } from "./use-mobile-command-picker.tsx";
 import { useIterationCommands, type IterationCommandSkills } from "./use-iteration-commands.tsx";
@@ -920,6 +921,7 @@ function SessionChatContent({
           </button>
         ))}
       </nav>
+      <CrewToolApprovals approvalChildren={session?.approvalChildren} members={[...activeMinions, ...taskPlan.filter(task => task.executor === "minion").map(task => ({ sessionKey: task.minionSessionKey, title: task.title }))]} sessionKey={sessionKey} socketSend={send} socketSubscribe={subscribe} />
       {!connected ? <p className="mob-session-offline" role="status">Updates may be out of date. Your draft is kept while reconnecting.</p> : null}
       {unavailable ? <div className="mob-empty" role="status">
         <h2>Session unavailable</h2>
