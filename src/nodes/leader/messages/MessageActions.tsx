@@ -17,11 +17,11 @@ export const LeaderMessageActions = memo(function LeaderMessageActions({
   return (
     <div
       data-testid="leader-message-actions"
+      className="leader-message-actions"
       style={{
         position: "sticky",
         top: 8,
         zIndex: 6,
-        height: 0,
         display: "flex",
         justifyContent: "flex-end",
         pointerEvents: "none",

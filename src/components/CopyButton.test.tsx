@@ -59,6 +59,17 @@ describe("copyText", () => {
 });
 
 describe("CopyButton", () => {
+  it("exposes feedback independently of pointer hover and never submits a form", async () => {
+    setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) });
+    const submit = vi.fn();
+    render(<form onSubmit={submit}><CopyButton text="A finding" title="Copy finding" /></form>);
+    const button = screen.getByRole("button", { name: "Copy finding" });
+    expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveAttribute("data-always-visible", "false");
+    fireEvent.click(button);
+    await waitFor(() => expect(button).toHaveAttribute("data-feedback", "true"));
+    expect(submit).not.toHaveBeenCalled();
+  });
   it("cancels feedback timers on unmount and restarts them on repeated copies", async () => {
     vi.useFakeTimers();
     setClipboard({ writeText: vi.fn().mockResolvedValue(undefined) });

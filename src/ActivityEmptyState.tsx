@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ArrowRight } from "lucide-react";
 import type { CanvasNode } from "./types.ts";
 import type { LeaderData } from "./nodes/leader/types.ts";
 import type { SocketSubscribe } from "./use-socket.ts";
@@ -18,8 +19,8 @@ import { LeaderNodeRenderer } from "./nodes/LeaderNode.tsx";
  * 2. The variant's headline (and Clear-filter escape hatch when filtering).
  * 3. "Add an agent" — the full launch composer (prompt bar, starter chips,
  *    model/permissions, skills) inline, so the first keystroke starts a
- *    session with zero extra clicks. Falls back to a New button until the
- *    draft leader node exists.
+ *    session with zero extra clicks. Falls back to a focused introduction and
+ *    a content-sized action until the draft leader node exists.
  */
 export function ActivityEmptyState({
   title,
@@ -108,7 +109,7 @@ export function ActivityEmptyState({
       )}
 
       <section className="act-empty-add" aria-label="Add an agent">
-        {!launchLayout && <h2 className="act-empty-section-head">Add an agent</h2>}
+        {!launchLayout && launchNode && <h2 className="act-empty-section-head">Add an agent</h2>}
         {launchNode ? (
           <div className="act-empty-add-form">
             <LeaderNodeRenderer
@@ -124,13 +125,25 @@ export function ActivityEmptyState({
             />
           </div>
         ) : (
-          <button
-            className="act-btn act-btn--primary act-empty-launch"
-            type="button"
-            onClick={onLaunch}
-          >
-            New
-          </button>
+          <div className="act-empty-welcome">
+            <span className="act-launch-eyebrow">{recent.length ? "New leader" : "Your first leader"}</span>
+            <h2>Start with a task</h2>
+            <p>
+              Fix a bug, build a feature, or review a change. Your leader will
+              coordinate the work and keep you updated here.
+            </p>
+            <button
+              className="act-btn act-btn--primary act-empty-launch"
+              type="button"
+              onClick={onLaunch}
+              aria-describedby="activity-welcome-next-step"
+            >
+              Create a leader <ArrowRight size={16} aria-hidden />
+            </button>
+            <p className="act-empty-welcome__hint" id="activity-welcome-next-step">
+              Choose a model and describe your goal next.
+            </p>
+          </div>
         )}
       </section>
     </div>

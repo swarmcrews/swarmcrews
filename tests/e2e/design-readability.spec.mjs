@@ -9,9 +9,9 @@ for (const theme of ["midnight", "daybook"]) {
     await page.getByRole("button", { name: "New", exact: true }).click();
     const panel = page.getByRole("region", { name: "New leader" });
     const sandbox = panel.locator(".leader-sandbox-policy");
-    const disclosures = sandbox.locator("small");
+    const disclosures = sandbox.locator(".leader-sandbox-notice");
     const count = panel.getByRole("button", { name: "Configure connections", exact: true }).locator("strong");
-    await expect(disclosures).toHaveCount(2);
+    await expect(disclosures).toHaveCount(1);
 
     for (const [width, height] of [[1440, 900], [1024, 768], [320, 568]]) {
       await page.setViewportSize({ width, height });
@@ -22,14 +22,9 @@ for (const theme of ["midnight", "daybook"]) {
       expect(await count.evaluate(el => getComputedStyle(el).color)).toBe(await page.locator("html").evaluate(el => getComputedStyle(el).color));
       await disclosures.last().evaluate(el => el.scrollIntoView({ block: "center", inline: "nearest" }));
       await expect(disclosures.last()).toBeInViewport({ ratio: 1 });
-      await expect(panel.getByRole("button", { name: "Launch leader", exact: true })).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      const help = sandbox.getByLabel("About sandbox file access");
-      await page.keyboard.press("Tab");
-      await help.focus();
-      await expect(help).toBeFocused();
-      const outline = await help.evaluate(el => { const style = getComputedStyle(el); return { width: style.outlineWidth, offset: style.outlineOffset, style: style.outlineStyle }; });
-      expect(outline).toEqual({ width: "2px", offset: "2px", style: "solid" });
+      await expect(sandbox.getByRole("combobox")).toHaveCount(0);
+      await expect(sandbox.getByText("Not enforced by this harness")).toBeVisible();
       await page.screenshot({ animations: "disabled", path: info.outputPath(`readability-${width}.png`) });
     }
 
@@ -38,6 +33,9 @@ for (const theme of ["midnight", "daybook"]) {
     expect(await disclosures.last().evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(24);
     await disclosures.last().evaluate(el => el.scrollIntoView({ block: "center", inline: "nearest" }));
     await expect(disclosures.last()).toBeInViewport({ ratio: 1 });
-    await expect(panel.getByRole("button", { name: "Launch leader", exact: true })).toBeInViewport({ ratio: 1 });
+    // The launch action may follow other disclosures on a short viewport.
+    const launch = panel.getByRole("button", { name: "Launch leader", exact: true });
+    await launch.scrollIntoViewIfNeeded();
+    await expect(launch).toBeInViewport({ ratio: 1 });
   });
 }

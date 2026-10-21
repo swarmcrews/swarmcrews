@@ -115,12 +115,7 @@ export function ConfirmModal({ title, description, actions, onClose }: ConfirmMo
             ref={cancelRef}
             type="button"
             onClick={onClose}
-            style={{
-              ...buttonBase,
-              background: "transparent",
-              color: "var(--text-secondary)",
-              border: "1px solid var(--border-default)",
-            }}
+            className="ui-button ui-button--ghost"
           >
             Cancel
           </button>
@@ -129,10 +124,7 @@ export function ConfirmModal({ title, description, actions, onClose }: ConfirmMo
               key={action.label}
               type="button"
               onClick={action.onClick}
-              style={{
-                ...buttonBase,
-                ...(action.variant === "danger" ? dangerStyle : action.variant === "ghost" ? ghostStyle : primaryStyle),
-              }}
+              className={`ui-button ui-button--${action.variant ?? "primary"}`}
             >
               {action.label}
             </button>
@@ -143,34 +135,3 @@ export function ConfirmModal({ title, description, actions, onClose }: ConfirmMo
     document.body,
   );
 }
-
-const buttonBase: React.CSSProperties = {
-  padding: "6px 14px",
-  borderRadius: "var(--radius-control)",
-  maxWidth: "100%",
-  whiteSpace: "normal",
-  fontSize: ".8125rem",
-  fontWeight: 500,
-  fontFamily: "var(--font-sans)",
-  cursor: "pointer",
-  border: "none",
-  transition: "background 0.15s, opacity 0.15s",
-};
-
-const primaryStyle: React.CSSProperties = {
-  background: "var(--accent)",
-  color: "var(--text-on-accent)",
-  border: "1px solid var(--accent)",
-};
-
-const dangerStyle: React.CSSProperties = {
-  background: "var(--danger-color)",
-  color: "var(--text-on-status)",
-  border: "1px solid var(--danger-color)",
-};
-
-const ghostStyle: React.CSSProperties = {
-  background: "var(--state-hover)",
-  color: "var(--text-primary)",
-  border: "1px solid var(--border-default)",
-};

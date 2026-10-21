@@ -1,9 +1,9 @@
 .connections { color:var(--text-primary); font-family:var(--font-sans,inherit); padding:20px; font-size:13px; line-height:1.5; min-width:0; }
 .connections * { box-sizing:border-box; }
 .connections button,.connections input,.connections textarea,.connections select { font:inherit; }
-.connections button { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--border-default); border-radius:7px; padding:7px 10px; background:var(--bg-surface); color:var(--text-primary); cursor:pointer; min-height:34px; }
+.connections button { --button-height: var(--button-height-compact); --button-padding-inline: 10px; }
 .connections button:hover:not(:disabled) { border-color:var(--text-muted); background:var(--bg-hover,var(--bg-primary)); }
-.connections button:disabled { opacity:.5; cursor:wait; }
+.connections button:disabled { opacity:.5; cursor:not-allowed; }
 .connections :focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .connections h2,.connections h3,.connections p { margin:0; }
 .connections-heading { padding-bottom:20px; border-bottom:1px solid var(--border-default); }
@@ -12,6 +12,7 @@
 .connections-title h2 { font-size:21px; font-weight:600; letter-spacing:-.6px; }
 .connections-heading p { color:var(--text-secondary); margin-top:8px; max-width:50ch; }
 .connections-toolbar { display:flex; align-items:center; justify-content:space-between; padding:18px 0; gap:12px; color:var(--text-muted); }
+.connections button.connection-primary:hover:not(:disabled) { background:var(--accent-dark); border-color:var(--accent-dark); }
 .connections button.connection-primary { background:var(--accent); color:var(--text-on-accent,#fff); border-color:var(--accent); }
 .connection-list { display:grid; gap:12px; }
 .connection-card { padding:16px; background:var(--bg-surface); border:1px solid var(--border-default); border-radius:12px; }

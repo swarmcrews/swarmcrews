@@ -157,7 +157,8 @@ const footerStyle: React.CSSProperties = {
 
 const btnBase: React.CSSProperties = {
   padding: "8px 16px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
+  minHeight: "var(--button-height)",
   border: "1px solid var(--border-default)",
   cursor: "pointer",
   fontSize: 13,
@@ -1192,26 +1193,10 @@ export function SkillEditor({ skill, onSave, onClose }: SkillEditorProps) {
               : "Complete the required fields in Essentials"}
           </span>
           <div style={{ flex: 1 }} />
-          <button
-            onClick={onClose}
-            style={{
-              ...btnBase,
-              background: "var(--bg-primary)",
-              color: "var(--text-secondary)",
-            }}
-          >
+          <button className="ui-button ui-button--ghost" onClick={onClose}>
             Cancel
           </button>
-          <button
-            onClick={handleSave}
-            style={{
-              ...btnBase,
-              background: "var(--accent)",
-              color: "var(--text-on-accent)",
-              border: "1px solid var(--accent)",
-              fontWeight: 600,
-            }}
-          >
+          <button className="ui-button ui-button--primary" onClick={handleSave}>
             Save
           </button>
         </div>

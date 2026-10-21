@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type Dispatch,
   type KeyboardEvent,
   type PointerEvent,
@@ -396,22 +395,6 @@ export const CanvasMiniMap = memo(function CanvasMiniMap({
     [onZoomTo, transform.scale],
   );
 
-  const buttonStyle = {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    border: "1px solid var(--border-default)",
-    background: "var(--bg-surface)",
-    color: "var(--text-secondary)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-    fontSize: 11,
-    fontFamily: "var(--font-mono)",
-    lineHeight: 1,
-  } satisfies CSSProperties;
-
   return (
     <DockPanel id="map" width={MINI_MAP_WIDTH}>
       <DockPanelHeader
@@ -427,7 +410,7 @@ export const CanvasMiniMap = memo(function CanvasMiniMap({
               aria-label="Zoom out"
               title="Zoom out"
               onClick={() => onZoomTo(transform.scale / 1.1)}
-              style={buttonStyle}
+              className="ui-button ui-button--compact ui-button--icon"
             >
               -
             </button>
@@ -435,7 +418,7 @@ export const CanvasMiniMap = memo(function CanvasMiniMap({
               aria-label="Zoom in"
               title="Zoom in"
               onClick={() => onZoomTo(transform.scale * 1.1)}
-              style={buttonStyle}
+              className="ui-button ui-button--compact ui-button--icon"
             >
               +
             </button>
@@ -443,7 +426,7 @@ export const CanvasMiniMap = memo(function CanvasMiniMap({
               aria-label="Fit canvas"
               title="Fit canvas"
               onClick={onFitView}
-              style={buttonStyle}
+              className="ui-button ui-button--compact ui-button--icon"
             >
               <FitIcon />
             </button>
@@ -592,12 +575,7 @@ export const CanvasMiniMap = memo(function CanvasMiniMap({
               title="Focus selected nodes"
               onClick={hasSelection ? onFocusSelected : undefined}
               disabled={!hasSelection}
-              style={{
-                ...buttonStyle,
-                width: 30,
-                opacity: hasSelection ? 1 : 0.42,
-                cursor: hasSelection ? "pointer" : "default",
-              }}
+              className="ui-button ui-button--compact ui-button--icon"
             >
               <TargetIcon />
             </button>

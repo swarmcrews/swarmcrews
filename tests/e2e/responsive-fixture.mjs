@@ -1,3 +1,4 @@
+import { legacyLibraryRoutes } from "./project-library-fixture.mjs";
 // Isolated visual fixture: no real sessions, projects, or provider calls.
 export async function openResponsiveFixture(page, { assistantText, nodes = [], edges = [], skills = [] } = {}) {
   const project = {
@@ -40,6 +41,7 @@ export async function openResponsiveFixture(page, { assistantText, nodes = [], e
     else if (path.includes("context")) json = { content: "" };
     return route.fulfill({ json });
   });
+  await legacyLibraryRoutes(page, [project]);
   let sendEvent;
   let inventoryTopic = "global";
   await page.routeWebSocket("**/ws*", (socket) => socket.onMessage((raw) => {

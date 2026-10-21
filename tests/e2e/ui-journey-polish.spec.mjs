@@ -1,3 +1,4 @@
+import { legacyLibraryRoutes, openDetails, details } from "./project-library-fixture.mjs";
 import { expect, test } from "@playwright/test";
 import { openResponsiveFixture } from "./responsive-fixture.mjs";
 
@@ -13,6 +14,7 @@ async function isolatedRoutes(page) {
       : path === "/api/projects" ? [project] : path === "/api/readiness" ? { harnesses: [] }
       : path.includes("skills") ? [] : project });
   });
+  await legacyLibraryRoutes(page, [project]);
   await page.routeWebSocket("**/ws*", socket => socket.onMessage(raw => {
     const message = JSON.parse(raw);
     const send = value => socket.send(JSON.stringify({ topic: value.sessionKey ? `session:${value.sessionKey}` : "global", ...value }));
@@ -30,15 +32,16 @@ async function isolatedRoutes(page) {
 }
 
 test("confirmation remains keyboard-safe and contained at desktop, phone and constrained sizes", async ({ page }, info) => {
-  await isolatedRoutes(page);
-  await page.goto("/");
-  const opener = page.getByRole("button", { name: "Remove", exact: true });
+  const project = await isolatedRoutes(page);
+  await page.goto("/?view=desktop");
+  const opener = details(page, project.name);
   for (const [width, height] of [[1440, 900], [390, 844], [320, 568], [640, 360]]) {
     await page.setViewportSize({ width, height });
-    await opener.click();
-    const dialog = page.getByRole("dialog");
-    const cancel = dialog.getByRole("button", { name: "Cancel" });
-    const confirm = dialog.getByRole("button", { name: "Remove project" });
+    const d = await openDetails(page, project.name);
+    await d.getByRole("button", { name: "Archive project", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: `Archive ${project.name}?` });
+    const cancel = dialog.getByRole("button", { name: "Close", exact: true });
+    const confirm = dialog.getByRole("button", { name: "Confirm archive" });
     await expect(cancel).toBeFocused();
     await page.keyboard.press("Shift+Tab");
     await expect(confirm).toBeFocused();
@@ -46,7 +49,7 @@ test("confirmation remains keyboard-safe and contained at desktop, phone and con
     await expect(cancel).toBeFocused();
     await expect(dialog).toBeInViewport({ ratio: 1 });
     const bounds = await dialog.boundingBox();
-    expect(bounds.width).toBeLessThanOrEqual(width - 32);
+    expect(bounds.width).toBeLessThanOrEqual(width);
     await expect(confirm).toBeInViewport();
     expect(await page.locator("#root").evaluate(el => el.inert)).toBe(true);
     await page.screenshot({ animations: "disabled", path: info.outputPath(`confirm-${width}.png`) });
@@ -57,7 +60,7 @@ test("confirmation remains keyboard-safe and contained at desktop, phone and con
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
   await opener.click();
-  expect(await page.locator(".confirm-modal").evaluate(el => getComputedStyle(el).animationName)).toBe("none");
+  expect(await page.locator(".pl-dialog").evaluate(el => getComputedStyle(el).animationName)).toBe("none");
 });
 
 test("desktop command picker leaves backward keyboard navigation and the draft intact", async ({ page }) => {

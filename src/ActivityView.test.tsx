@@ -1909,9 +1909,9 @@ describe("ActivityView", () => {
     expect(screen.getByRole("heading", { name: "Fresh task", level: 2 })).toHaveFocus();
   });
 
-  it("offers New from the empty activity state when no draft could be created", () => {
-    // onLaunchLeader returns void — the auto-open attempt yields no draft, so
-    // the empty state falls back to an explicit New CTA.
+  it("offers a focused first-task action when no draft could be created", () => {
+    // No draft means there is no prompt to type into. The fallback must explain
+    // the next step instead of presenting composer-only instructions.
     const onLaunchLeader = vi.fn();
     render(
       <ActivityView
@@ -1923,9 +1923,33 @@ describe("ActivityView", () => {
     );
 
     expect(onLaunchLeader).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(screen.getByRole("region", { name: /add an agent/i }))
-      .getByRole("button", { name: /^new$/i }));
+    const workspace = screen.getByRole("main", { name: "Activity workspace" });
+    expect(workspace).toHaveClass("act-empty-workspace--welcome");
+    expect(within(workspace).getByRole("heading", { name: "Start with a task" })).toBeVisible();
+    expect(within(workspace).getByText(/fix a bug, build a feature, or review a change/i)).toBeVisible();
+    expect(within(workspace).queryByText("Describe the outcome below.")).not.toBeInTheDocument();
+    expect(within(workspace).queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(within(workspace).getByRole("button", { name: "Create a leader" }));
     expect(onLaunchLeader).toHaveBeenCalledTimes(2);
+  });
+
+  it("replaces the welcome state with the inline prompt when a draft becomes available", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    const onLaunchLeader = vi.fn<() => CanvasNode | void>()
+      .mockReturnValueOnce(undefined)
+      .mockReturnValue(draft);
+    render(<ActivityView sessions={[]} nodes={[]} {...noop} onLaunchLeader={onLaunchLeader} />);
+
+    const start = screen.getByRole("button", { name: "Create a leader" });
+    expect(start).toHaveAccessibleDescription("Choose a model and describe your goal next.");
+    fireEvent.click(start);
+
+    expect(screen.queryByRole("heading", { name: "Start with a task" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create a leader" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Leader prompt" })).toBeVisible();
+    expect(screen.getByRole("main", { name: "Activity workspace" })).toHaveClass("act-launch-panel");
+    expect(screen.getByRole("main", { name: "Activity workspace" })).not.toHaveClass("act-empty-workspace--welcome");
+    expect(screen.getByText("Describe the outcome below.")).toBeVisible();
   });
 
   it("previews recent agent work in the empty state and opens it on the canvas", () => {

@@ -1,3 +1,4 @@
+import { legacyLibraryRoutes } from "./project-library-fixture.mjs";
 import { expect, test } from '@playwright/test';
 
 for (const mobile of [false, true]) {
@@ -18,6 +19,7 @@ for (const mobile of [false, true]) {
         : path.includes('skills') ? [] : {};
       return route.fulfill({ json });
     });
+    await legacyLibraryRoutes(page, [project]);
     const requests = [];
     let send;
     await page.routeWebSocket('**/ws*', socket => {

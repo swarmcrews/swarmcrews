@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import "./content-actions.css";
 
 /**
  * A small "add as node" button that appears on hover alongside CopyButton.
@@ -25,7 +26,7 @@ export function AddAsNodeButton({
   const [added, setAdded] = useState(false);
   const placementStyle =
     layout === "absolute"
-      ? { position: "absolute" as const, top: 4, right: 32 }
+      ? { position: "absolute" as const, top: 4, right: "var(--content-action-offset)" }
       : { position: "static" as const, flex: "0 0 auto" };
 
   const handleAdd = useCallback(
@@ -46,24 +47,12 @@ export function AddAsNodeButton({
     <button
       onClick={handleAdd}
       title="Add as node"
-      className="copy-btn"
-      style={{
-        ...placementStyle,
-        width: 24,
-        height: 24,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: added ? "var(--tool-bg)" : "var(--bg-elevated)",
-        border: `1px solid ${added ? "var(--info-color)" : "var(--border-default)"}`,
-        borderRadius: 4,
-        cursor: "pointer",
-        opacity: 0,
-        transition: "opacity 150ms ease, background 150ms ease",
-        zIndex: 5,
-        padding: 0,
-        color: added ? "var(--info-color)" : "var(--text-secondary)",
-      }}
+      type="button"
+      aria-label="Add as node"
+      className="copy-btn copy-btn--add"
+      data-layout={layout}
+      data-feedback={added}
+      style={placementStyle}
     >
       {added ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

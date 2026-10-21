@@ -205,23 +205,9 @@ const Toolbar = memo(function Toolbar({
   onFocusNextActive,
   hasActiveNodes,
 }: ToolbarProps) {
-  const btnStyle: React.CSSProperties = {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    border: "1px solid var(--border-default)",
-    background: "var(--bg-surface)",
-    color: "var(--text-secondary)",
-    fontSize: 14,
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontFamily: "var(--font-mono)",
-  };
-
   return (
     <div
+      className="canvas-toolbar"
       style={{
         position: "absolute",
         bottom: 16,
@@ -239,13 +225,7 @@ const Toolbar = memo(function Toolbar({
         pointerEvents: "auto",
       }}
     >
-      <button
-        style={{
-          ...btnStyle,
-          background: "var(--accent)",
-          color: "#000",
-          border: "none",
-        }}
+      <button className="ui-button ui-button--compact ui-button--icon ui-button--primary"
         onClick={() => onAddNode("leader")}
         title="Add Leader node"
       >
@@ -262,22 +242,9 @@ const Toolbar = memo(function Toolbar({
           <circle cx="20" cy="28" r="2" fill="currentColor"/>
         </svg>
       </button>
-      <button
-        style={{
-          ...btnStyle,
-          background: "var(--bg-surface)",
-          color: "var(--text-secondary)",
-        }}
+      <button className="ui-button ui-button--compact ui-button--icon"
         onClick={() => onAddNode("markdown")}
         title="Add Markdown node"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--bg-elevated)";
-          e.currentTarget.style.color = "var(--text-primary)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "var(--bg-surface)";
-          e.currentTarget.style.color = "var(--text-secondary)";
-        }}
       >
         <svg
           width="14"
@@ -306,12 +273,11 @@ const Toolbar = memo(function Toolbar({
         }}
       />
 
-      <button style={btnStyle} onClick={onZoomOut} title="Zoom out">
+      <button className="ui-button ui-button--compact ui-button--icon" onClick={onZoomOut} title="Zoom out">
         -
       </button>
-      <button
+      <button className="ui-button ui-button--compact ui-button--icon"
         style={{
-          ...btnStyle,
           width: "auto",
           padding: "0 8px",
           fontSize: 11,
@@ -321,24 +287,18 @@ const Toolbar = memo(function Toolbar({
       >
         {Math.round(transform.scale * 100)}%
       </button>
-      <button style={btnStyle} onClick={onZoomIn} title="Zoom in">
+      <button className="ui-button ui-button--compact ui-button--icon" onClick={onZoomIn} title="Zoom in">
         +
       </button>
-      <button
-        style={{ ...btnStyle, fontSize: 11 }}
+      <button className="ui-button ui-button--compact ui-button--icon"
         onClick={onFitView}
         title="Fit view"
       >
         []
       </button>
-      <button
-        style={{
-          ...btnStyle,
-          fontSize: 11,
-          opacity: hasSelection ? 1 : 0.4,
-          cursor: hasSelection ? "pointer" : "default",
-        }}
-        onClick={hasSelection ? onFocusSelected : undefined}
+      <button className="ui-button ui-button--compact ui-button--icon"
+        disabled={!hasSelection}
+        onClick={onFocusSelected}
         title="Focus selected node (F)"
       >
         <svg
@@ -359,17 +319,15 @@ const Toolbar = memo(function Toolbar({
           <line x1="13" y1="8" x2="15" y2="8" />
         </svg>
       </button>
-      <button
+      <button className="ui-button ui-button--compact ui-button--icon"
         style={{
-          ...btnStyle,
           fontSize: 11,
-          opacity: hasActiveNodes ? 1 : 0.4,
-          cursor: hasActiveNodes ? "pointer" : "default",
           ...(hasActiveNodes
             ? { color: "var(--accent)", borderColor: "var(--accent)" }
             : {}),
         }}
-        onClick={hasActiveNodes ? onFocusNextActive : undefined}
+        disabled={!hasActiveNodes}
+        onClick={onFocusNextActive}
         title="Focus next active node (N)"
       >
         <svg
@@ -397,8 +355,7 @@ const Toolbar = memo(function Toolbar({
         }}
       />
 
-      <button
-        style={{ ...btnStyle, fontSize: 11 }}
+      <button className="ui-button ui-button--compact ui-button--icon"
         onClick={onTidyLayout}
         title="Auto-arrange nodes"
       >

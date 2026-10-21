@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import "./content-actions.css";
 import { browserLogger } from "../logging.ts";
 
 const log = browserLogger.child("copy-button");
@@ -94,24 +95,13 @@ export function CopyButton({
     <button
       onClick={handleCopy}
       title={title}
+      type="button"
+      aria-label={title}
       className="copy-btn"
-      style={{
-        ...placementStyle,
-        width: 24,
-        height: 24,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: copied ? "var(--success-bg)" : "var(--bg-elevated)",
-        border: `1px solid ${copied ? "var(--success-color)" : "var(--border-default)"}`,
-        borderRadius: 4,
-        cursor: "pointer",
-        opacity: alwaysVisible ? 1 : 0,
-        transition: "opacity 150ms ease, background 150ms ease",
-        zIndex: 5,
-        padding: 0,
-        color: copied ? "var(--success-color)" : "var(--text-secondary)",
-      }}
+      data-always-visible={alwaysVisible}
+      data-layout={layout}
+      data-feedback={copied}
+      style={placementStyle}
     >
       {copied ? (
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

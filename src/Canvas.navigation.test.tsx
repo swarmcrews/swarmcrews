@@ -35,6 +35,14 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Canvas wayfinding integration", () => {
+  it("exposes unavailable focus actions as disabled controls", () => {
+    render(<Harness />);
+    expect(screen.getByTitle("Focus selected node (F)")).toBeDisabled();
+    expect(screen.getByTitle("Focus next active node (N)")).toBeEnabled();
+    const before = screen.getByTestId("camera").textContent;
+    fireEvent.click(screen.getByTitle("Focus selected node (F)"));
+    expect(screen.getByTestId("camera").textContent).toBe(before);
+  });
   it("centers to the right of the dashboard and reads its latest width", () => {
     const { rerender } = render(<Harness projectPanelRight={356} />);
     const focus = () => fireEvent.click(screen.getByTitle("Focus next active node (N)"));

@@ -1,3 +1,5 @@
+@import "./reset.css";
+@import "./button.css";
 @import "@fontsource-variable/dm-sans/wght.css";
 @import "@fontsource-variable/fraunces/opsz.css";
 @import "@fontsource-variable/instrument-sans/wght.css";
@@ -143,14 +145,6 @@
 
 }
 
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
 html,
 body,
 #root {
@@ -246,15 +240,6 @@ body,
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* Copy button: visible on hover of parent .copyable wrapper */
-.copyable:hover .copy-btn {
-  opacity: 1 !important;
-}
-.copy-btn:hover {
-  background: var(--bg-elevated) !important;
-  color: var(--text-primary) !important;
 }
 
 .render-context-selectable {

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { canonicalLeaderResponder } from "../../tests/harness/canonical-leader.ts";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
@@ -413,6 +414,10 @@ describe("LeaderNode: message actions", () => {
   });
 
   it("keeps assistant bubble actions sticky within the message bubble", () => {
+    // Vitest skips CSS imports. Load the real shared rules, not an inline height
+    // that would defeat the touch-specific row reservation.
+    const contentActionStyles = readFileSync("src/components/content-actions.css", "utf8");
+    render(<style>{contentActionStyles}</style>);
     const { socket } = createReplaySocket();
     const longContent = Array.from({ length: 40 }, (_, i) => `Line ${i + 1}`).join("\n");
 
@@ -432,6 +437,9 @@ describe("LeaderNode: message actions", () => {
     );
 
     const actions = screen.getByTestId("leader-message-actions");
+    expect(actions).toHaveClass("leader-message-actions");
+    expect(actions.style.height).toBe(""); // shared CSS must own desktop/touch height
+    expect(contentActionStyles).toMatch(/@media \(hover: none\), \(pointer: coarse\)[\s\S]*\.leader-message-actions\s*\{\s*height: var\(--content-action-size\);\s*margin-bottom: 8px;/);
     expect(actions).toHaveStyle({ position: "sticky", top: "8px", height: "0px" }); // BANNED_ASSERTION_OK: sticky position proves action bar stays visible during scroll
     expect(within(actions).getByTitle("Add as node")).toHaveStyle({ position: "static" }); // BANNED_ASSERTION_OK: static position proves buttons don't re-offset inside the sticky container
     expect(within(actions).getByTitle("Copy to clipboard")).toHaveStyle({ position: "static" }); // BANNED_ASSERTION_OK: static position proves buttons don't re-offset inside the sticky container

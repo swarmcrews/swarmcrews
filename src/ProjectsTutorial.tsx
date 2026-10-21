@@ -98,7 +98,7 @@ export function ProjectsTutorial({ prominent = false }: { prominent?: boolean })
         <div className="tutorial-entry-icon"><Gamepad2 size={27} aria-hidden="true" /></div>
         <div className="tutorial-entry-copy"><span className="tutorial-eyebrow">Your first mission starts here</span><h2>Learn to lead a crew.</h2><p>Try a guided, hands-on tutorial. Four small objectives, one practice workspace.</p><button type="button" className="tutorial-primary" onClick={() => setOpen(true)}>Start tutorial <ArrowRight size={16} aria-hidden="true" /></button><small>No setup needed · About 2 minutes</small></div>
       </section>
-    ) : <button type="button" className="tutorial-link" onClick={() => setOpen(true)}>Tutorial</button>}
+    ) : <button type="button" className="tutorial-link" onClick={() => setOpen(true)}><Gamepad2 size={16} aria-hidden="true" />Tutorial</button>}
     {open && <TutorialMission onClose={() => setOpen(false)} />}
   </>;
 }

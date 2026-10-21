@@ -1,3 +1,4 @@
+import { legacyLibraryRoutes } from "./project-library-fixture.mjs";
 import {reviewPatchDiff, reviewLineagePatchDiff} from "./review-patch-fixture.mjs";
 import {createGraphFixture} from "../../src/task-graph/fixtures.ts";
 // Isolated visual fixture: no real sessions, projects, or provider calls.
@@ -47,6 +48,7 @@ export async function openDesignFinishFixture(page, { assistantText, nodes = [],
     else if (path.includes("context")) json = { content: "" };
     return route.fulfill({ json });
   });
+  await legacyLibraryRoutes(page, [project]);
   let diffFailure = false;
   const commands = [];
   let sendEvent;

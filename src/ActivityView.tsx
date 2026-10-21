@@ -16,7 +16,6 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-
 import type { CanvasNode, ContextItem } from "./types.ts";
 import type { ProjectSettings } from "./api.ts";
 import type { LeaderData } from "./nodes/leader/types.ts";
@@ -111,7 +110,6 @@ import { getSkill } from "./skills/registry.ts";
 import { compileSkills } from "./skills/types.ts";
 import { buildContextUpdateBlock } from "./context-delivery.ts";
 import "./activity.css";
-
 /**
  * Desktop Activity view — the default landing surface, mirroring the mobile
  * Activity screen on a wider canvas.
@@ -2075,19 +2073,19 @@ export function ActivityView({
 
       {(launchNode ? launchInEmptyWorkspace : activitySessions.length === 0 && autoLaunchActive) && (
         <main
-          className={`act-empty-workspace${visibleSessions.length === 0 ? " act-launch-panel" : ""}`}
+          className={`act-empty-workspace${!launchNode ? " act-empty-workspace--welcome" : visibleSessions.length === 0 ? " act-launch-panel" : ""}`}
           aria-label="Activity workspace"
           hidden={Boolean(launchNode) && !launchVisible}
         >
           {launchNode && <button className="act-draft-back act-btn" type="button" onClick={backToActivity}><ArrowLeft size={15} aria-hidden /> Back to activity</button>}
-          {visibleSessions.length === 0 ? <ActivityOnboarding /> : null}
-          <div className={visibleSessions.length === 0
+          {launchNode && visibleSessions.length === 0 ? <ActivityOnboarding /> : null}
+          <div className={launchNode && visibleSessions.length === 0
             ? "act-launch-inputs"
             : "act-empty-workspace__content"}
           >
             <ActivityEmptyState
               title={visibleSessions.length === 0 ? undefined : emptyStateTitle}
-              launchLayout={visibleSessions.length === 0}
+              launchLayout={Boolean(launchNode) && visibleSessions.length === 0}
               onClearFilter={summaryFilter ? () => setSummaryFilter(null) : undefined}
               recent={recentWork}
               onOpenInCanvas={onOpenInCanvas}
