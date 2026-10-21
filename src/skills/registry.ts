@@ -34,8 +34,7 @@ export function getAllSkills(): SkillTemplate[] {
  * they haven't overridden with a same-id project skill. Use this in pickers
  * and browsers; never in the persistence path.
  */
-export function getPickableSkills(): SkillTemplate[] {
-  const projectSkills = getAllSkills();
+export function getPickableSkills(projectSkills: ReadonlyArray<SkillTemplate> = getAllSkills()): SkillTemplate[] {
   const projectIds = new Set(projectSkills.map((s) => s.id));
   const builtIns = builtInSkillTemplates.filter((s) => !projectIds.has(s.id));
   return [...projectSkills, ...builtIns];

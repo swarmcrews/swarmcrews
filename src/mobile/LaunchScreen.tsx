@@ -14,7 +14,7 @@ import { useHarnessList } from "../use-harness-list.tsx";
 import { DEFAULT_HARNESS_NAME, findHarness } from "../harness-list.ts";
 import { getModelCapability } from "../model-meta.ts";
 import { freezeLeaderSystemPrompt } from "../nodes/leader/frozen-prompt.ts";
-import { normalizeThinkingForCapability } from "../SettingsMenu.tsx";
+import { normalizeThinkingForCapability } from "../settings-models.ts";
 import { loadProjectSkills } from "../skills/user-skills.ts";
 import type { SkillTemplate } from "../skills/types.ts";
 import type { ThinkingConfig } from "../types.ts";

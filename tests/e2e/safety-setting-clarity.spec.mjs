@@ -21,17 +21,21 @@ async function contrastOf(locator, property = "color") {
   }, property);
 }
 
+function enableSandbox(fixture) {
+    fixture.send({ type: "harness_list", harnesses: [{ name: "claude",
+      models: [{ id: "claude-opus-4-8", label: "Opus" }], builtInTools: [], commands: [], agents: [],
+      account: { provider: "anthropic" }, capabilities: { permissionPrompts: true, thinking: true,
+        sandboxEnforcement: { filesystem: ["read-only", "workspace-write", "unrestricted"], approval: true } },
+    }] });
+}
+
 // Contract-shaped WS/HTTP fixture; no sessions, providers or real projects launch.
 for (const theme of ["midnight", "daybook"]) {
   test(`complete safety meaning and operable help in ${theme}`, async ({ page }, info) => {
     await page.addInitScript(id => localStorage.setItem("canvas-theme", id), theme);
     await page.setViewportSize({ width: 1440, height: 1000 });
     const fixture = await openResponsiveFixture(page);
-    fixture.send({ type: "harness_list", harnesses: [{ name: "claude",
-      models: [{ id: "claude-opus-4-8", label: "Opus" }], builtInTools: [], commands: [], agents: [],
-      account: { provider: "anthropic" }, capabilities: { permissionPrompts: true, thinking: true,
-        sandboxEnforcement: { filesystem: ["read-only", "workspace-write", "unrestricted"], approval: true } },
-    }] });
+    enableSandbox(fixture);
     await page.getByRole("button", { name: "New", exact: true }).click();
     const panel = page.getByRole("region", { name: "New leader" });
     await panel.locator(".leader-launch-advanced > summary").click();
@@ -77,7 +81,7 @@ for (const theme of ["midnight", "daybook"]) {
       await approval.selectOption("never");
       await checkDisclosure(approval, "rejects escalation instead of prompting");
       expect(await file.inputValue()).toBe("unrestricted-with-minions");
-      await expect(sandbox.getByText("Effective policy is resolved when the session starts.")).toBeVisible();
+      await expect(sandbox.getByText("Effective policy is resolved when the session starts.")).toHaveCount(0);
       const help = sandbox.getByRole("button", { name: "About sandbox file access" });
       await help.focus();
       await page.keyboard.press("Enter");
@@ -113,7 +117,7 @@ for (const theme of ["midnight", "daybook"]) {
         await sandbox.screenshot({ path: info.outputPath(`sandbox-${width}-${size}.png`) });
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect(await sandbox.locator("small").first().evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(size === 32 ? 24 : 12);
+      expect(await sandbox.locator(".leader-sandbox-description").first().evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(size === 32 ? 24 : 12);
     }
     // Short enlarged viewport: long prose is read by scrolling, not squeezed
     // into one frame. Prove the selected scope and final prose line are reachable.
@@ -141,10 +145,11 @@ for (const theme of ["midnight", "daybook"]) {
 test("sandbox help supports touch activation and outside dismissal", async ({ browser, baseURL }) => {
   const context = await browser.newContext({ baseURL, viewport: { width: 1440, height: 1000 }, hasTouch: true });
   const page = await context.newPage();
-  await openResponsiveFixture(page);
+  enableSandbox(await openResponsiveFixture(page));
   await page.getByRole("button", { name: "New", exact: true }).tap();
   await page.setViewportSize({ width: 320, height: 1000 });
   const panel = page.getByRole("region", { name: "New leader" });
+  await panel.locator(".leader-launch-advanced > summary").click();
   const help = panel.getByRole("button", { name: "About sandbox approval policy" });
   await help.tap();
   const region = panel.getByRole("region", { name: "About sandbox approval policy" });
@@ -152,7 +157,7 @@ test("sandbox help supports touch activation and outside dismissal", async ({ br
   await region.getByRole("button", { name: "Close sandbox approval policy help" }).tap();
   await expect(help).toBeFocused();
   await help.tap();
-  await panel.getByText("Git change mode controls where edits land", { exact: false }).tap();
+  await panel.locator(".leader-sandbox-policy legend").tap();
   await expect(region).toBeHidden();
   await context.close();
 });

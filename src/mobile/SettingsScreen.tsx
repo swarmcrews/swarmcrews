@@ -1,236 +1,108 @@
+import { NavigationBlockedDialog } from "../project-library/NavigationBlockedDialog.tsx";
+import { hasNavigationDraft, NavigationDraft } from "../navigation-drafts.tsx";
+import { useLayoutEffect, useRef, useState } from "react";
+import { ArrowLeft, ChevronRight, Server } from "lucide-react";
+import { SettingsPreferences } from "../SettingsPreferences.tsx";
+import { SETTINGS_CATEGORIES, type SettingsCategory } from "../settings-categories.ts";
 import { ConnectionsPanel } from "../mcp-connections/ConnectionsPanel.tsx";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-import {
-  getProjectSettings,
-  restartServer,
-  updateProjectSettings,
-  type ProjectSettings,
-} from "../api.ts";
-import { buildModelGroups } from "../SettingsMenu.tsx";
-import { useHarnessList } from "../use-harness-list.tsx";
-import { MobileMinionModelSettings } from "./MobileMinionModelSettings.tsx";
+import type { SocketSubscribe } from "../use-socket.ts";
+import { useMobileProjectSettings } from "./use-mobile-project-settings.ts";
+import { MobileServerSettings } from "./MobileServerSettings.tsx";
+import { MobileActionSettings } from "./MobileActionSettings.tsx";
+import "./mobile-settings.css";
 
 interface SettingsScreenProps {
-  project: {
-    id: string;
-    name: string;
-    path: string;
-  };
+  project: { id: string; name: string; path: string };
+  socketSend?: ((data: unknown) => void) | undefined;
+  socketSubscribe?: SocketSubscribe | undefined;
+}
+type Category = SettingsCategory | "server";
+
+export function SettingsScreen({ project, socketSend, socketSubscribe }: SettingsScreenProps) {
+  // A project switch starts a new navigation/save scope, including pending results.
+  return <ProjectSettingsScreen key={project.id} project={project} socketSend={socketSend} socketSubscribe={socketSubscribe} />;
 }
 
-type SaveState = "idle" | "saving" | "saved" | "error";
-type RestartState = "idle" | "pending" | "sent";
-export function SettingsScreen({ project }: SettingsScreenProps) {
-  const [settings, setSettings] = useState<ProjectSettings>({});
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
-  const [restartState, setRestartState] = useState<RestartState>("idle");
-  const [restartError, setRestartError] = useState<string | null>(null);
-  const { harnesses, loaded: harnessesLoaded } = useHarnessList();
-  const modelGroups = useMemo(
-    () => buildModelGroups(harnesses, harnessesLoaded),
-    [harnesses, harnessesLoaded],
-  );
+function ProjectSettingsScreen({ project, socketSend, socketSubscribe }: SettingsScreenProps) {
+  const { settings, loading, loadError, saveState, save, retrySave, reload } = useMobileProjectSettings(project.id);
+  const [category, setCategory] = useState<Category | null>(null);
+  const root = useRef<HTMLElement>(null);
+  const [blocked, setBlocked] = useState(false);
+  const leaveCategory = () => hasNavigationDraft(root.current) ? setBlocked(true) : setCategory(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const navigation = useRef<HTMLElement>(null);
+  const lastCategory = useRef<Category | null>(null);
+  const title = category === "server" ? "Server" : SETTINGS_CATEGORIES.find(item => item.id === category)?.label ?? "Settings";
 
-  useEffect(() => {
-    let cancelled = false;
-
-    setLoading(true);
-    setLoadError(null);
-    setSaveState("idle");
-    void getProjectSettings(project.id)
-      .then((result) => {
-        if (cancelled) return;
-        setSettings(result);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setLoadError(err instanceof Error ? err.message : "Failed to load settings");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [project.id]);
-
-  const saveSettings = useCallback(
-    (next: ProjectSettings) => {
-      setSettings(next);
-      setSaveState("saving");
-      void updateProjectSettings(project.id, next)
-        .then(() => setSaveState("saved"))
-        .catch(() => setSaveState("error"));
-    },
-    [project.id],
-  );
-
-  const requestRestart = useCallback(() => {
-    setRestartState("pending");
-    setRestartError(null);
-    void restartServer()
-      .then(() => setRestartState("sent"))
-      .catch((err: unknown) => {
-        setRestartState("idle");
-        setRestartError(err instanceof Error ? err.message : "Failed to restart server");
-      });
-  }, []);
+  useLayoutEffect(() => {
+    if (category) {
+      lastCategory.current = category;
+      heading.current?.focus({ preventScroll: true });
+      heading.current?.closest("main")?.scrollTo?.({ top: 0 });
+    } else if (lastCategory.current) {
+      navigation.current?.querySelector<HTMLButtonElement>(`[data-category="${lastCategory.current}"]`)?.focus();
+    }
+  }, [category]);
 
   return (
-    <main className="mob-screen mob-settings" aria-label="Settings">
-      <header className="mob-screen-header">
-        <div>
-          <h1>Settings</h1>
-          <p className="mob-settings-project">{project.name}</p>
+    <main ref={root} className="mob-screen mob-settings" aria-label="Settings">
+      {blocked && <NavigationBlockedDialog onClose={() => setBlocked(false)} />}
+      <NavigationDraft scope="mobile-settings-save" pending={saveState.status === "saving"} failed={saveState.status === "error"} />
+      <header className="mob-settings-header">
+        {category && <button type="button" className="mob-settings-back" onClick={leaveCategory}>
+          <ArrowLeft size={18} aria-hidden="true" />All settings
+        </button>}
+        <div className="mob-settings-title-row">
+          <div><h1 ref={heading} tabIndex={-1}>{title}</h1><p className="mob-settings-project">{project.name}</p></div>
+          <span className="mob-settings-save" data-state={saveState.status} role="status" aria-live="polite">
+            {saveState.status === "saving" ? "Saving…" : saveState.status === "saved" ? "Saved" : saveState.status === "error" ? "Not saved" : ""}
+          </span>
         </div>
-        <span className="mob-settings-save" data-state={saveState} role="status" aria-live="polite">
-          {saveState === "saving"
-            ? "Saving"
-            : saveState === "saved"
-              ? "Saved"
-              : saveState === "error"
-                ? "Save failed"
-                : ""}
-        </span>
       </header>
 
-      {loading ? <div className="mob-launch-status">Loading settings...</div> : null}
-      {loadError ? <div className="mob-launch-error" role="alert">{loadError}</div> : null}
+      {loading && <p className="mob-launch-status" role="status">Loading settings…</p>}
+      {loadError && <div className="mob-settings-error" role="alert"><p>{loadError}</p>
+        <button type="button" onClick={reload}>Retry loading settings</button></div>}
+      {saveState.status === "error" && <div className="mob-settings-error" role="alert">
+        <p>{saveState.error ?? "Your changes could not be saved."} Your edits are still here.</p>
+        <button type="button" onClick={retrySave}>Retry saving settings</button>
+      </div>}
 
-      {!loading && !loadError ? (
-        <>
-          <section className="mob-settings-group" aria-labelledby="mob-project-defaults-heading">
-            <div className="mob-settings-group-heading">
-              <h2 id="mob-project-defaults-heading">Project defaults</h2>
-              <p>Choose how new Minion and role work starts in this project.</p>
+      {!loading && !loadError && (category === null ? (
+        <nav ref={navigation} className="mob-settings-index" aria-label="Settings categories">
+          <p className="mob-settings-intro">Project preferences, wherever you work. Changes apply to new sessions unless noted.</p>
+          {(["project", "labs"] as const).map(section => <section key={section} aria-label={section === "labs" ? "Labs" : "Project preferences"}>
+            <div className="mob-settings-section-label"><span>{section === "labs" ? "Labs" : "Project"}</span>
+              {section === "labs" && <span className="settings-beta-badge">Beta</span>}
             </div>
-            <MobileMinionModelSettings
-              settings={settings}
-              harnesses={harnesses}
-              modelGroups={modelGroups}
-              saveSettings={saveSettings}
-            />
-
-            <details className="mob-settings-disclosure">
-              <summary id="mob-role-system-heading">
-                <span className="mob-settings-disclosure-title">Role System <small>Beta</small></span>
-                <span className="mob-settings-disclosure-description">
-                  Apply adaptive expert role contracts to new Leader and Minion sessions.
-                </span>
-              </summary>
-              <div className="mob-settings-disclosure-content" aria-labelledby="mob-role-system-heading">
-                <label className="mob-settings-toggle">
-                  <span>
-                    <strong>Enable adaptive expert roles</strong>
-                    <small>Agents infer a focused role or refine one supplied in the task.</small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={settings.roleSystemBeta === true}
-                    onChange={(event) =>
-                      saveSettings({ ...settings, roleSystemBeta: event.target.checked })
-                    }
-                  />
-                </label>
-              </div>
-            </details>
+            <div className="mob-settings-category-list">
+              {SETTINGS_CATEGORIES.filter(item => item.section === section).map(item => {
+                const Icon = item.icon;
+                return <button key={item.id} type="button" data-category={item.id} className="mob-settings-category" onClick={() => setCategory(item.id)}>
+                  <span className="mob-settings-category-icon"><Icon size={20} aria-hidden="true" /></span>
+                  <span><strong>{item.label}</strong><small>{item.description}</small></span>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>;
+              })}
+            </div>
+          </section>)}
+          <section aria-label="Administration">
+            <div className="mob-settings-section-label">Administration</div>
+            <div className="mob-settings-category-list"><button type="button" data-category="server" className="mob-settings-category" onClick={() => setCategory("server")}>
+              <span className="mob-settings-category-icon"><Server size={20} aria-hidden="true" /></span>
+              <span><strong>Server</strong><small>Restart and reconnect</small></span><ChevronRight size={18} aria-hidden="true" />
+            </button></div>
           </section>
-
-          <section className="mob-settings-group" aria-labelledby="mob-administration-heading">
-            <div className="mob-settings-group-heading">
-              <h2 id="mob-administration-heading">Connections & administration</h2>
-              <p>Manage project tools and the running Swarmcrews server.</p>
-            </div>
-            <details className="mob-settings-disclosure">
-              <summary id="mob-connections-heading">
-                <span className="mob-settings-disclosure-title">Connections</span>
-                <span className="mob-settings-disclosure-description">
-                  Add and manage project tools available to your agents.
-                </span>
-              </summary>
-              <div className="mob-settings-disclosure-content" aria-labelledby="mob-connections-heading">
-                <ConnectionsPanel key={project.id} projectId={project.id} />
-              </div>
-            </details>
-
-            <details className="mob-settings-disclosure mob-settings-disclosure--danger">
-              <summary id="mob-server-heading">
-                <span className="mob-settings-disclosure-title">Server</span>
-                <span className="mob-settings-disclosure-description">
-                  Restart the active backend to pick up changed code.
-                </span>
-              </summary>
-              <div className="mob-settings-disclosure-content" aria-labelledby="mob-server-heading">
-                <button
-                  type="button"
-                  className="mob-settings-danger-button"
-                  onClick={() => {
-                    setRestartError(null);
-                    setRestartDialogOpen(true);
-                  }}
-                >
-                  Restart Server
-                </button>
-              </div>
-            </details>
-          </section>
-        </>
-      ) : null}
-
-      {restartDialogOpen ? (
-        <div
-          className="mob-settings-modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && restartState !== "pending") {
-              setRestartDialogOpen(false);
-            }
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Restart Swarmcrews server"
-            className="mob-settings-modal"
-          >
-            <h2>Restart Swarmcrews server?</h2>
-            <p>
-              {restartState === "sent"
-                ? "Restart requested. The app will reconnect when the server is back."
-                : "Active sessions will disconnect while the backend restarts. Use this only when you need the running server to pick up new code."}
-            </p>
-            {restartError ? <div className="mob-launch-error" role="alert">{restartError}</div> : null}
-            <div className="mob-settings-modal-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  if (restartState !== "pending") {
-                    setRestartDialogOpen(false);
-                    if (restartState === "sent") setRestartState("idle");
-                  }
-                }}
-                disabled={restartState === "pending"}
-              >
-                {restartState === "sent" ? "Close" : "Cancel"}
-              </button>
-              {restartState !== "sent" ? (
-                <button
-                  type="button"
-                  className="mob-settings-danger-button"
-                  onClick={requestRestart}
-                  disabled={restartState === "pending"}
-                >
-                  {restartState === "pending" ? "Restarting..." : "Restart Server"}
-                </button>
-              ) : null}
-            </div>
-          </div>
+          <p className="mob-settings-footnote">Preferences save automatically for this project. Themes apply across the app.</p>
+        </nav>
+      ) : (
+        <div className="mob-settings-detail">
+          {category === "server" ? <MobileServerSettings /> : category === "connections" ? <ConnectionsPanel projectId={project.id} /> :
+            category === "actions" ? <MobileActionSettings projectId={project.id} settings={settings} onSettingsChange={save} settingsSaveState={saveState} onRetrySettingsSave={retrySave} /> :
+            <SettingsPreferences key={category} category={category} settings={settings} onSettingsChange={save}
+              settingsSaveState={saveState} onRetrySettingsSave={retrySave} socketSend={socketSend} socketSubscribe={socketSubscribe} />}
         </div>
-      ) : null}
+      ))}
     </main>
   );
 }

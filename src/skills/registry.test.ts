@@ -56,6 +56,15 @@ describe("skill registry built-in surfacing", () => {
     expect(builder?.builtIn).toBe(true);
   });
 
+  it("can build a project-scoped picker without changing or leaking the global registry", () => {
+    registerSkill(projectSkill("other-project"));
+    const pickable = getPickableSkills([projectSkill("current-project"), projectSkill(BUILTIN_ID)]);
+    expect(pickable.map(skill => skill.id)).toContain("current-project");
+    expect(pickable.map(skill => skill.id)).not.toContain("other-project");
+    expect(pickable.filter(skill => skill.id === BUILTIN_ID)).toHaveLength(1);
+    expect(getAllSkills().map(skill => skill.id)).toEqual(["other-project"]);
+  });
+
   it("getSkill() resolves a built-in as a fallback", () => {
     expect(getSkill(BUILTIN_ID)?.name).toBe("Skill Builder");
     expect(getSkill(BUILTIN_ID)?.builtIn).toBe(true);

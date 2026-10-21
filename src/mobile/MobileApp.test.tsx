@@ -485,9 +485,8 @@ describe("MobileApp", () => {
     });
     expect(screen.getByRole("main", { name: "Settings" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Model"), {
-      target: { value: "claude::claude-opus-4-8" },
-    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Agent defaults/ }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Fixed Minion model and reasoning" })).getByRole("button", { name: "Opus 4.8" }));
 
     await waitFor(() => {
       expect(updateProjectSettings).toHaveBeenCalledWith(
@@ -519,10 +518,11 @@ describe("MobileApp", () => {
       expect(screen.getByRole("main", { name: "Settings" })).toBeInTheDocument();
     });
 
+    fireEvent.click(await screen.findByRole("button", { name: /^Server/ }));
     fireEvent.click(screen.getByRole("button", { name: "Restart Server" }));
 
     expect(screen.getByRole("dialog", { name: "Restart Swarmcrews server" })).toBeInTheDocument();
-    expect(screen.getByText(/active sessions will disconnect/i)).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog", { name: "Restart Swarmcrews server" })).getByText(/active sessions will disconnect/i)).toBeInTheDocument();
     expect(restartServer).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Restart Server" })[1]!);

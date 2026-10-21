@@ -1443,7 +1443,8 @@
 
 .leader-sandbox-axis > select,
 .leader-sandbox-axis > output,
-.leader-sandbox-axis > .leader-selected-setting {
+.leader-sandbox-axis > .leader-selected-setting,
+.leader-sandbox-description {
   grid-column: 1 / -1;
 }
 
@@ -1496,7 +1497,8 @@
 
 .leader-sandbox-help:focus-visible,
 .leader-sandbox-help-content button:focus-visible,
-.leader-sandbox-policy select:focus-visible {
+.leader-sandbox-policy select:focus-visible,
+.leader-sandbox-runtime summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -1511,23 +1513,36 @@
   font: inherit;
 }
 
-.leader-sandbox-policy small,
-.leader-sandbox-effective {
+.leader-sandbox-notice,
+.leader-sandbox-runtime {
   grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.leader-sandbox-notice,
+.leader-sandbox-description,
+.leader-sandbox-runtime {
+  color: var(--text-secondary);
+  font: var(--text-size-label)/var(--leading-body) var(--font-sans);
   overflow-wrap: anywhere;
 }
 
-/* Access boundaries are decision-critical copy, not incidental metadata. */
-.leader-sandbox-policy small {
-  color: var(--text-secondary);
-  font: var(--text-size-label)/var(--leading-body) var(--font-sans);
+.leader-sandbox-notice strong {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
-.leader-sandbox-effective {
-  margin: 0;
-  color: var(--text-secondary);
-  font: var(--text-size-label)/var(--leading-body) var(--font-sans);
+.leader-sandbox-notice p { margin: 4px 0 0; }
+.leader-sandbox-description { margin: 0; }
+
+.leader-sandbox-runtime summary {
+  width: fit-content;
+  padding: 6px 0;
+  cursor: pointer;
 }
+
+.leader-sandbox-runtime summary:hover { color: var(--text-primary); }
+.leader-sandbox-effective { display: block; margin-top: 4px; }
 
 @container sandbox-policy (max-width: 22.5rem) {
   .leader-sandbox-axis { grid-column: 1 / -1; }

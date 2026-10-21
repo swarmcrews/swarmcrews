@@ -1,0 +1,131 @@
+/* Shared organization overlays: reading rhythm and a distinct commit action. */
+.pl-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+}
+/* Header and footer are fixed bands; only the body scrolls, so Close and commit actions never leave the screen. */
+.pl-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(620px, 100%);
+  max-height: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-lg);
+  overflow-wrap: anywhere;
+}
+.pl-dialog > header, .pl-dialog > footer { flex-shrink: 0; }
+.pl-dialog-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+  padding: 20px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-padding-block: 16px;
+}
+.pl-dialog-body > * { flex-shrink: 0; }
+.pl-dialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 16px 16px 24px;
+  border-bottom: 1px solid var(--border-default);
+}
+.pl-dialog h2 { min-width: 0; margin: 0; font: 600 1.25rem/1.4 var(--font-display); letter-spacing: -.02em; }
+.pl-dialog h3 { margin: 0 0 8px; font-size: 1rem; line-height: 1.4; }
+.pl-dialog p { margin: 0; font-size: .875rem; line-height: 1.6; }
+.pl-dialog > header button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.pl-dialog footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pl-dialog > footer { padding: 16px 24px; border-top: 1px solid var(--border-default); background: var(--bg-surface); }
+.pl-dialog-body footer { margin-top: 4px; padding-top: 16px; border-top: 1px solid var(--border-default); }
+.pl-dialog footer > [role="status"] { margin: 0; color: var(--text-secondary); font-size: .75rem; }
+.pl-dialog footer > .pl-footer-status { display: inline-flex; flex: 1 1 auto; align-items: center; gap: 6px; font-size: .8125rem; }
+.pl-dialog .pl-hint { color: var(--text-secondary); font-size: .8125rem; line-height: 1.6; }
+.pl-context { margin: 0; padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-control); background: var(--bg-primary); color: var(--text-primary); font: 400 .8125rem/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.pl-dialog textarea { min-height: 96px; resize: vertical; }
+.pl-dialog fieldset { min-width: 0; margin: 0; padding: 12px 16px 16px; border: 1px solid var(--border-default); border-radius: var(--radius-control); }
+.pl-dialog legend { padding-inline: 6px; color: var(--text-secondary); font-size: .8125rem; }
+.pl-dialog .pl-check { flex-direction: row; align-items: center; min-height: 44px; color: var(--text-primary); }
+.pl-dialog .pl-check input { flex-shrink: 0; width: 20px; height: 20px; min-height: 0; accent-color: var(--accent); }
+.pl-full-value {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  font: 400 .75rem/1.6 var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.pl-collection-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--border-default); }
+.pl-collection-row > span { flex: 1 1 150px; min-width: 0; font-size: .875rem; overflow-wrap: anywhere; }
+.pl-dialog [role="alert"]:not(.pl-callout) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--status-warning);
+  border-radius: var(--radius-control);
+  background: var(--bg-secondary);
+  font-size: .875rem;
+  line-height: 1.6;
+}
+.pl-dialog [role="alert"]:not(.pl-callout) > p { flex: 1 1 100%; }
+.pl-dialog .pl-callout { margin-block: 0; }
+.pl-dialog .pl-action--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+.pl-dialog .pl-action--primary:hover:not(:disabled) { border-color: var(--accent); background: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.pl-dialog .pl-action--primary:disabled { border-color: var(--border-default); background: var(--bg-secondary); color: var(--text-secondary); }
+.pl-dialog .pl-action--danger { border-color: var(--danger-color); color: var(--danger-color-text); }
+.pl-dialog .pl-action--danger:hover:not(:disabled) { border-color: var(--danger-color); background: color-mix(in srgb, var(--danger-color) 12%, var(--bg-surface)); }
+.pl-dialog .pl-action--danger:disabled { border-color: var(--border-default); color: var(--text-secondary); }
+
+@media (max-width: 600px) {
+  .pl-dialog-backdrop { padding: 0; }
+  .pl-dialog {
+    width: 100%;
+    height: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .pl-dialog > header { padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); }
+  .pl-dialog-body { padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
+  .pl-dialog > footer { padding: 12px max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  .pl-dialog footer button { flex: 1 1 auto; }
+  .pl-dialog footer > [role="status"] { flex-basis: 100%; }
+}

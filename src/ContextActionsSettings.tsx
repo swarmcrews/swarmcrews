@@ -1,3 +1,4 @@
+import { NavigationDraft } from "./navigation-drafts.tsx";
 import { SkillIcon } from "./components/SkillIcon.tsx";
 import { useEffect, useId, useMemo, useState } from "react";
 import {
@@ -22,6 +23,7 @@ import {
   type DashboardLeaderActionConfig,
 } from "./dashboard-leader-actions.ts";
 import { getPickableSkills } from "./skills/registry.ts";
+import type { SkillTemplate } from "./skills/types.ts";
 import { randomUuid } from "./random-id.ts";
 import "./context-actions-settings.css";
 
@@ -31,11 +33,14 @@ export type SettingsSaveState = {
 };
 
 interface ContextActionsSettingsProps {
+  skills?: ReadonlyArray<SkillTemplate> | undefined;
   settings: ProjectSettings;
   onSettingsChange: (settings: ProjectSettings) => void;
   saveState?: SettingsSaveState | undefined;
   onRetrySave?: (() => void) | undefined;
 }
+
+type RecipeTransition = { kind: "select" | "remove"; id: string } | { kind: "create" | "restore" };
 
 function newActionDraft(): DashboardLeaderActionConfig {
   return {
@@ -48,6 +53,7 @@ function newActionDraft(): DashboardLeaderActionConfig {
 }
 
 export function ContextActionsSettings({
+  skills,
   settings,
   onSettingsChange,
   saveState = { status: "idle" },
@@ -55,6 +61,8 @@ export function ContextActionsSettings({
 }: ContextActionsSettingsProps) {
   const actions = useMemo(() => normalizeDashboardLeaderActions(settings), [settings]);
   const [query, setQuery] = useState("");
+  const [transition, setTransition] = useState<RecipeTransition | null>(null);
+  const writeBlocked = saveState.status === "saving" || saveState.status === "error";
   const [sourceId, setSourceId] = useState<string | null>(() => actions[0]?.id ?? null);
   const [draft, setDraft] = useState<DashboardLeaderActionConfig>(() =>
     actions[0] ? cloneAction(actions[0]) : newActionDraft(),
@@ -67,15 +75,17 @@ export function ContextActionsSettings({
   const skillsHeadingId = useId();
   const skillPickerId = useId();
   const skillSearchId = useId();
-  const availableSkills = useMemo(() => getPickableSkills(), [settings]);
+  const availableSkills = useMemo(() => getPickableSkills(skills), [settings, skills]);
   const availableSkillIds = useMemo(
     () => new Set(availableSkills.map((skill) => skill.id)),
     [availableSkills],
   );
   const source = sourceId ? actions.find((action) => action.id === sourceId) : undefined;
   const dirty = sourceId === null
-    ? Boolean(draft.name || draft.prompt || draft.skillIds.length)
-    : JSON.stringify(source) !== JSON.stringify(draft);
+    ? Boolean(draft.name || draft.prompt || draft.skillIds.length || draft.icon !== DEFAULT_DASHBOARD_ACTION_ICON)
+    : !source || source.id !== draft.id || source.name !== draft.name || source.prompt !== draft.prompt
+      || source.icon !== draft.icon || source.skillIds.length !== draft.skillIds.length
+      || source.skillIds.some((id, index) => id !== draft.skillIds[index]);
 
   useEffect(() => {
     if (sourceId === null || dirty) return;
@@ -84,11 +94,11 @@ export function ContextActionsSettings({
   }, [actions, dirty, sourceId]);
 
   useEffect(() => {
-    if (sourceId === null || actions.some((action) => action.id === sourceId)) return;
+    if (dirty || writeBlocked || sourceId === null || actions.some((action) => action.id === sourceId)) return;
     const fallback = actions[0];
     setSourceId(fallback?.id ?? null);
     setDraft(fallback ? cloneAction(fallback) : newActionDraft());
-  }, [actions, sourceId]);
+  }, [actions, sourceId, dirty, writeBlocked]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -139,7 +149,8 @@ export function ContextActionsSettings({
 
   const applyDraft = () => {
     setValidationVisible(true);
-    if (!canApply) return;
+    if (!canApply || writeBlocked) return;
+    setTransition(null);
     const nextAction: DashboardLeaderActionConfig = {
       ...draft,
       name: draft.name.trim(),
@@ -159,6 +170,7 @@ export function ContextActionsSettings({
   };
 
   const cancelDraft = () => {
+    setTransition(null);
     if (source) {
       setDraft(cloneAction(source));
     } else {
@@ -183,7 +195,7 @@ export function ContextActionsSettings({
   };
 
   const moveAction = (action: DashboardLeaderActionConfig, delta: number) => {
-    if (query.trim()) return;
+    if (query.trim() || writeBlocked) return;
     const index = actions.findIndex((candidate) => candidate.id === action.id);
     const target = index + delta;
     if (index < 0 || target < 0 || target >= actions.length) return;
@@ -194,17 +206,40 @@ export function ContextActionsSettings({
     setAnnouncement(`${action.name} moved to position ${target + 1} of ${actions.length}.`);
   };
 
+  const performTransition = (next: RecipeTransition) => {
+    if (writeBlocked) return;
+    setTransition(null);
+    if (next.kind === "create") addAction();
+    else if (next.kind === "restore") {
+      const defaults = defaultDashboardLeaderActions();
+      commit(defaults); chooseAction(defaults[0]!); setAnnouncement("Default actions restored.");
+    } else if ("id" in next) {
+      // Resolve by identity at confirmation time, not by stale presentation position.
+      const target = actions.find(action => action.id === next.id);
+      if (!target) { setAnnouncement("This recipe is no longer available. Your draft is retained."); return; }
+      if (next.kind === "select") chooseAction(target); else removeAction(target);
+    }
+  };
+  const requestTransition = (next: RecipeTransition) => {
+    if (writeBlocked || (next.kind === "select" && next.id === sourceId)) return;
+    if (dirty) setTransition(next); else performTransition(next);
+  };
+
   const missingSkillIds = draft.skillIds.filter((id) => !availableSkillIds.has(id));
   const DraftIcon = dashboardActionIcon(draft.icon);
 
   return (
     <>
       <header className="settings-heading">
-        <span>Labs</span>
-        <h2>Context actions <span className="settings-beta-badge">Beta</span></h2>
+        <span className="settings-heading__meta">
+          <span>Labs</span>
+          <span className="settings-beta-badge">Beta</span>
+        </span>
+        <h2>Context actions</h2>
         <p>Create reusable Leader instructions and tag the Skills that should be armed when an action is selected.</p>
       </header>
 
+      <NavigationDraft scope="context-actions" dirty={dirty} pending={saveState.status === "saving"} failed={saveState.status === "error"} />
       <section className="context-actions" aria-label="Action recipes">
         <aside className="context-actions__master">
           <div className="context-actions__master-head">
@@ -212,7 +247,7 @@ export function ContextActionsSettings({
               <strong>Action recipes</strong>
               <span>{actions.length} configured</span>
             </div>
-            <button type="button" onClick={addAction} aria-label="Add action">
+            <button type="button" disabled={writeBlocked} onClick={() => requestTransition({ kind: "create" })} aria-label="Add action">
               <Plus size={14} aria-hidden="true" />
             </button>
           </div>
@@ -251,7 +286,8 @@ export function ContextActionsSettings({
                     role="option"
                     aria-selected={selected}
                     className="context-actions__row-main"
-                    onClick={() => chooseAction(action)}
+                    disabled={writeBlocked}
+                    onClick={() => requestTransition({ kind: "select", id: action.id })}
                   >
                     <Icon size={15} aria-hidden="true" />
                     <span>
@@ -260,21 +296,16 @@ export function ContextActionsSettings({
                     </span>
                   </button>
                   <span className="context-actions__row-controls">
-                    <button type="button" aria-label={`Move ${action.name} up`} disabled={Boolean(query.trim()) || position === 0} onClick={() => moveAction(action, -1)}><ChevronUp size={12} /></button>
-                    <button type="button" aria-label={`Move ${action.name} down`} disabled={Boolean(query.trim()) || position === actions.length - 1} onClick={() => moveAction(action, 1)}><ChevronDown size={12} /></button>
+                    <button type="button" aria-label={`Move ${action.name} up`} disabled={writeBlocked || Boolean(query.trim()) || position === 0} onClick={() => moveAction(action, -1)}><ChevronUp size={12} /></button>
+                    <button type="button" aria-label={`Move ${action.name} down`} disabled={writeBlocked || Boolean(query.trim()) || position === actions.length - 1} onClick={() => moveAction(action, 1)}><ChevronDown size={12} /></button>
                   </span>
                 </div>
               );
             })}
           </div>
           <div className="context-actions__master-actions">
-            <button type="button" onClick={addAction}><Plus size={13} /> Create action</button>
-            <button type="button" onClick={() => {
-              const defaults = defaultDashboardLeaderActions();
-              commit(defaults);
-              chooseAction(defaults[0]!);
-              setAnnouncement("Default actions restored.");
-            }}><RotateCcw size={13} /> Restore defaults</button>
+            <button type="button" disabled={writeBlocked} onClick={() => requestTransition({ kind: "create" })}><Plus size={13} /> Create action</button>
+            <button type="button" disabled={writeBlocked} onClick={() => requestTransition({ kind: "restore" })}><RotateCcw size={13} /> Restore defaults</button>
           </div>
           {query.trim() && <small className="context-actions__filter-note">Clear search to reorder actions.</small>}
         </aside>
@@ -285,7 +316,7 @@ export function ContextActionsSettings({
               <span className="context-actions__detail-icon"><DraftIcon size={16} /></span>
               <div><strong>{sourceId === null ? "New action" : draft.name || "Untitled action"}</strong><small>{sourceId === null ? "Local draft" : dirty ? "Unsaved changes" : "Saved recipe"}</small></div>
             </div>
-            {source && <button type="button" className="context-actions__delete" aria-label={`Remove ${source.name}`} onClick={() => removeAction(source)}><Trash2 size={14} /></button>}
+            {source && <button type="button" className="context-actions__delete" aria-label={`Remove ${source.name}`} disabled={writeBlocked} onClick={() => requestTransition({ kind: "remove", id: source.id })}><Trash2 size={14} /></button>}
           </div>
 
           <div className="context-actions__sections">
@@ -388,12 +419,17 @@ export function ContextActionsSettings({
             </fieldset>
           </div>
 
+          {transition && <div role="alert" className="context-actions__error">
+            <p>Unsaved recipe edits. Keep editing or explicitly discard them before continuing.</p>
+            <button type="button" onClick={() => setTransition(null)}>Keep editing</button>
+            <button type="button" disabled={writeBlocked} onClick={() => performTransition(transition)}>Discard edits and continue</button>
+          </div>}
           <footer className="context-actions__footer">
             <span data-status={saveState.status} title={saveState.error}>
               {saveState.status === "saving" ? "Saving…" : saveState.status === "error" ? "Save failed" : saveState.status === "saved" ? "Saved" : dirty ? "Draft" : ""}
               {saveState.status === "error" && onRetrySave && <button type="button" onClick={onRetrySave}>Retry</button>}
             </span>
-            <div><button type="button" onClick={cancelDraft} disabled={!dirty}>Cancel</button><button type="button" className="context-actions__apply" onClick={applyDraft} disabled={!dirty}>Apply</button></div>
+            <div><button type="button" onClick={cancelDraft} disabled={!dirty}>Cancel</button><button type="button" className="context-actions__apply" onClick={applyDraft} disabled={!dirty || writeBlocked}>Apply</button></div>
           </footer>
         </div>
       </section>

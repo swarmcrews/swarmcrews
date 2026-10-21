@@ -68,21 +68,15 @@ describe("SandboxPolicyControls", () => {
   });
 
   it("discloses the full requested host scope outside the native control", () => {
-    const { rerender } = render(<SandboxPolicyControls onChange={vi.fn()} policy={{
+    render(<SandboxPolicyControls onChange={vi.fn()} policy={{
       filesystemScope: "unrestricted", approvalPolicy: "never", fullHostScope: "leader-and-minions",
     }} />);
     expect(screen.getByLabelText("Sandbox file access")).toHaveAccessibleDescription(
-      "Requested: Full Host - Leader + Minions. Remove the process sandbox for the Leader and its Minions.",
+      "Full Host - Leader + Minions. Remove the process sandbox for the Leader and its Minions.",
     );
     expect(screen.getByLabelText("Sandbox approval policy")).toHaveAccessibleDescription(
       expect.stringContaining("rejects escalation instead of prompting"),
     );
-    rerender(<SandboxPolicyControls onChange={vi.fn()} support={null} policy={{
-      filesystemScope: "unrestricted", approvalPolicy: "never",
-    }} />);
-    expect(screen.getByText("Full Host - Leader Only.", { exact: false })).toBeVisible();
-    expect(screen.getByText(/Minions keep their task sandbox/)).toBeVisible();
-    expect(screen.getByText(/Effective policy is resolved when the session starts/)).toBeVisible();
   });
 
   it("does not imply an old effective resolution enforces a changed request", () => {
@@ -90,6 +84,9 @@ describe("SandboxPolicyControls", () => {
       requested: { filesystemScope: "workspace-write", approvalPolicy: "on-request" },
       effective: { filesystemScope: "workspace-write", approvalPolicy: "on-request" }, unsupported: [],
     }} />);
+    const details = screen.getByText("Runtime policy · request changed").closest("details")!;
+    expect(details).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Runtime policy · request changed"));
     expect(screen.getByText(/Effective from last launch:/)).toBeVisible();
     expect(screen.getByText(/Changed request is not yet resolved/)).toBeVisible();
   });
@@ -100,17 +97,37 @@ describe("SandboxPolicyControls", () => {
       effective: { filesystemScope: "unmanaged", approvalPolicy: "unmanaged" },
       unsupported: ["filesystem:workspace-write", "approval"],
     }} />);
+    expect(screen.getByText("Runtime policy · not fully enforced")).toBeVisible();
+    fireEvent.click(screen.getByText("Runtime policy · not fully enforced"));
+    expect(screen.getByText(/Effective: unmanaged/)).toBeVisible();
     expect(screen.getByText(/Effective: unmanaged/)).toHaveTextContent("unmanaged: filesystem:workspace-write, approval");
   });
 
-  it("labels unsupported harness axes as unmanaged instead of editable", () => {
-    render(<SandboxPolicyControls onChange={vi.fn()} support={{
-      filesystem: [], approval: false,
-    }} />);
+  it.each([null, { filesystem: [], approval: false }])("consolidates unsupported settings into one honest notice (%s)", (support) => {
+    const onChange = vi.fn();
+    render(<SandboxPolicyControls onChange={onChange} support={support} />);
 
-    expect(screen.getByLabelText("Sandbox file access")).toHaveTextContent("Unmanaged by harness");
-    expect(screen.getByLabelText("Sandbox approval policy")).toHaveTextContent("Unmanaged by harness");
-    expect(screen.getByText(/Enabled editing tools can change files/)).toBeInTheDocument();
+    expect(screen.getByText("Not enforced by this harness")).toBeVisible();
+    expect(screen.getByText("File access and approvals follow host permissions and harness configuration.")).toBeVisible();
     expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+    expect(screen.queryByText(/Requested/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Effective policy is resolved/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /About sandbox/ })).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the supported axis editable for partial enforcement", () => {
+    render(<SandboxPolicyControls onChange={vi.fn()} support={{ filesystem: [], approval: true }} />);
+    expect(screen.getByLabelText("Sandbox file access")).toHaveTextContent("Not enforced");
+    expect(screen.getByLabelText("Sandbox approval policy")).toBeEnabled();
+    expect(screen.queryByText(/Read and edit files in authorized project roots/)).not.toBeInTheDocument();
+  });
+
+  it("keeps routine explanations in help rather than repeating selected values", () => {
+    render(<SandboxPolicyControls onChange={vi.fn()} />);
+    expect(screen.queryByText(/Requested/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Git change mode/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "About sandbox file access" }));
+    expect(screen.getByText(/Git change mode/)).toBeVisible();
   });
 });

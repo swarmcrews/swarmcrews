@@ -11,7 +11,7 @@ import { SANDBOX_ACCESS_OPTIONS, sandboxAccessValue, withSandboxAccess } from ".
 export { DEFAULT_SANDBOX_POLICY };
 
 const SANDBOX_HELP = {
-  filesystem: "Sets the agent process's file boundary. Read only prevents edits, Workspace write limits edits to authorized project roots, and Full Host removes that boundary for the Leader only or for the Leader and its Minions.",
+  filesystem: "Sets the agent process's file boundary. Read only prevents edits, Workspace write limits edits to authorized project roots, and Full Host removes that boundary for the Leader only or for the Leader and its Minions. Git change mode controls where edits land, not what the process can access.",
   approval: "Controls when guarded actions can ask to run outside the current sandbox. Always ask is strictest; Never ask rejects escalation instead of prompting.",
 } as const;
 
@@ -69,6 +69,9 @@ export function SandboxPolicyControls({ policy, effective, support, disabled = f
   const value = policy ?? DEFAULT_SANDBOX_POLICY;
   const update = (patch: Partial<SandboxPolicy>) => onChange({ ...value, ...patch });
   const actual = effective?.effective;
+  const filesSupported = support === undefined || (support !== null && support.filesystem.length > 0);
+  const approvalSupported = support === undefined || (support !== null && support.approval);
+  const unmanaged = !filesSupported && !approvalSupported;
   const id = useId();
   const access = SANDBOX_ACCESS_OPTIONS.find((option) => option.value === sandboxAccessValue(value))!;
   const approval = APPROVAL_OPTIONS.find((option) => option.value === value.approvalPolicy)!;
@@ -79,39 +82,40 @@ export function SandboxPolicyControls({ policy, effective, support, disabled = f
   return (
     <fieldset className="leader-sandbox-policy">
       <legend>Execution sandbox</legend>
-      <div className="leader-sandbox-axis">
-        <label htmlFor={`${id}-files`}>Files</label>
-        <SandboxHelp axis="file access" description={SANDBOX_HELP.filesystem} />
-        {support === undefined || (support !== null && support.filesystem.length > 0) ? (
-          <select id={`${id}-files`} disabled={disabled} aria-label="Sandbox file access" aria-describedby={`${id}-files-meaning`} value={sandboxAccessValue(value)}
-            onChange={(event) => onChange(withSandboxAccess(value, event.target.value))}>
-            {SANDBOX_ACCESS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}
-                disabled={support !== undefined && (support === null || !support.filesystem.includes(option.filesystemScope))}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        ) : <output id={`${id}-files`} aria-label="Sandbox file access">Unmanaged by harness</output>}
-        <SelectedSetting id={`${id}-files-meaning`} label="Requested" value={access.label} description={access.description} />
-      </div>
-      <div className="leader-sandbox-axis">
-        <label htmlFor={`${id}-approval`}>Approval</label>
-        <SandboxHelp axis="approval policy" description={SANDBOX_HELP.approval} />
-        {support === undefined || (support !== null && support.approval) ? (
-          <select id={`${id}-approval`} disabled={disabled} aria-label="Sandbox approval policy" aria-describedby={`${id}-approval-meaning`} value={value.approvalPolicy}
-            onChange={(event) => update({ approvalPolicy: event.target.value as SandboxPolicy["approvalPolicy"] })}>
-            {APPROVAL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        ) : <output id={`${id}-approval`} aria-label="Sandbox approval policy">Unmanaged by harness</output>}
-        <SelectedSetting id={`${id}-approval-meaning`} label="Requested" value={approval.label} description={approval.description} />
-      </div>
-      <small>
-        Git change mode controls where edits land; this policy controls what the agent process can access.
-      </small>
-      {(support === null || (support?.filesystem.length === 0 && !support.approval)) && <small>
-        This harness does not enforce these sandbox settings. Enabled editing tools can change files subject to host permissions and any configured extensions.
-      </small>}
+      {unmanaged ? <div className="leader-sandbox-notice">
+        <strong>Not enforced by this harness</strong>
+        <p>File access and approvals follow host permissions and harness configuration.</p>
+      </div> : <>
+        <div className="leader-sandbox-axis">
+          <label htmlFor={`${id}-files`}>Files</label>
+          {filesSupported && <SandboxHelp axis="file access" description={SANDBOX_HELP.filesystem} />}
+          {filesSupported ? (
+            <select id={`${id}-files`} disabled={disabled} aria-label="Sandbox file access" aria-describedby={`${id}-files-meaning`} value={sandboxAccessValue(value)}
+              onChange={(event) => onChange(withSandboxAccess(value, event.target.value))}>
+              {SANDBOX_ACCESS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}
+                  disabled={support !== undefined && (support === null || !support.filesystem.includes(option.filesystemScope))}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : <output id={`${id}-files`} aria-label="Sandbox file access">Not enforced</output>}
+          {filesSupported && (value.filesystemScope === "unrestricted"
+            ? <SelectedSetting id={`${id}-files-meaning`} value={access.label} description={access.description} />
+            : <p className="leader-sandbox-description" id={`${id}-files-meaning`}>{access.description}</p>)}
+        </div>
+        <div className="leader-sandbox-axis">
+          <label htmlFor={`${id}-approval`}>Approval</label>
+          {approvalSupported && <SandboxHelp axis="approval policy" description={SANDBOX_HELP.approval} />}
+          {approvalSupported ? (
+            <select id={`${id}-approval`} disabled={disabled} aria-label="Sandbox approval policy" aria-describedby={`${id}-approval-meaning`} value={value.approvalPolicy}
+              onChange={(event) => update({ approvalPolicy: event.target.value as SandboxPolicy["approvalPolicy"] })}>
+              {APPROVAL_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          ) : <output id={`${id}-approval`} aria-label="Sandbox approval policy">Not enforced</output>}
+          {approvalSupported && <p className="leader-sandbox-description" id={`${id}-approval-meaning`}>{approval.description}</p>}
+        </div>
+      </>}
       {mcpAvailable && <div className="connection-approval-hint" role="status">
         <strong>Review MCP approvals</strong>
         <p>{support === null || support?.approval === false
@@ -121,7 +125,11 @@ export function SandboxPolicyControls({ policy, effective, support, disabled = f
             : "MCP tools may need approval. Your current policy permits approval prompts; confirm connection requests when asked."} External connections use their own access, separately from the file sandbox.</p>
         {value.approvalPolicy === "never" && support?.approval === true && <button type="button" disabled={disabled} onClick={() => update({ approvalPolicy: "on-request" })}>Allow MCP approval prompts</button>}
       </div>}
-      {actual ? (
+      {actual && <details className="leader-sandbox-runtime">
+        <summary>
+          Runtime policy{requestChanged ? " · request changed" : ""}
+          {actual.filesystemScope === "unmanaged" || actual.approvalPolicy === "unmanaged" ? " · not fully enforced" : ""}
+        </summary>
         <output className="leader-sandbox-effective">
           {requestChanged ? "Effective from last launch: " : "Effective: "}{actual.filesystemScope} · {actual.approvalPolicy}
           {effective.unsupported.length > 0 ? ` · unmanaged: ${effective.unsupported.join(", ")}` : ""}
@@ -129,7 +137,7 @@ export function SandboxPolicyControls({ policy, effective, support, disabled = f
           {(actual.filesystemScope === "unmanaged" || actual.approvalPolicy === "unmanaged")
             ? " Unmanaged axes are not enforced by this harness." : null}
         </output>
-      ) : <p className="leader-sandbox-effective">Effective policy is resolved when the session starts.</p>}
+      </details>}
     </fieldset>
   );
 }

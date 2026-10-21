@@ -123,7 +123,7 @@ describe("SettingsMenu", () => {
     expect(
       within(navigation)
         .getAllByRole("button")
-        .map((button) => button.querySelector("strong")?.firstChild?.textContent?.trim()),
+        .map((button) => button.querySelector(".settings-nav__label")?.textContent),
     ).toEqual([
       "General",
       "Agent defaults",
@@ -138,7 +138,7 @@ describe("SettingsMenu", () => {
     );
     expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
     expect(screen.getByText("Labs")).toBeInTheDocument();
-    expect(screen.getAllByText("Beta")).toHaveLength(2);
+    expect(screen.getAllByText("Beta")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /operations/i })).toBeNull();
     expect(screen.queryByText("Session policy")).toBeNull();
 
@@ -149,6 +149,24 @@ describe("SettingsMenu", () => {
     expect(screen.getByRole("region", { name: "Leader defaults" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Minion defaults" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "General" })).toBeNull();
+  });
+
+  it("shows beta status as section metadata instead of crowding category titles", () => {
+    render(<SettingsMenu settings={{}} onSettingsChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /open settings/i }));
+
+    const navigation = screen.getByRole("navigation", { name: /settings categories/i });
+    const beta = within(navigation).getByText("Beta");
+    expect(beta.closest(".settings-nav__group-label")).toHaveTextContent("Labs");
+    expect(beta.closest("button")).toBeNull();
+
+    for (const category of ["Context actions", "Governance"]) {
+      openCategory(category);
+      const heading = screen.getByRole("heading", { name: category });
+      expect(within(heading).queryByText("Beta")).toBeNull();
+      expect(heading.closest("header")?.querySelector(".settings-heading__meta"))
+        .toHaveTextContent("Beta");
+    }
   });
 
   it("emits merged settings when permission mode changes", () => {
@@ -206,8 +224,9 @@ describe("SettingsMenu", () => {
     fireEvent.click(screen.getByRole("button", { name: /open settings/i }));
     openCategory("Agent defaults");
 
-    expect(screen.getByLabelText("Sandbox file access")).toHaveTextContent("Unmanaged by harness");
-    expect(screen.getByLabelText("Sandbox approval policy")).toHaveTextContent("Unmanaged by harness");
+    expect(screen.getByText("Not enforced by this harness")).toBeVisible();
+    expect(screen.queryByLabelText("Sandbox file access")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sandbox approval policy")).not.toBeInTheDocument();
   });
 
   it("emits merged settings when the system model mode changes", () => {
