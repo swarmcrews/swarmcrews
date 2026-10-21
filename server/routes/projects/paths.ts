@@ -20,10 +20,11 @@ export function mountProjectPathRoutes(router: Router): void {
     if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
       res.status(400).json({ error: "Invalid repository path request" }); return;
     }
-    const body = req.body as { path?: unknown; mode?: unknown };
+    const body = req.body as { path?: unknown; mode?: unknown; query?: unknown };
     if ((body.path !== undefined && typeof body.path !== "string")
       || (typeof body.path === "string" && body.path.length > 32_768)
-      || (body.mode !== undefined && body.mode !== "browse" && body.mode !== "complete")) {
+      || (body.mode !== undefined && body.mode !== "browse" && body.mode !== "complete")
+      || (body.query !== undefined && (typeof body.query !== "string" || body.query.length > 256))) {
       res.status(400).json({ error: "Invalid repository path request" }); return;
     }
     if (activeRequests >= MAX_ACTIVE_REQUESTS) {
@@ -32,7 +33,7 @@ export function mountProjectPathRoutes(router: Router): void {
     activeRequests++;
     // A slow network volume cannot hold an HTTP request indefinitely. Keep its
     // admission slot until the underlying filesystem work actually settles.
-    const work = discoverRepositoryDirectories({ path: body.path, mode: body.mode })
+    const work = discoverRepositoryDirectories({ path: body.path, mode: body.mode, query: body.query })
       .finally(() => { activeRequests--; });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), 2_000); });

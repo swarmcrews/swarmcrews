@@ -22,6 +22,51 @@ afterEach(() => {
 });
 
 describe("discoverRepositoryDirectories", () => {
+  it("offers a missing child folder as a destination without creating it", async () => {
+    const directory = fs.realpathSync.native(root);
+    const result = await discoverRepositoryDirectories({ path: root, mode: "browse", query: "  Résumé app  " });
+    expect(result?.entries).toEqual([]);
+    expect(result?.newDirectory).toEqual({ name: "Résumé app", path: path.join(directory, "Résumé app") });
+    expect(fs.existsSync(path.join(directory, "Résumé app"))).toBe(false);
+  });
+
+  it.each(["", " ", ".", "..", "../escape", "nested/folder", "nested\\folder", "bad\0name"])("does not offer a new destination for invalid folder-name search %j", async query => {
+    expect((await discoverRepositoryDirectories({ path: root, mode: "browse", query }))?.newDirectory).toBeUndefined();
+  });
+
+  it("does not propose overwriting files, dangling links, or links outside browsing roots", async () => {
+    fs.writeFileSync(path.join(root, "file"), "preserve");
+    fs.symlinkSync(path.join(outside, "missing"), path.join(root, "dangling"), "junction");
+    fs.symlinkSync(outside, path.join(root, "outside"), "junction");
+    for (const query of ["file", "dangling", "outside"]) {
+      const result = await discoverRepositoryDirectories({ path: root, mode: "browse", query });
+      expect(result?.entries).toEqual([]);
+      expect(result?.newDirectory).toBeUndefined();
+    }
+    expect(fs.readFileSync(path.join(root, "file"), "utf8")).toBe("preserve");
+  });
+
+  it("requires a current directory and an absence check even with a partial listing", async () => {
+    expect((await discoverRepositoryDirectories({ mode: "browse", query: "new-folder" }))?.newDirectory).toBeUndefined();
+    vi.spyOn(fs.promises, "lstat").mockRejectedValue(Object.assign(new Error("Denied"), { code: "EACCES" }));
+    expect((await discoverRepositoryDirectories({ path: root, mode: "browse", query: "new-folder" }))?.newDirectory).toBeUndefined();
+    vi.restoreAllMocks();
+    for (let i = 0; i < 2001; i++) fs.writeFileSync(path.join(root, `file-${i}`), "");
+    const partial = await discoverRepositoryDirectories({ path: root, mode: "browse", query: "new-folder" });
+    expect(partial?.truncated).toBe(true);
+    expect(partial?.newDirectory).toEqual({ name: "new-folder", path: path.join(fs.realpathSync.native(root), "new-folder") });
+    expect(fs.existsSync(path.join(root, "new-folder"))).toBe(false);
+  });
+
+  it("uses scoped name search to find entries beyond the listing cap without interpreting paths", async () => {
+    for (let i = 0; i < 105; i++) fs.mkdirSync(path.join(root, `repo-${String(i).padStart(3, "0")}`));
+    const match = await discoverRepositoryDirectories({ path: root, mode: "browse", query: "O-104" });
+    expect(match?.directory).toBe(fs.realpathSync.native(root));
+    expect(match?.entries).toEqual([{ name: "repo-104", path: path.join(fs.realpathSync.native(root), "repo-104") }]);
+    expect(match?.truncated).toBe(false);
+    expect((await discoverRepositoryDirectories({ path: root, mode: "browse", query: "../" }))?.entries).toEqual([]);
+    expect((await discoverRepositoryDirectories({ path: root, mode: "browse", query: outside }))?.entries).toEqual([]);
+  });
   it("guides /home-style ancestors to the default server home without listing other users", async () => {
     const home = path.join(root, "home", "alex");
     fs.mkdirSync(home, { recursive: true });

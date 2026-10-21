@@ -69,18 +69,20 @@ function trail(directory: string, roots: Root[]): { parent: string | null; bread
   return { parent: path.relative(root.real, directory) === "" ? null : path.dirname(directory), breadcrumbs };
 }
 
-async function readDirectories(directory: string, roots: Root[], prefix: string): Promise<{ entries: RepositoryDirectory[]; truncated: boolean } | null> {
+async function readDirectories(directory: string, roots: Root[], filter: string, match: "prefix" | "contains"): Promise<{ entries: RepositoryDirectory[]; truncated: boolean } | null> {
   const entries: RepositoryDirectory[] = [];
   let truncated = false;
   let handle: Dir | undefined;
   let scanned = 0;
   const deadline = Date.now() + SCAN_TIME_MS;
+  const query = filter.toLocaleLowerCase();
   try {
     handle = await fs.opendir(directory);
     for await (const entry of handle) {
       if (++scanned > MAX_SCANNED || Date.now() > deadline) { truncated = true; break; }
       if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      if (!entry.name.toLocaleLowerCase().startsWith(prefix.toLocaleLowerCase())) continue;
+      const name = entry.name.toLocaleLowerCase();
+      if (!(match === "contains" ? name.includes(query) : name.startsWith(query))) continue;
       const candidate = path.join(directory, entry.name);
       if (!await safeRealDirectory(candidate, roots)) continue;
       if (entries.length === MAX_ENTRIES) { truncated = true; break; }
@@ -91,7 +93,23 @@ async function readDirectories(directory: string, roots: Root[], prefix: string)
   return { entries, truncated };
 }
 
+async function missingChildDirectory(directory: string, query: string): Promise<RepositoryDirectory | undefined> {
+  const name = query.trim();
+  if (!name || name === "." || name === ".." || /[/\\\u0000-\u001f]/u.test(name)) return undefined;
+  const candidate = path.join(directory, name);
+  if (!normalizeRepositoryPath(candidate)) return undefined;
+  try {
+    // Files and symlinks (including dangling or out-of-scope targets) are
+    // occupied names, even when directory-only discovery does not list them.
+    await fs.lstat(candidate);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { name, path: candidate };
+  }
+  return undefined;
+}
+
 export async function discoverRepositoryDirectories(request: RepositoryPathRequest): Promise<RepositoryPathSuggestions | null> {
+  if (request.query !== undefined && (typeof request.query !== "string" || request.query.length > 256)) return null;
   const roots = await configuredRoots();
   const platform = process.platform === "win32" ? "win32" : "posix";
   const responseBase = { platform, separator: platform === "win32" ? "\\" : "/", roots: roots.map(rootDirectory) } as const;
@@ -129,7 +147,10 @@ export async function discoverRepositoryDirectories(request: RepositoryPathReque
   const realDirectory = await safeRealDirectory(directory, roots);
   if (!realDirectory) return null;
   const { parent, breadcrumbs } = trail(realDirectory, roots);
-  const listing = await readDirectories(realDirectory, roots, prefix);
+  const listing = await readDirectories(realDirectory, roots, mode === "browse" ? request.query?.trim() ?? "" : prefix,
+    mode === "browse" ? "contains" : "prefix");
   if (!listing) return null;
-  return { ...responseBase, directory: realDirectory, parent, breadcrumbs, ...listing };
+  const newDirectory = mode === "browse" && !listing.entries.length
+    ? await missingChildDirectory(realDirectory, request.query ?? "") : undefined;
+  return { ...responseBase, directory: realDirectory, parent, breadcrumbs, ...listing, ...(newDirectory ? { newDirectory } : {}) };
 }

@@ -7,6 +7,8 @@ export interface RepositoryDirectory {
 export interface RepositoryPathRequest {
   path?: string;
   mode?: "complete" | "browse";
+  /** Filter folder names within the browse directory; never interpreted as a full path. */
+  query?: string;
 }
 
 export interface RepositoryPathSuggestions {
@@ -18,4 +20,6 @@ export interface RepositoryPathSuggestions {
   breadcrumbs: RepositoryDirectory[];
   entries: RepositoryDirectory[];
   truncated: boolean;
+  /** A checked missing child directory; discovery never creates it. */
+  newDirectory?: RepositoryDirectory;
 }

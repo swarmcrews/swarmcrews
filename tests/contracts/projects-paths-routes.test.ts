@@ -30,6 +30,32 @@ afterEach(() => {
 });
 
 describe("POST /api/projects/path-suggestions", () => {
+  it("returns a new-folder destination for an empty name search without writing to the filesystem", async () => {
+    const destination = path.join(fs.realpathSync.native(root), "new-app");
+    const response = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
+      method: "POST", headers: { "content-type": "application/json", host: "localhost", origin: baseUrl },
+      body: JSON.stringify({ path: root, mode: "browse", query: "new-app" }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ entries: [], newDirectory: { name: "new-app", path: destination } });
+    expect(fs.existsSync(destination)).toBe(false);
+  });
+  it("accepts a search query scoped to the current directory and rejects invalid queries", async () => {
+    fs.mkdirSync(path.join(root, "unrelated"));
+    const response = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
+      method: "POST", headers: { "content-type": "application/json", host: "localhost" },
+      body: JSON.stringify({ path: root, mode: "browse", query: "POSIT" }),
+    });
+    expect(response.status).toBe(200);
+    expect((await response.json()).entries.map((entry: { name: string }) => entry.name)).toEqual(["repository"]);
+    for (const query of [42, [], "x".repeat(257)]) {
+      const invalid = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
+        method: "POST", headers: { "content-type": "application/json", host: "localhost" },
+        body: JSON.stringify({ path: root, mode: "browse", query }),
+      });
+      expect(invalid.status).toBe(400);
+    }
+  });
   it("returns the shared directory shape", async () => {
     const response = await fetch(`${baseUrl}/api/projects/path-suggestions`, {
       method: "POST", headers: { "content-type": "application/json", host: "localhost", origin: baseUrl },
