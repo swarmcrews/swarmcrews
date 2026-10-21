@@ -1,6 +1,5 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import {
@@ -39,6 +38,7 @@ import {
   registerWorkspace,
   resolveWorkspace,
   updateWorkspaceNickname,
+  listWorkspaces,
 } from "../../workspace-registry.ts";
 import { mountWorkspaceLifecycleRoutes } from "./workspace-lifecycle.ts";
 import {
@@ -46,7 +46,10 @@ import {
   mountProjectGitRoutes,
   type ProjectGitDependencies,
 } from "./git.ts";
-
+import { mountLibraryRoutes } from "../../project-library/routes.ts";
+import { recordOpenedIfAvailable } from "../../project-library/store.ts";
+import type { RuntimeReader } from "../../project-library/summary.ts";
+import { mountWorkspaceIdentityGuard } from "../../project-library/workspace-guard.ts";
 interface StateEdge {
   id: string;
   sourceNodeId: string;
@@ -69,16 +72,22 @@ export function mountCoreRoutes(
   deps: {
     getReadiness?: (opts: { fresh: true }) => Promise<HarnessReadinessSnapshot>;
     projectGit?: ProjectGitDependencies;
+    libraryRuntimeReader?: RuntimeReader;
   } = {},
 ): void {
   const readiness = deps.getReadiness ?? getHarnessReadiness;
   mountProjectGitRoutes(router, deps.projectGit);
-  // Restore the path allowlist from durable storage so projects remain
-  // accessible across server restarts without requiring re-open.
+  mountLibraryRoutes(router, { runtimeReader: deps.libraryRuntimeReader });
+  // Migrate legacy recents; UUID registry independently restores authorization.
   for (const recent of listRecentProjects()) {
     const workspace = (recent.id ? resolveWorkspace(recent.id) : null)
       ?? registerWorkspace(recent.path, { nickname: recent.name });
-    if (workspace) registerProjectPath(workspace.sourceRoot);
+    if (workspace && canonicalizeSourceRoot(workspace.sourceRoot) === workspace.sourceRoot) { registerProjectPath(workspace.sourceRoot); recordOpenedIfAvailable(workspace.id, recent.lastOpened); }
+  }
+
+  // Registration, not the bounded recents cache, owns durable source authorization.
+  for (const workspace of listWorkspaces()) {
+    if (canonicalizeSourceRoot(workspace.sourceRoot) === workspace.sourceRoot) registerProjectPath(workspace.sourceRoot);
   }
 
   router.get("/", (_req: Request, res: Response) => {
@@ -127,7 +136,8 @@ export function mountCoreRoutes(
     }
 
     const projectName = name ?? path.basename(canonicalPath);
-    const workspace = registerWorkspace(canonicalPath, { nickname: projectName });
+    const existing = findWorkspaceBySource(canonicalPath);
+    const workspace = existing ?? registerWorkspace(canonicalPath, { nickname: projectName });
     const absPath = workspace && registerProjectPath(workspace.sourceRoot);
     if (!workspace || !absPath) {
       res.status(403).json({ error: "Project path could not be registered" });
@@ -138,19 +148,19 @@ export function mountCoreRoutes(
       fs.mkdirSync(absPath, { recursive: true });
     }
 
-    const db = initSidecar(absPath, initialSettings);
-    const id = crypto.randomUUID();
-    db.prepare("INSERT INTO projects (id, name) VALUES (?, ?)").run(id, projectName);
-
-    addRecentProject(absPath, projectName);
+    const alreadyInitialized = hasSidecar(absPath);
+    const db = alreadyInitialized ? getDb(absPath) : initSidecar(absPath, initialSettings);
+    const id = ensureProjectRow(db, absPath);
+    if (!alreadyInitialized) db.prepare("UPDATE projects SET name=? WHERE id=?").run(projectName, id);
     setDbCache(absPath, db);
-
     const row = db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as ProjectRow;
+    addRecentProject(absPath, row.name);
+    const nodeRows = db.prepare("SELECT * FROM nodes WHERE project_id=? ORDER BY z_index ASC,created_at ASC").all(id) as NodeRow[];
 
-    res.status(201).json({
+    res.status(alreadyInitialized ? 200 : 201).json({
       ...rowToProject(row, absPath),
-      nodes: [],
-      graph: { edges: [] },
+      nodes: nodeRows.map(rowToNode),
+      graph: { edges: loadProjectEdges(db, id) },
       context: readContext(absPath),
       settings: readSettings(absPath),
       skills: readSkills(absPath),
@@ -208,6 +218,7 @@ export function mountCoreRoutes(
   });
 
   mountWorkspaceLifecycleRoutes(router);
+  mountWorkspaceIdentityGuard(router);
 
   router.get("/:encodedPath", async (req: Request, res: Response) => {
     const projectPath = resolveProjectReference(param(req, "encodedPath"));

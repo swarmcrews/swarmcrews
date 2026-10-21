@@ -71,7 +71,7 @@ import {
   deleteDbCache,
 } from "../../server/routes/projects/helpers.ts";
 import { addRecentProject, hasSidecar, initSidecar } from "../../server/project-store.ts";
-import { resolveWorkspace } from "../../server/workspace-registry.ts";
+import { getSwarmcrewsHome, registerWorkspace, resolveWorkspace } from "../../server/workspace-registry.ts";
 import { initDb } from "../../server/db.ts";
 import { createExpressFetch } from "../harness/in-process-http.ts";
 
@@ -149,6 +149,26 @@ function teardownProject() {
 }
 
 describe("POST /  — create project", () => {
+  it.each(["initialize", "continue_without_git"] as const)("creates a missing folder only after explicit Git choice: %s", async gitAction => {
+    const destination = path.join(project, "new-child");
+    const status = await fetch(`${baseUrl}/git-status`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: destination }),
+    });
+    expect(await status.json()).toEqual({ isRepository: false });
+    expect(fs.existsSync(destination)).toBe(false);
+    const undecided = await fetch(`${baseUrl}/`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "New child", path: destination }),
+    });
+    expect(undecided.status).toBe(409);
+    expect(fs.existsSync(destination)).toBe(false);
+    const decided = await fetch(`${baseUrl}/`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "New child", path: destination, gitAction }),
+    });
+    expect(decided.status).toBe(201);
+    expect(fs.statSync(destination).isDirectory()).toBe(true);
+    expect(fs.existsSync(path.join(destination, ".git"))).toBe(gitAction === "initialize");
+    try { getDb(destination).close(); deleteDbCache(destination); } catch { /* No cached database to close. */ }
+  });
   it("requires an explicit choice for a non-Git project", async () => {
     teardownProject();
     const newPath = path.join(parentDir, "needs-git-choice");
@@ -615,5 +635,145 @@ describe("GET / — list recents", () => {
     const body = (await res.json()) as Array<{ path: string }>;
     expect(Array.isArray(body)).toBe(true);
     expect(body.some((p) => p.path === project)).toBe(true);
+  });
+});
+
+describe("Library registration continuity", () => {
+  it("duplicate create opens the existing UUID/Canvas/project row rather than replacing history", async () => {
+    const initial = await fetch(`${baseUrl}/`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: project, name: "Original", gitAction: "continue_without_git" }) });
+    expect(initial.status).toBe(201);
+    const first = await initial.json() as { id: string };
+    await fetch(`${baseUrl}/${first.id}/state`, { method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodes: [{ id: "saved-node", type: "markdown", position: { x: 1, y: 1 }, size: { width: 10, height: 10 }, data: { content: "History" } }] }) });
+    const duplicate = await fetch(`${baseUrl}/`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: project, name: "Do not overwrite", gitAction: "continue_without_git" }) });
+    expect(duplicate.status).toBe(200);
+    expect(await duplicate.json()).toMatchObject({ id: first.id, name: "Original", nodes: [{ id: "saved-node" }] });
+    expect(getDb(project).prepare("SELECT COUNT(*) AS n FROM projects").get()).toEqual({ n: 1 });
+  });
+  it("restores authorization from durable UUID Library for workspaces evicted from 20 recents", async () => {
+    const firstResponse = await fetch(`${baseUrl}/open`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: project, gitAction: "continue_without_git" }) });
+    const first = await firstResponse.json() as { id: string };
+    for (let i = 0; i < 21; i++) {
+      const directory = fs.mkdtempSync(path.join(parentDir, "overflow-"));
+      addRecentProject(directory, `Overflow ${i}`);
+    }
+    const recents = await (await fetch(`${baseUrl}/`)).json() as Array<{ id: string }>;
+    expect(recents).toHaveLength(20); expect(recents.some(p => p.id === first.id)).toBe(false);
+    unregisterProjectPath(project);
+    const restartedFetch = createExpressFetch(buildApp(), baseUrl);
+    const library = await (await restartedFetch(`${baseUrl}/library`)).json() as { projects: Array<{ id: string }> };
+    expect(library.projects.some(p => p.id === first.id)).toBe(true);
+    expect((await restartedFetch(`${baseUrl}/${first.id}`)).status).toBe(200);
+  });
+});
+
+it("never redirects a Library workspace UUID into another registered repository through a replaced source symlink", async () => {
+  const opened = await fetch(`${baseUrl}/open`, { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: project, gitAction: "continue_without_git" }) });
+  const workspace = await opened.json() as { id: string };
+  getDb(project).close(); deleteDbCache(project);
+  const another = fs.mkdtempSync(path.join(parentDir, "other-source-")); registerProjectPath(another);
+  fs.renameSync(project, project + "-original"); fs.symlinkSync(another, project, "dir");
+  try {
+    expect((await fetch(`${baseUrl}/${workspace.id}`)).status).toBe(403);
+    expect((await fetch(`${baseUrl}/${workspace.id}/state`, { method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nodes: [] }) })).status).toBe(403);
+  } finally {
+    fs.unlinkSync(project); fs.renameSync(project + "-original", project);
+    unregisterProjectPath(another);
+  }
+});
+
+it("mounts core and recovery endpoints despite a corrupt Library during recent migration, preserving its bytes", async () => {
+  const home = fs.mkdtempSync(path.join(parentDir, "corrupt-library-"));
+  vi.stubEnv("SWARMCREWS_HOME", home);
+  try {
+    addRecentProject(project, "Recoverable recent");
+    const file = path.join(getSwarmcrewsHome(), "project-library.db");
+    const corrupt = Buffer.from("not a SQLite database: preserve my recovery data");
+    fs.writeFileSync(file, corrupt);
+    const mountedFetch = createExpressFetch(buildApp(), baseUrl);
+    expect((await mountedFetch(baseUrl + "/")).status).toBe(200);
+    const recovery = await mountedFetch(baseUrl + "/library");
+    expect(recovery.status).toBe(503);
+    expect(await recovery.json()).toMatchObject({ code: "LIBRARY_UNAVAILABLE" });
+    expect(fs.readFileSync(file)).toEqual(corrupt);
+    expect(() => buildApp()).not.toThrow();
+    expect(fs.readFileSync(file)).toEqual(corrupt);
+  } finally { vi.unstubAllEnvs(); }
+});
+
+describe("optional corrupt Library does not block authorized project callers", () => {
+  it.each(["get", "open", "create", "rebind", "attach", "rename"] as const)("opens through %s without changing corrupt bytes", async caller => {
+    const home = fs.mkdtempSync(path.join(parentDir, "opening-library-"));
+    vi.stubEnv("SWARMCREWS_HOME", home);
+    const destination = path.join(project, "destination");
+    const corrupt = Buffer.from("not SQLite: retain the original Library for recovery");
+    const file = path.join(home, "project-library.db");
+    try {
+      const workspace = registerWorkspace(project)!;
+      initSidecar(project, {}).close();
+      if (caller === "rebind" || caller === "attach") fs.mkdirSync(destination);
+      const previousOwner = caller === "attach" ? registerWorkspace(destination)! : null;
+      fs.writeFileSync(file, corrupt);
+      const openingFetch = createExpressFetch(buildApp(), baseUrl);
+      const route = caller === "get" || caller === "rename" ? `/${workspace.id}` : caller === "create" ? "/" : `/${caller}`;
+      const body = caller === "rename" ? { name: "Renamed despite unavailable Library" }
+        : caller === "rebind" || caller === "attach" ? { workspaceId: workspace.id, path: destination }
+        : { path: caller === "create" ? destination : project, gitAction: "continue_without_git" };
+      const response = await openingFetch(baseUrl + route, caller === "get" ? undefined : {
+        method: caller === "rename" ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(caller === "create" ? 201 : 200);
+      const opened = await response.json() as { id: string; sourceRoot: string };
+      expect(opened.sourceRoot).toBe(caller === "get" || caller === "open" || caller === "rename" ? project : destination);
+      if (caller !== "create") expect(opened.id).toBe(workspace.id);
+      expect((await openingFetch(`${baseUrl}/${opened.id}`)).status).toBe(200);
+      if (previousOwner) {
+        expect(resolveWorkspace(previousOwner.id)).toBeNull();
+        expect((await openingFetch(`${baseUrl}/${previousOwner.id}`)).status).toBe(403);
+      }
+      const unavailable = await openingFetch(baseUrl + "/library");
+      expect(unavailable.status).toBe(503);
+      expect(await unavailable.json()).toMatchObject({ code: "LIBRARY_UNAVAILABLE" });
+      expect(fs.readFileSync(file)).toEqual(corrupt);
+    } finally {
+      const source = caller === "get" || caller === "open" || caller === "rename" ? project : destination;
+      try { getDb(source).close(); } catch { /* Not every caller creates a canvas. */ }
+      deleteDbCache(source);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("rejects foreign, unregistered, and changed-root UUIDs even when Library storage is corrupt", async () => {
+    const home = fs.mkdtempSync(path.join(parentDir, "denied-library-"));
+    vi.stubEnv("SWARMCREWS_HOME", home);
+    const moved = project + "-before-symlink";
+    try {
+      const workspace = registerWorkspace(project)!;
+      const foreign = "11111111-1111-4111-8111-111111111111";
+      const corrupt = Buffer.from("not SQLite: identity must still be checked first");
+      const file = path.join(home, "project-library.db");
+      fs.writeFileSync(file, corrupt);
+      const openingFetch = createExpressFetch(buildApp(), baseUrl);
+      expect((await openingFetch(`${baseUrl}/${foreign}`)).status).toBe(403);
+      for (const endpoint of ["rebind", "attach"]) {
+        expect((await openingFetch(`${baseUrl}/${endpoint}`, { method: "POST",
+          headers: { "content-type": "application/json" }, body: JSON.stringify({ workspaceId: foreign, path: project }) })).status).toBe(404);
+      }
+      const other = fs.mkdtempSync(path.join(parentDir, "registered-other-"));
+      registerWorkspace(other); registerProjectPath(other);
+      fs.renameSync(project, moved); fs.symlinkSync(other, project, "dir");
+      const changed = await openingFetch(`${baseUrl}/${workspace.id}`);
+      expect(changed.status).toBe(403);
+      expect(await changed.json()).toMatchObject({ code: "SOURCE_CHANGED" });
+      expect(fs.readFileSync(file)).toEqual(corrupt);
+    } finally {
+      if (fs.existsSync(moved)) { fs.unlinkSync(project); fs.renameSync(moved, project); }
+      vi.unstubAllEnvs();
+    }
   });
 });

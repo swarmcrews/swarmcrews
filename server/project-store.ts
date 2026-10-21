@@ -1,10 +1,12 @@
 import type { TaskGraphExperiments } from "../shared/task-graph-experiments.ts";
 import fs from "fs";
+import { authorizeWorkspace, LibraryError, recordOpenedIfAvailable } from "./project-library/store.ts";
+import { writeTrackedContext } from "./project-library/context.ts";
 import path from "path";
 import os from "os";
 import { initDb } from "./db.ts";
 import type Database from "better-sqlite3";
-import { findWorkspaceBySource, getSwarmcrewsHome, registerWorkspace } from "./workspace-registry.ts";
+import { canonicalizeSourceRoot, findWorkspaceBySource, getSwarmcrewsHome, registerWorkspace } from "./workspace-registry.ts";
 import { DEFAULT_SANDBOX_POLICY, type SandboxPolicy } from "../shared/workspace-contracts.ts";
 import {
   defaultContextActions,
@@ -118,9 +120,13 @@ export function listRecentProjects(): RecentProject[] {
 }
 
 export function addRecentProject(projectPath: string, name: string): void {
-  ensureGlobalDir();
+  if (canonicalizeSourceRoot(projectPath) !== path.resolve(projectPath))
+    throw new LibraryError(403, "SOURCE_CHANGED", "Explicit source rebind required");
   const workspace = findWorkspaceBySource(projectPath) ?? registerWorkspace(projectPath, { nickname: name });
   if (!workspace) throw new Error("Recent projects require a registered workspace");
+  authorizeWorkspace(workspace.id);
+  ensureGlobalDir();
+  recordOpenedIfAvailable(workspace.id);
   const recents = listRecentProjects().filter((r) => r.id !== workspace.id && r.path !== projectPath);
   recents.unshift({
     id: workspace.id,
@@ -199,7 +205,7 @@ export function readContext(projectPath: string): ProjectContext {
 
 export function writeContext(projectPath: string, content: string): void {
   const contextPath = projectContextPath(projectPath);
-  fs.writeFileSync(contextPath, content);
+  writeTrackedContext(projectPath, contextPath, content);
 }
 
 export function readSettings(projectPath: string): ProjectSettings {

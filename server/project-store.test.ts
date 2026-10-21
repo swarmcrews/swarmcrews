@@ -18,7 +18,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, readFileSync, writeFileSync, renameSync, symlinkSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -372,4 +372,52 @@ describe("recent-projects index", () => {
     expect(recent[0]!.path).toBe("/projects/p24");
     expect(recent.at(-1)!.path).toBe("/projects/p5");
   });
+});
+
+it("retains Library membership independently when recents are removed and records context only on actual saves", async () => {
+  const { withLibrary, listLibrary } = await import("./project-library/store.ts");
+  addRecentProject(project, "Durable");
+  const workspace = findWorkspaceBySource(project)!;
+  removeRecentProject(project);
+  expect(listRecentProjects().some(p => p.id === workspace.id)).toBe(false);
+  expect(withLibrary(listLibrary).projects.find(p => p.id === workspace.id)).toMatchObject({ name: "Durable", archived: false });
+  writeContext(project, "First context"); writeContext(project, "First context");
+  readContext(project);
+  expect(withLibrary(db => db.prepare("SELECT COUNT(*) AS n FROM library_context_events WHERE project_id=?").get(workspace.id))).toEqual({ n: 1 });
+  writeContext(project, "Second context");
+  expect(withLibrary(db => db.prepare("SELECT COUNT(*) AS n FROM library_context_events WHERE project_id=?").get(workspace.id))).toEqual({ n: 2 });
+});
+
+
+it("keeps recents available with corrupt Library storage without weakening tracked context writes", () => {
+  const home = mkdtempSync(join(FAKE_HOME, "optional-library-"));
+  vi.stubEnv("SWARMCREWS_HOME", home);
+  try {
+    registerWorkspace(project);
+    const file = join(home, "project-library.db");
+    const corrupt = Buffer.from("not SQLite: preserve for recovery");
+    writeFileSync(file, corrupt);
+    expect(() => addRecentProject(project, "Recoverable")).not.toThrow();
+    expect(listRecentProjects()).toContainEqual(expect.objectContaining({ path: project, name: "Recoverable" }));
+    writeFileSync(join(project, "AGENTS.md"), "original context");
+    expect(() => writeContext(project, "must not be written")).toThrow("file is not a database");
+    expect(readContext(project).content).toBe("original context");
+    expect(readFileSync(file)).toEqual(corrupt);
+  } finally { vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true }); }
+});
+
+
+it("does not redirect recent opening into a replaced source symlink when Library storage is corrupt", () => {
+  const home = mkdtempSync(join(FAKE_HOME, "changed-source-library-"));
+  vi.stubEnv("SWARMCREWS_HOME", home);
+  const moved = project + "-original";
+  try {
+    registerWorkspace(project);
+    writeFileSync(join(home, "project-library.db"), "not SQLite: retain recovery data");
+    renameSync(project, moved); symlinkSync(home, project, "dir");
+    expect(() => addRecentProject(project, "Must reject")).toThrow("Explicit source rebind");
+  } finally {
+    if (existsSync(moved)) { unlinkSync(project); renameSync(moved, project); }
+    vi.unstubAllEnvs(); rmSync(home, { recursive: true, force: true });
+  }
 });

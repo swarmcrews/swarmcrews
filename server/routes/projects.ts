@@ -13,7 +13,7 @@ export function createProjectRoutes(deps?: {
 
   if (deps) mountProjectActivityRoute(router, deps.activitySummary);
   mountProjectPathRoutes(router);
-  mountCoreRoutes(router);
+  mountCoreRoutes(router, { libraryRuntimeReader: deps?.activitySummary });
   mountSettingsRoutes(router);
   mountFileRoutes(router);
 

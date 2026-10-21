@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionHost } from "./session-host.ts";
 import { projectActivitySummary } from "./project-activity.ts";
+import { libraryRuntimeEvidence } from "./project-library/runtime.ts";
 import { withoutArchivedWork } from "./session-list-visibility.ts";
 
 const mocks = vi.hoisted(() => ({ db: null as Database.Database | null, lookup: vi.fn() }));
@@ -21,6 +22,49 @@ function host(key: string, status: string, role = "leader", cwd = "/alpha", work
 }
 
 describe("project activity summaries", () => {
+  it("separates waiting hosts from execution without changing legacy activity counts", () => {
+    mocks.lookup.mockReturnValue({ id: "alpha" });
+    const waiting = projectActivitySummary([
+      host("waiting-leader", "waiting"), host("waiting-child", "waiting", "minion"), host("waiting-other", "waiting", "default"),
+    ], ["alpha"])[0]!;
+    expect(waiting).toEqual({ projectId: "alpha", activeLeaders: 1, activeCrew: 0 });
+    expect(libraryRuntimeEvidence(waiting)).toEqual({ known: true, activeOther: 2, runningLeaders: 0, runningOther: 0 });
+    const mixed = projectActivitySummary([host("waiting", "waiting"), host("running", "running"), host("other", "starting", "default")], ["alpha"])[0]!;
+    expect(mixed.activeLeaders).toBe(2);
+    expect(libraryRuntimeEvidence(mixed)).toMatchObject({ runningLeaders: 1, runningOther: 1 });
+  });
+
+  it.each(["creating", "starting", "running"])("retains execution authority for an orphaned %s minion without inventing badge ownership", status => {
+    mocks.lookup.mockReturnValue({ id: "alpha" });
+    const orphan = host("orphan", status, "minion");
+    orphan[1].parentRunKey = "missing-parent";
+    const result = projectActivitySummary([orphan], ["alpha"])[0]!;
+    expect(result).toEqual({ projectId: "alpha", activeLeaders: 0, activeCrew: 0 });
+    expect(libraryRuntimeEvidence(result)).toEqual({ known: true, activeOther: 1, runningLeaders: 0, runningOther: 1 });
+  });
+
+  it("does not double count execution authority for children already represented by parent identity or roster", () => {
+    mocks.lookup.mockReturnValue({ id: "alpha" });
+    const leader = host("leader-run", "idle");
+    leader[0] = "leader-session";
+    const child = host("child", "running", "minion");
+    child[1].parentRunKey = "leader-run";
+    const rosterChild = host("roster-child", "running", "minion");
+    rosterChild[1].parentRunKey = "missing-parent";
+    leader[1].taskState = { tasks: new Map([["task", { status: "running", minionSessionKey: "roster-child" }]]) } as SessionHost["taskState"];
+    const result = projectActivitySummary([leader, child, rosterChild], ["alpha"])[0]!;
+    expect(result.activeCrew).toBe(2);
+    expect(libraryRuntimeEvidence(result)).toMatchObject({ activeOther: 0, runningOther: 0 });
+  });
+
+  it.each(["idle", "stopped", "error", "completed", "disconnected"])("does not treat a terminal/inactive orphan (%s) as executing", status => {
+    mocks.lookup.mockReturnValue({ id: "alpha" });
+    const orphan = host("orphan", status, "minion");
+    orphan[1].parentRunKey = "missing-parent";
+    expect(libraryRuntimeEvidence(projectActivitySummary([orphan], ["alpha"])[0]))
+      .toMatchObject({ known: true, activeOther: 0, runningOther: 0 });
+  });
+
   it("counts active leaders and executing crew in requested workspaces, without reading detail", () => {
     mocks.lookup.mockImplementation((path: string) => ({ id: path.slice(1) }));
     const isolated = host("isolated", "running", "leader", "/central/worktrees/run");
@@ -102,4 +146,35 @@ describe("project activity summaries", () => {
     expect(result).toHaveLength(204);
     expect(result.some(([key]) => key === "s100")).toBe(false);
   });
+});
+
+it("keeps server-only fresh authority evidence for default/waiting and even hidden archived live hosts", () => {
+  mocks.db = new Database(":memory:");
+  mocks.db.exec("CREATE TABLE work_items (id TEXT PRIMARY KEY, resolution TEXT)");
+  mocks.db.exec("INSERT INTO work_items VALUES ('archived','archived')");
+  mocks.lookup.mockReturnValue({ id: "alpha" });
+  const result = projectActivitySummary([
+    host("default", "running", "default"), host("waiting-child", "waiting", "minion"),
+    host("hidden-active", "running", "leader", "/alpha", "archived"),
+  ], ["alpha"])[0]!;
+  expect(result).toEqual({ projectId: "alpha", activeLeaders: 0, activeCrew: 0 });
+  expect(libraryRuntimeEvidence(result)).toEqual({ known: true, activeOther: 3, runningLeaders: 0, runningOther: 2 });
+  expect(JSON.stringify(result)).not.toContain("activeOther");
+  expect(libraryRuntimeEvidence({ ...result })).toBeUndefined();
+});
+it("does not turn unknown host statuses or unresolved roster blockers into archive-safe zero counts", () => {
+  mocks.lookup.mockReturnValue({ id: "alpha" });
+  expect(libraryRuntimeEvidence(projectActivitySummary([host("unknown", "mystery")], ["alpha"])[0])).toMatchObject({ known: false });
+  const blocked = host("leader", "idle");
+  blocked[1].taskState = { tasks: new Map([["blocked", { status: "blocked", minionSessionKey: null }]]) } as SessionHost["taskState"];
+  expect(libraryRuntimeEvidence(projectActivitySummary([blocked], ["alpha"])[0])).toMatchObject({ known: true, archiveBlocked: true });
+});
+
+it("keeps accurate live counts when the same leader has planned or blocked work", () => {
+  mocks.lookup.mockReturnValue({ id: "alpha" });
+  const leader = host("leader", "running");
+  leader[1].taskState = { tasks: new Map([["later", { status: "planned", minionSessionKey: null }]]) } as SessionHost["taskState"];
+  const result = projectActivitySummary([leader], ["alpha"])[0]!;
+  expect(result.activeLeaders).toBe(1);
+  expect(libraryRuntimeEvidence(result)).toMatchObject({ known: true, runningLeaders: 1, archiveBlocked: true });
 });

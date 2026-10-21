@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { ensureLibraryLifecycleEvents } from "./project-library/lifecycle-events.ts";
 import { syncResolutionToCurrentSession } from "./work-item-compat-repo.ts";
 import {
   mergeSealedRunReport,
@@ -95,6 +96,7 @@ function getRun(db: Database.Database, runKey: string): WorkItemRunRow | null {
 
 export const getWorkItemRun = getRun;
 export function getWorkItem(db: Database.Database, id: string): WorkItemRow | null {
+  ensureLibraryLifecycleEvents(db);
   return (db.prepare("SELECT * FROM work_items WHERE id = ?").get(id) as WorkItemRow | undefined) ?? null;
 }
 
@@ -117,6 +119,7 @@ export function createWorkItem(db: Database.Database, input: {
   at: number;
   runConfigJson?: string | null;
 }): WorkItemRow {
+  ensureLibraryLifecycleEvents(db);
   const integrationState = input.changeMode === "live" ? "live_clean" : "worktree_unprovisioned";
   db.prepare(`
     INSERT INTO work_items (
