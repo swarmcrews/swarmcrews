@@ -122,6 +122,15 @@ describe("ensureWorktree safety boundary", () => {
 });
 
 describe("buildHarnessStartOpts — capability gating", () => {
+  it.each([true, false])("documents browser tools only when allowed (allowed=%s)", enabled => {
+    const name = "mcp__browser-runner__run_tests";
+    const { startOpts, allowedTools } = buildHarnessStartOpts({ host: fakeHost(), opts: fakeOpts({ toolAllowlist: enabled ? [name] : [] }),
+      agentType: fakeAgentType, agentCtx: fakeCtx, toolResult: { toolGroups: {}, mcpToolNames: [name] },
+      abortController: new AbortController(), harness: fakeHarness("test", {}), prompt: "hello" });
+    expect(allowedTools.includes(name)).toBe(enabled);
+    expect(startOpts.systemPrompt?.includes("Browser tests:")).toBe(enabled);
+    expect(startOpts.systemPrompt?.includes(name)).toBe(enabled);
+  });
   it.each([true, false])("documents connection configuration only when allowed (allowed=%s)", canConfigure => {
     const mcpToolNames = ["mcp__connections__list_connections", "mcp__connections__get_connection_configuration", "mcp__connections__save_connection"];
     const { startOpts, allowedTools } = buildHarnessStartOpts({ host: fakeHost(),

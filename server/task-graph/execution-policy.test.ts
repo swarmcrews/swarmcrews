@@ -1,4 +1,5 @@
 import "./test-helpers.ts";
+import { BROWSER_RUNNER_MCP_TOOLS } from "../../shared/browser-runner.ts";
 import { describe,expect,it } from "vitest";
 import type { AgentHarness } from "../harness/types.ts";
 import type { TaskNode } from "../../shared/task-graph-contracts.ts";
@@ -24,7 +25,7 @@ describe("task graph execution policy",()=>{
 
   it("accepts the registered Minion MCP inventory independently of native harness tools",()=>{
     expect(()=>validateTaskGraphNodePolicy(node({allowedTools:[
-      ...MINION_MCP_TOOLS_BASE,...minionSkillMcpToolNames(["skill-builder"]),
+      ...MINION_MCP_TOOLS_BASE,...minionSkillMcpToolNames(["skill-builder"]),...BROWSER_RUNNER_MCP_TOOLS,
     ]}),()=>harness)).not.toThrow();
   });
 

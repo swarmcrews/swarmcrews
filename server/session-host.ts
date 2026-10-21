@@ -22,7 +22,7 @@ import "./harness/echo/index.ts"; // side-effect: registers EchoHarness
 import { randomUUID } from "node:crypto";
 import { getHarness } from "./harness/index.ts";
 import { assertSafeHarnessMutationMode, installChangeIntentTools } from "./session-mutation-enforcement.ts";
-import { installConnectionTools } from "./mcp-connections/tools.ts";
+import { installSessionCapabilityTools } from "./session-capability-tools.ts";
 import type { HarnessRunControl, NormalizedEvent } from "./harness/types.ts";
 import { getAgentType } from "./agents/index.ts";
 import type { WorktreeInfo } from "./worktree.ts";
@@ -310,7 +310,7 @@ export class SessionHost {
       const agentCtx = buildAgentContext(this, opts, deps);
       const toolResult = agentType.getToolGroups(agentCtx);
       installChangeIntentTools(agentCtx, toolResult);
-      const closeConnections = installConnectionTools(agentCtx, toolResult, abortController.signal, this.permissionMode === "plan", this.role === "leader");
+      const closeConnections = installSessionCapabilityTools(agentCtx, toolResult, abortController.signal, this.permissionMode === "plan", this.role === "leader");
       if (toolResult.taskState) this.taskState = toolResult.taskState;
       if (toolResult.renderState) this.renderState = toolResult.renderState;
       // Register tools with the harness (grouped by MCP server name).

@@ -1,3 +1,4 @@
+import { BROWSER_RUNNER_MCP_TOOLS } from "../../shared/browser-runner.ts";
 import { CONNECTION_MCP_TOOLS } from "../../shared/mcp-servers/connections.ts";
 import type Database from "better-sqlite3";
 import { taskGraphExperimentsForRun } from "./planning-mode.ts";
@@ -60,7 +61,7 @@ export function installTaskGraphPlanningRuntime(input: {
         harnessName: minionHarness,
         allowedTools: host.toolAllowlist ?? [
           ...getHarness(minionHarness).builtInTools,
-          ...minionSkillMcpToolNames(host.skillIds), ...CONNECTION_MCP_TOOLS,
+          ...minionSkillMcpToolNames(host.skillIds), ...CONNECTION_MCP_TOOLS, ...BROWSER_RUNNER_MCP_TOOLS,
         ],
       };
     },

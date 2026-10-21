@@ -1,0 +1,22 @@
+id: capability.browser_test_execution
+type: capability
+name: Isolated browser test execution
+summary: Leaders and minions run fixed browser suites through an opt-in rootless Podman broker, using explicit expiring session grants, bounded resources and source snapshots. A root-owned policy and protected ancestry govern grants; managers delegate narrower non-transitive access. Availability reports distinguish unconfigured or unreadable policy, unavailable workspace and absent session grants without revealing unmatched resources; caller-only grant-request identity helps operator setup. Discovery does not check backend health. Snapshots omit runtime state and honor operator-selected literal root exclusions while retaining nested fixtures, dirty source, fixed bounds and no-symlink traversal. Vite config and optimizer caches live under the bounded writable work tmpfs; image dependencies remain immutable. No host fallback or implicit child inheritance; live kernel enforcement requires the opt-in integration test on the deployment host.
+constraints: []
+decisions: [decision.role_gated_agent_tools]
+risks: [risk.agent_tool_allowlist_drift, risk.project_worktree_content_split]
+suggested_files: [server/browser-runner/policy.ts, server/browser-runner/service.ts, server/browser-runner/availability.ts, server/browser-runner/backend.ts, server/browser-runner/process.ts, server/browser-runner/snapshot.ts, server/browser-runner/snapshot-exclusions.ts, server/browser-runner/directory.ts, server/browser-runner/tools.ts, server/session-capability-tools.ts, shared/browser-runner.ts, docs/features/browser-runners.md]
+suggested_tests: [server/browser-runner/policy.test.ts, server/browser-runner/service.test.ts, server/browser-runner/diagnostics.test.ts, server/browser-runner/backend.test.ts, server/browser-runner/bootstrap.test.ts, server/browser-runner/snapshot.test.ts, server/browser-runner/directory.test.ts, server/browser-runner/process.test.ts, server/browser-runner/live.integration.test.ts, tests/contracts/browser-runner.test.ts]
+keywords: [browser, chromium, playwright, smoke, e2e, podman, container, sandbox, resources, grants, revocation]
+entry_points:
+  - surface: surface.agent_tools
+    summary: Browser runner tools bind identity and worktree on the server; operator policy controls access independently of agent sandbox policy.
+    files: [server/browser-runner/tools.ts, server/session-capability-tools.ts, shared/browser-runner.ts]
+    tests: [tests/contracts/browser-runner.test.ts, server/session-host-run.test.ts]
+freshness:
+  class: code_coupled
+risk: high
+domain: domain.delegation
+bridges:
+  - to: risk.project_worktree_content_split
+    reason: Browser grants bind original project identity separately from exact execution worktrees and source snapshots.

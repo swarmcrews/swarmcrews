@@ -39,6 +39,7 @@ dist/
 !/docs/features/
 /docs/features/*
 !/docs/features/canvas-zones.md
+!/docs/features/browser-runners.md
 !/docs/images/
 /docs/images/*
 !/docs/images/getting-started-*.png
