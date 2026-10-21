@@ -26,7 +26,7 @@ import { createWorkItem, startWorkItemIteration, getWorkItemRun } from "../../wo
 import { createSqliteWorkItemService } from "../../work-item-service-sqlite.ts";
 import { createWorkItemRuntimeLifecycle } from "../../work-item-runtime-lifecycle.ts";
 import { TaskGraphService } from "../../task-graph/service.ts";
-import type { TaskGraphPlanningCoordinator } from "../../task-graph/planning-coordinator.ts";
+import { TaskGraphPlanningCoordinator } from "../../task-graph/planning-coordinator.ts";
 import "../../agents/index.ts";
 
 const sdkMock = vi.hoisted(() => {
@@ -423,6 +423,11 @@ describe("CodexHarness.start()", () => {
       providerSessionId: null, outcome: "none" as const, startedAt: Date.now(), endedAt: null, finalReport: null,
     })) };
     const graph = new TaskGraphService({ db, bus, children });
+    const planning = new TaskGraphPlanningCoordinator({ db, bus, taskGraphs: graph,
+      // The graph below is service-created, not a submitted planning proposal.
+      // Completion must still inspect real canonical authority and plan history.
+      resolveSourceAuthority: () => null,
+    });
     let checkedWhileReconnecting = false;
     let writerActive = true;
     const terminalWriterStates: boolean[] = [];
@@ -476,7 +481,7 @@ describe("CodexHarness.start()", () => {
       await host.start({ sessionKey: "primary", workItemId: "work", cwd: "/tmp", prompt: "Continue",
         harness: "codex", role: "leader", resumeId: "th-live" }, {
         bus, startChildSession: vi.fn(), forEachLeaderTaskState: vi.fn(), workItemLifecycle: lifecycle,
-        getTaskGraphPlanning: () => ({} as TaskGraphPlanningCoordinator),
+        getTaskGraphPlanning: () => planning,
       });
       expect(checkedWhileReconnecting, host.lastError ?? undefined).toBe(true);
       expect(terminalWriterStates).toEqual([false]);
@@ -485,6 +490,9 @@ describe("CodexHarness.start()", () => {
       expect(db.prepare("SELECT terminal_kind FROM run_invocations WHERE run_key = 'primary'").all())
         .toEqual([{ terminal_kind: "clean" }]);
     } finally {
+      host.abortController.abort();
+      planning.dispose();
+      graph.dispose();
       closePersistDb();
     }
   });

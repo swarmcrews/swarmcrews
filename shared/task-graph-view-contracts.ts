@@ -44,7 +44,7 @@ export const verificationStateViewSchema = z.enum([
   "not_required", "pending", "passed", "failed", "waived", "stale",
 ]);
 export const blockerCategoryViewSchema = z.enum([
-  "dependency", "capacity", "input", "budget", "backoff", "verification", "policy", "none",
+  "dependency", "delay", "capacity", "input", "budget", "backoff", "verification", "policy", "none",
 ]);
 
 export const taskAttemptViewSchema = z.object({
@@ -94,6 +94,7 @@ export const taskGraphNodeViewSchema = z.object({
   priority: z.number(),
   queueAgeMs: z.number().nonnegative().optional(),
   backoffUntil: z.iso.datetime().optional(),
+  scheduledReleaseAt: z.iso.datetime().optional(),
   estimatedDurationMs: z.number().nonnegative().optional(),
   costUsd: z.number().nonnegative(),
   tokens: z.number().int().nonnegative(),

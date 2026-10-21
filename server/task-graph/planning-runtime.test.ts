@@ -38,6 +38,9 @@ describe("planning runtime installation", () => {
     const delivery = JSON.stringify(resumeWorkItemRun.mock.calls[0]);
     expect(delivery).toContain("new-graph");
     expect(delivery).toContain("bounded routing evidence");
+    expect(delivery).toContain("reorientation");
+    expect(delivery).toContain("reorient_before_finish");
+    expect(delivery).toContain("OODA");
     expect(delivery).toContain("detail");
     expect(deps.getTaskGraphExperiments?.("primary").decisionContinuations).toBe(true);
     coordinator.dispose(); db.close();

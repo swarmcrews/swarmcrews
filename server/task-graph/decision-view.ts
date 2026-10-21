@@ -1,10 +1,12 @@
 import type { PlanningInspection } from "./planning-inspection.ts";
+import { graphOrientation } from "./reorientation.ts";
 import { resolveTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 
 const brief = (value: string | null | undefined) => value ? value.slice(0, 600) : null;
 
 /** Bounded routing evidence, never a replacement for contracts or verification. */
-export function graphDecisionView(inspection: PlanningInspection, experiments: TaskGraphExperiments, nodeOffset = 0) {
+export function graphDecisionView(inspection: PlanningInspection, experiments: TaskGraphExperiments,
+  nodeOffset = 0, readOnly = false) {
   const { plan, runtime } = inspection;
   const nodes = [...(runtime?.nodes ?? [])].sort((a, b) => {
     const priority = (n: typeof a) => n.blocker?.category && n.blocker.category !== "none"
@@ -32,6 +34,7 @@ export function graphDecisionView(inspection: PlanningInspection, experiments: T
       nodes: nodes.slice(nodeOffset, nodeOffset + 10).map(n => ({
         id: n.id, title: brief(n.title), logicalState: n.logicalState, readiness: n.readiness,
         attemptId: n.currentAttempt?.id ?? null,
+        ...(n.scheduledReleaseAt ? { scheduledReleaseAt:n.scheduledReleaseAt } : {}),
         blocker: n.blocker ? { category: n.blocker.category, explanation: brief(n.blocker.explanation) } : null,
         verification: { state: n.verification.state, explanation: brief(n.verification.explanation) },
         artifactIds: n.outputArtifactIds.slice(0, 10), artifactCount: n.outputArtifactIds.length,
@@ -39,7 +42,9 @@ export function graphDecisionView(inspection: PlanningInspection, experiments: T
     } : null,
     pagination: { nodeOffset, totalNodes: nodes.length, nextNodeOffset: nodeOffset + 10 < nodes.length ? nodeOffset + 10 : null },
     evidenceNotice: "Decision view omits contracts, history, artifact contents and long explanations. Read every needed page and use detail=full for canonical evidence; omission never means acceptance.",
-    nextDecision: !plan ? "author" : plan.state === "ready" || plan.state === "needs_input" ? "review_start"
-      : plan.state === "running" ? "work_or_durable_wait" : "inspect_evidence_and_repair_or_finish",
+    ooda: graphOrientation(inspection, readOnly),
+    nextDecision: readOnly ? "inspect" : !plan ? "author"
+      : ["ready", "needs_input", "starting"].includes(plan.state) ? "review_start"
+        : plan.state === "running" ? "reorient_or_continue" : "reorient_before_finish",
   };
 }

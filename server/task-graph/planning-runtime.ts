@@ -86,7 +86,7 @@ export function installTaskGraphPlanningRuntime(input: {
         opts: {
           sessionKey: host.id,
           invocationKind: "resume_open_run",
-          prompt: flags.decisionContinuations ? decisionContinuation(coordinator, plan, flags) : `The execution graph is now ${plan.state}. Call get_graph_plan, inspect the canonical runtime, acceptance coverage, committed artifacts and independent verification. Identify unfinished obligations and failed or inconclusive checks; remediate within authorized scope or report the concrete blocker before finalizing. Synthesize the final response only when the objective is satisfied or honestly explain why it remains incomplete. ${leaderProcedurePointer("adjudication")} If a Work Packet is associated, load the reconciliation procedure before closure.`,
+          prompt: flags.decisionContinuations ? decisionContinuation(coordinator, plan, flags) : `The execution graph is now ${plan.state}. Call get_graph_plan, inspect the canonical runtime, acceptance coverage, committed artifacts and independent verification. Identify unfinished obligations and failed or inconclusive checks; remediate within authorized scope or report the concrete blocker before finalizing. Synthesize the final response only when the objective is satisfied or honestly explain why it remains incomplete. ${leaderProcedurePointer("reorientation")} If a Work Packet is associated, load the reconciliation procedure before closure.`,
           cwd: host.cwd,
           resumeId: host.sessionId ?? undefined,
           harness: host.harnessName,
@@ -167,7 +167,7 @@ function attentionPrompt(
   }
 }
 
-const genericAttentionPrompt=`The execution graph is blocked. Call get_graph_plan, inspect the canonical blocker and evidence, then resolve it or ask the user one focused question. ${leaderProcedurePointer("adjudication")}`;
+const genericAttentionPrompt=`The execution graph is blocked. Call get_graph_plan, observe the canonical blocker and new evidence, then re-orient before deciding to repair, replan, continue, or ask the user one focused question. ${leaderProcedurePointer("reorientation")}`;
 
 function isCurrentPlan(coordinator: TaskGraphPlanningCoordinator, plan: TaskGraphPlanSnapshotView): boolean {
   const current = coordinator.repo.latest(plan.workItemId, plan.primaryRunKey);
@@ -178,7 +178,7 @@ function decisionContinuation(coordinator: TaskGraphPlanningCoordinator, plan: T
   flags: ReturnType<typeof taskGraphExperimentsForRun>): string {
   const inspection = coordinator.inspection(plan.workItemId, plan.primaryRunKey,
     { ...(plan.graphRunId ? { graphRunId: plan.graphRunId } : { proposalId: plan.proposalId }), historyLimit: 1 });
-  return ["An execution-graph decision is ready. This is bounded routing evidence; read required artifacts and verification before acceptance.",
-    JSON.stringify(graphDecisionView(inspection, flags)), graphExperimentGuidance(flags, "adjudication"),
-    leaderProcedurePointer("adjudication")].join("\n\n");
+  return ["An execution-graph OODA decision checkpoint is ready: Observe, Orient, Decide, Act. This is bounded routing evidence; read required artifacts and verification before acceptance. Decide whether the strategy still fits before continuing, repairing, replanning, or finishing; do not automatically create a successor.",
+    JSON.stringify(graphDecisionView(inspection, flags)), graphExperimentGuidance(flags, "reorientation"),
+    leaderProcedurePointer("reorientation")].join("\n\n");
 }

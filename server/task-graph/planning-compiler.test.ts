@@ -51,6 +51,14 @@ describe("semantic graph-plan compiler", () => {
     expect(first.revision.nodes.map(node=>node.completionMode)).toEqual(["task","task"]);
   });
 
+  it("freezes dependency delays into canonical revision identity",()=>{
+    const value=plan();
+    value.steps[1]!.dependsOn[0]!.delayMs=300_000;
+    const delayed=compile(value);
+    expect(delayed.revision.edges[0]!.delayMs).toBe(300_000);
+    expect(delayed.revision.revisionId).not.toBe(compile().revision.revisionId);
+  });
+
   it("keeps pattern metadata declarative and out of runtime policy",()=>{
     const value={...plan(),pattern:{id:"p07.independent_verification" as const,version:1 as const},
       iteration:{strategy:"single_episode" as const,episode:1,evidenceRefs:[]}};

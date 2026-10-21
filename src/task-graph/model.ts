@@ -39,6 +39,7 @@ export function filterNodes(nodes: TaskGraphNodeView[], filter: GraphFilter): Ta
 export function whyNotRunning(node: TaskGraphNodeView): string {
   if (node.currentAttempt?.state === "running") return "Running now";
   if (node.logicalState !== "pending") return `Logical task is ${node.logicalState}`;
+  if (node.blocker?.category === "delay" && node.scheduledReleaseAt) return `Waiting until ${new Date(node.scheduledReleaseAt).toLocaleString()}; normal scheduling constraints still apply`;
   if (node.blocker?.explanation) return node.blocker.explanation;
   if (node.blocker && node.blocker.category !== "none") return `Blocked by ${node.blocker.category}`;
   if (node.readiness === "ready") return "Ready; waiting for executor capacity";

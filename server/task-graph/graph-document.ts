@@ -100,6 +100,7 @@ export interface CompactGraphDocument {
     sourceOutput: string | null;
     targetInput: string | null;
     optional: boolean;
+    delayMs?: number;
     failurePolicy: Edge["failurePolicy"];
   }>;
   terminalStepKeys?: string[];
@@ -247,6 +248,7 @@ export class SemanticGraphDocumentDraft {
         sourceOutput: edge.sourceOutput,
         targetInput: edge.targetInput,
         optional: edge.optional,
+        ...(edge.delayMs == null ? {} : { delayMs:edge.delayMs }),
         failurePolicy: edge.failurePolicy,
       })),
       ...(this.header!.terminalStepKeys

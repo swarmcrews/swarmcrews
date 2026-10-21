@@ -17,6 +17,26 @@ describe("callable lifecycle procedures", () => {
       expect(prompt).not.toContain(procedure.body);
     }
     expect(prompt).toContain('load_procedure');
+    expect(prompt).toContain('reorientation');
+    expect(tool!.description).toContain('reorientation');
     expect(await tool!.handler({ id: "unknown" })).toMatchObject({ isError: true });
+  });
+
+  it("provides a bounded OODA loop without granting mutation or approval authority", async () => {
+    const [tool] = createLeaderProcedureTools();
+    const response = await tool!.handler({ id: "reorientation" });
+    expect(response.isError).not.toBe(true);
+    const text = response.content.find(item => item.type === "text")!;
+    const { body } = JSON.parse(text.text);
+    for (const phase of ["Observe", "Orient", "Decide", "Act"]) expect(body).toContain(phase);
+    for (const control of ["get_graph_plan", "cancel_graph_run", "submit_graph_plan",
+      "baseProposalRevision", "evidenceRefs", "stopCondition", "wait_and_continue"])
+      expect(body).toContain(control);
+    expect(body).toContain('any_terminal');
+    expect(body).toMatch(/approval/i);
+    expect(body).toMatch(/independent verification/i);
+    expect(body).toMatch(/historical.*read-only/i);
+    expect(body).toMatch(/new evidence/i);
+    expect(body).toMatch(/never.*automatically cancel/i);
   });
 });

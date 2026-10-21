@@ -144,7 +144,7 @@ export function projectTaskGraphSnapshot(
         ? {category:"policy" as const,explanation:"Independent verification was inconclusive"}:null;
     const completionBlocker=invalidCompletion
       ? {category:"policy" as const,explanation:"Verification needs Leader adjudication or a guided retry"}:null;
-    const blocker = graphFailedBeforeRun
+    const blocker = graphCancelled ? null : graphFailedBeforeRun
       ? {category:"policy" as const,explanation:"Not run—graph terminated after another node failed"}
       : waitingForHuman ? { category:"input" as const,explanation:"Waiting for required human input" }
       : completionBlocker??verificationBlocker??projectBlocker(ready?.reason,currentAttempt?.state ?? null);
@@ -197,6 +197,8 @@ export function projectTaskGraphSnapshot(
           ? {guidance:bounded(text(adjudication,"guidance","guidance")!,4_000)}:{}),
         createdAt:iso(number(adjudication,"created_at","createdAt"))!,
       }:null,
+      ...(ready?.scheduledReleaseAt && !graphCancelled && !graphFailedBeforeRun
+        ? {scheduledReleaseAt:iso(ready.scheduledReleaseAt)} : {}),
       blocker,priority:snapshot.revision.nodes.length-index,
       ...(latest ? {} : { queueAgeMs:Math.max(0,snapshot.run.updatedAt-snapshot.run.createdAt) }),
       ...(latest && number(latest,"backoff_until","backoffUntil") != null
@@ -322,6 +324,7 @@ function projectBlocker(reason: string | undefined, attemptState: string | null)
     || reason === "ready" || reason === "attempt_active"
     || reason === "attempt_succeeded_pending_satisfaction") return null;
   const category = reason.startsWith("join_unsatisfied") ? "dependency" as const
+    : reason === "dependency_delay" ? "delay" as const
     : reason === "retry_backoff" ? "backoff" as const
       : reason.startsWith("budget_") ? "budget" as const
         : reason === "ownership_conflict" || reason === "attempts_exhausted" || reason === "outcome_not_retryable"

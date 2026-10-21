@@ -94,6 +94,7 @@ export function compileSemanticGraphPlan(input: CompileSemanticGraphPlanInput): 
       ...(dependency.quorum == null ? {} : { quorum: dependency.quorum }),
       failurePolicy: dependency.failurePolicy,
       optional: dependency.optional,
+      ...(dependency.delayMs == null ? {} : { delayMs: dependency.delayMs }),
     };
   }));
   const terminalKeys = plan.terminalStepKeys ?? inferTerminalKeys(plan);

@@ -40,6 +40,8 @@ dist/
 /docs/features/*
 !/docs/features/canvas-zones.md
 !/docs/features/browser-runners.md
+!/docs/features/graph-dependency-delays.md
+!/docs/features/graph-reorientation.md
 !/docs/images/
 /docs/images/*
 !/docs/images/getting-started-*.png

@@ -76,6 +76,43 @@ function setup() {
 }
 
 describe("TaskGraphService central wiring",() => {
+  it("recovers a quiescent cooldown without a running Leader or Minion and publishes expiry under capacity pressure",async()=>{
+    const db=setup();const {bus,emitted}=fakeBus();let now=10;let slots=1;
+    const startChildRun=vi.fn(async(input:{attemptId:string;attemptNumber:number})=>
+      childSnapshot(input.attemptId,input.attemptNumber));
+    const options={db,bus,children:{startChildRun},now:()=>now,availableDispatchSlots:()=>slots,pollIntervalMs:0};
+    const service=new TaskGraphService(options);const graph=revision();
+    graph.nodes.push({...graph.nodes[0]!,id:"next",title:"Next"});graph.terminalNodeIds=["next"];
+    graph.edges=[{id:"delay",sourceNodeId:"node",targetNodeId:"next",kind:"control",
+      sourceOutput:null,targetInput:null,satisfactionPolicy:"all_success",failurePolicy:"block",optional:false,delayMs:300_000}];
+    service.createRevision(graph,3);
+    await service.startRun({id:"graph",workItemId:"work",primaryRunKey:"primary",revisionId:"revision",
+      sourceSnapshot:source(),expectedLifecycleRevision:1,at:4});
+    const attempt=service.snapshot("graph").attempts[0]!;now=20;
+    service.scheduler.terminal({runId:"graph",attemptId:String(attempt.id),generation:1,
+      actorSessionKey:String(attempt.session_run_key),idempotencyKey:"done",
+      expectedRunRevision:service.snapshot("graph").run.revision,at:now},"succeeded",{});
+    await service.tick("graph");
+    expect(service.snapshot("graph").run.status).toBe("quiescent");
+    expect(service.viewSnapshot("graph").nodes.find(node=>node.id==="next")).toMatchObject({
+      currentAttempt:null,blocker:{category:"delay"},scheduledReleaseAt:new Date(300_020).toISOString(),
+    });
+    service.dispose();now=200_000;
+    const restored=new TaskGraphService(options);
+    await restored.tick("graph");expect(startChildRun).toHaveBeenCalledTimes(1);
+    now=300_020;slots=0;
+    const before=restored.snapshot("graph").run.revision;
+    await restored.tick("graph");
+    expect(restored.snapshot("graph").run.revision).toBeGreaterThan(before);
+    expect(restored.viewSnapshot("graph").nodes.find(node=>node.id==="next")).toMatchObject({
+      currentAttempt:null,blocker:{category:"capacity"},
+    });
+    expect(emitted.some(event=>event.type==="task_graph_changed" &&
+      JSON.stringify(event).includes("dependency delay released"))).toBe(true);
+    expect(startChildRun).toHaveBeenCalledTimes(1);
+    slots=1;await restored.tick("graph");expect(startChildRun).toHaveBeenCalledTimes(2);
+    restored.dispose();db.close();
+  });
   it("lists persisted graph history across leader iterations in newest-first order", () => {
     const db = setup(); const { bus } = fakeBus();
     const options = { db, bus, children: { startChildRun: vi.fn() } };

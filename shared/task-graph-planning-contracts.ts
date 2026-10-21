@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { minionContextSchema, minionContextSummarySchema } from "./minion-context.ts";
 import {
   budgetRequestSchema,
+  dependencyDelayMsSchema,
   dialecticNodeMetadataSchema,
   jsonRecordSchema,
   ownershipRequestSchema,
@@ -38,6 +39,7 @@ export const semanticGraphDependencySchema = z.object({
     .describe("Join behavior for all non-optional dependencies entering the consumer. For partial synthesis, use quorum artifact edges, or pair required all_terminal control edges with optional artifact edges so missing artifacts do not block the join."),
   quorum: z.number().int().positive().optional()
     .describe("Required distinct successful upstream steps when satisfactionPolicy is quorum."),
+  delayMs: dependencyDelayMsSchema.optional(),
   optional: z.boolean().default(false),
   failurePolicy: z.enum(["block", "skip", "fail"]).default("block")
     .describe("Use skip on required all_terminal control edges when a consumer may synthesize surviving optional artifacts with explicit coverage warnings."),
@@ -185,6 +187,7 @@ export const taskGraphPlanStepViewSchema = z.object({
   objective: z.string().min(1),
   acceptanceCriteria: z.array(z.string()),
   dependsOn: z.array(stepKeySchema),
+  dependencyDelays: z.array(z.object({stepKey:stepKeySchema,delayMs:dependencyDelayMsSchema})).optional(),
   contextSelectors: z.array(z.string()),
   contextSummary: minionContextSummarySchema.optional(),
   inputBindings: jsonRecordSchema,

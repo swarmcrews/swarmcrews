@@ -248,6 +248,8 @@ export class TaskGraphPlanningRepository {
         objective: step.objective,
         acceptanceCriteria: step.acceptanceCriteria,
         dependsOn: step.dependsOn.map((dependency) => dependency.stepKey),
+        dependencyDelays: step.dependsOn.filter(dependency=>dependency.delayMs)
+          .map(dependency=>({stepKey:dependency.stepKey,delayMs:dependency.delayMs!})),
         contextSelectors: step.contextSelectors,
         ...(step.context ? { contextSummary: summarizeMinionContext(step.context) } : {}),
         inputBindings: step.inputBindings,

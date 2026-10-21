@@ -8,6 +8,7 @@ import { hasQueuedWorkItemGuidance } from "./work-item-continuation.ts";
 import type { Bus } from "./bus.ts";
 import { getWakeQueueStats } from "./wake-coalescer.ts";
 import { getQueuedWaitResume } from "./wait-resume.ts";
+import { cancelSessionCompletion } from "./session-completion-reconciliation.ts";
 
 // A tool requesting input is intent, not evidence that execution has halted.
 // Keep intent separate from the published/persisted review lifecycle.
@@ -20,6 +21,7 @@ export function stageSessionDecision(host: SessionHost, reason: string, isPendin
 }
 
 export function beginSessionDecisionTurn(host: SessionHost, bus: Bus, kind: SessionInvocationKind): void {
+  cancelSessionCompletion(host);
   if (kind !== "provider_continuation") requests.delete(host);
   if (kind === "new_run") {
     host.runtimeTerminalNotified = false;
@@ -44,7 +46,9 @@ export function hasAutomaticDecisionContinuation(host: SessionHost, ctx: AgentTy
   if (host.taskState?.pendingWait || host.waitTimerId !== null || getQueuedWaitResume(host)) return true;
   const wakes = getWakeQueueStats(host);
   if (wakes.count || wakes.inFlight || hasQueuedWorkItemGuidance(host)) return true;
-  if (pendingSessionDecision(host) && ctx.taskGraphPlanning && host.workItemId) {
+  // A quiescent graph can own a future dependency release without any input
+  // request, explicit wait timer, or live child. It still owns the open run.
+  if (ctx.taskGraphPlanning && host.workItemId) {
     const { plan, runtime } = ctx.taskGraphPlanning.inspection(host.workItemId, host.runKey);
     if (plan?.primaryRunKey === host.runKey && runtime && hasActiveGraphExecution(runtime)) return true;
   }

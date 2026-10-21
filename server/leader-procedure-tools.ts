@@ -9,7 +9,7 @@ export function createLeaderProcedureTools(experiments?: TaskGraphExperiments): 
   const schema = z.object({ id: z.string().optional() }).strict();
   return [{
     name: "load_procedure",
-    description: "Discover lifecycle procedures with {}. Retrieve only the current phase with {id}: graph_authoring, review_start, adjudication, cancellation_recovery, reconciliation, dialectic. Read-only guidance; does not change state, authorize actions, or bypass server policy.",
+    description: "Discover lifecycle procedures with {}. Retrieve only the current phase with {id}: graph_authoring, review_start, reorientation, adjudication, cancellation_recovery, reconciliation, dialectic. Read-only guidance; does not change state, authorize actions, or bypass server policy.",
     inputSchema: schema,
     handler: async input => {
       const { id } = schema.parse(input);

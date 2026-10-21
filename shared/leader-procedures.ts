@@ -5,13 +5,15 @@ import { body as adjudication } from "./leader-procedures/adjudication.ts";
 import { body as cancellation_recovery } from "./leader-procedures/cancellation_recovery.ts";
 import { body as reconciliation } from "./leader-procedures/reconciliation.ts";
 import { body as dialectic } from "./leader-procedures/dialectic.ts";
+import { body as reorientation } from "./leader-procedures/reorientation.ts";
 
 export const LEADER_PROCEDURE_TOOL_NAMES = ["load_procedure"] as const;
-export const LEADER_PROCEDURE_IDS = ["graph_authoring", "review_start", "adjudication", "cancellation_recovery", "reconciliation", "dialectic"] as const;
+export const LEADER_PROCEDURE_IDS = ["graph_authoring", "review_start", "reorientation", "adjudication", "cancellation_recovery", "reconciliation", "dialectic"] as const;
 export type LeaderProcedureId = typeof LEADER_PROCEDURE_IDS[number];
 const procedures = {
   graph_authoring: { id: "graph_authoring", description: "Author or revise graph topology and artifact contracts", body: graph_authoring },
   review_start: { id: "review_start", description: "Review a proposal or resolve its start gate", body: review_start },
+  reorientation: { id: "reorientation", description: "Reorient graph strategy (OODA)", body: reorientation },
   adjudication: { id: "adjudication", description: "Inspect completion evidence or an unsuccessful verification verdict", body: adjudication },
   cancellation_recovery: { id: "cancellation_recovery", description: "Cancel obsolete work or resume from retained recovery evidence", body: cancellation_recovery },
   reconciliation: { id: "reconciliation", description: "Close a Work Packet after execution and a stable diff", body: reconciliation },
@@ -30,7 +32,7 @@ export function leaderProcedurePointer(id: LeaderProcedureId): string {
 export function buildLeaderProcedureDiscovery(toolName: string): string {
   return `## Lifecycle procedures
 
-Call \`${toolName}\` with {} to discover procedures, or {"id":"graph_authoring"} to retrieve one. Load the relevant procedure before entering its phase; load another only when the phase changes. Tool schemas and server policy remain authoritative.
+Call \`${toolName}\` with {} to discover procedures, or {"id":"graph_authoring"} to retrieve one. Load the relevant procedure before entering its phase; reload only on phase changes. Tool schemas and server policy remain authoritative.
 
 ${listLeaderProcedures().map(p => `- \`${p.id}\`: ${p.description}.`).join("\n")}`;
 }

@@ -1,5 +1,8 @@
 import { createWorkItem, startWorkItemIteration } from "./work-item-repo.ts";
-import type { TaskGraphPlanningCoordinator } from "./task-graph/planning-coordinator.ts";
+import { TaskGraphPlanningCoordinator } from "./task-graph/planning-coordinator.ts";
+import { TaskGraphService } from "./task-graph/service.ts";
+import { initDb } from "./db.ts";
+import { ensureWorkItemSchema } from "./work-item-schema.ts";
 /**
  * SessionHost — lifecycle tests.
  *
@@ -13,12 +16,13 @@ import type { TaskGraphPlanningCoordinator } from "./task-graph/planning-coordin
  *     start() returns { events, control }. The test drives `events` directly
  *     using NormalizedEvent values, staying above the SDK translation layer.
  *   - `./session-persist.ts` — disabled via the production `disablePersistence()`
- *     toggle so no SQLite is touched.
+ *     toggle except in the explicit persistence regression.
+ *   - Graph dispatch/source capture are unavailable: these cases do not submit plans.
  *
  * Real, untouched:
  *   - `Bus` capture (the real `createBus` over a fake `WebSocketServer`
  *     that records every fan-out).
- *   - `SessionHost` itself.
+ *   - `SessionHost` itself, plus SQLite-backed graph planning/authority inspection.
  *   - The registered agents (no SDK calls in the agent implementations) — keeps the test focused
  *     on lifecycle, not agent wiring.
  */
@@ -112,7 +116,9 @@ interface Harness {
   deps: SessionHostDeps;
 }
 
-function makeHarness(id = "host-1", cwd = "/tmp"): Harness {
+const planningCleanups: Array<() => void> = [];
+
+function makeHarness(id = "host-1", cwd = "/tmp", db = initDb(":memory:")): Harness {
   // Fake WebSocketServer: a `clients` set that's always empty so `broadcast`
   // is a no-op. The bus's in-process `subscribe` is what carries our capture.
   const fakeWss = { clients: new Set() } as unknown as Parameters<
@@ -127,14 +133,39 @@ function makeHarness(id = "host-1", cwd = "/tmp"): Harness {
     envelopes.push({ topic, type, payload: rest });
   });
 
+  const host = new SessionHost(id, cwd);
+  ensureWorkItemSchema(db);
+  const taskGraphs = new TaskGraphService({ db, bus, children: {
+    startChildRun: async () => { throw new Error("Lifecycle fixture must not dispatch graph children"); },
+  } });
+  const planning = new TaskGraphPlanningCoordinator({ db, bus, taskGraphs,
+    // These tests exercise completion inspection, not plan submission/source capture.
+    resolveSourceAuthority: () => null,
+  });
+  planningCleanups.push(() => {
+    host.abortController.abort();
+    planning.dispose();
+    taskGraphs.dispose();
+    if (db.open) db.close();
+  });
   const deps: SessionHostDeps = {
     bus,
     startChildSession: vi.fn(),
     forEachLeaderTaskState: vi.fn(),
-    getTaskGraphPlanning: () => ({} as TaskGraphPlanningCoordinator),
+    getTaskGraphPlanning: () => {
+      // Inspection enforces canonical WorkItem/run authority even without a plan.
+      // Seed that real contract rather than casting an empty object as a planner.
+      if (host.workItemId && !db.prepare("SELECT id FROM work_items WHERE id=?").get(host.workItemId)) {
+        createWorkItem(db, { id: host.workItemId, projectId: "project", projectPath: cwd,
+          title: "Lifecycle", changeMode: "live", at: 1 });
+        startWorkItemIteration(db, { workItemId: host.workItemId, runKey: host.runKey,
+          idempotencyKey: "start", expectedLifecycleRevision: 0, expectedCurrentRunKey: null, at: 2 });
+      }
+      return planning;
+    },
   };
 
-  return { host: new SessionHost(id, cwd), bus, envelopes, deps };
+  return { host, bus, envelopes, deps };
 }
 
 beforeEach(() => {
@@ -150,6 +181,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const cleanup of planningCleanups.splice(0)) cleanup();
   resetCheckpointSessionStateForTest();
   closePersistDb();
 });
@@ -809,7 +841,7 @@ describe("SessionHost.start — error path", () => {
 
   it("does not let a stale recovery frame persist error after a healthy compacted run", async () => {
     const db = openPersistDb(":memory:");
-    const { host, deps } = makeHarness("leader-db-status");
+    const { host, deps } = makeHarness("leader-db-status", "/tmp", db);
     createWorkItem(db, { id: "work-1", projectId: "project", projectPath: host.cwd,
       title: "Checkpoint", changeMode: "live", at: Date.now() });
     startWorkItemIteration(db, { workItemId: "work-1", runKey: host.id,

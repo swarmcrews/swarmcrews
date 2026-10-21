@@ -1,4 +1,4 @@
-import type { AttemptEvent,GraphSnapshot } from "../../shared/task-graph-contracts.ts";
+import { releaseDueDependencyDelays } from "./dependency-delay.ts";import type { AttemptEvent,GraphSnapshot } from "../../shared/task-graph-contracts.ts";
 import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import type { WsEnvelope } from "../../shared/ws-envelope.ts";
 import { serverLogger } from "../logging.ts";
@@ -27,7 +27,7 @@ export async function tickTaskGraphExclusive(service:TaskGraphService,runId:stri
   if (isTerminal(service,runId)) return drainTerminalTick(service,runId);
   await recoverTaskGraphVerifications(service,runId);if (isTerminal(service,runId)) return drainTerminalTick(service,runId);
   const current=service.repo.snapshot(runId,0);service.evidence.evaluate(runId,current.run.revision,service.now());
-  if (isTerminal(service,runId)) return drainTerminalTick(service,runId);
+  releaseDueDependencyDelays(service.repo,runId,service.now());  if (isTerminal(service,runId)) return drainTerminalTick(service,runId);
   for (let pass=0;pass<4;pass+=1) {
     const snapshot=service.repo.snapshot(runId,0);if (!["active","quiescent","blocked"].includes(snapshot.run.status) || snapshot.run.paused) break;
     const admissionLimit=availableAdmissionSlots(service);if (admissionLimit<1) break;
@@ -389,7 +389,7 @@ function settleGraphStatus(service:TaskGraphService,runId:string):void {
   const states=service.scheduler.inspect(runId,at,service.availableDispatchSlots()>0);
   const humanBlocked=snapshot.revision.edges.some(edge=>edge.kind==="human_gate"
     && !snapshot.edgeEvaluations.some(row=>row["edge_id"]===edge.id && Boolean(row["satisfied"])));
-  const transient=states.some(state=>state.ready || state.reason==="retry_backoff"
+  const transient=states.some(state=>state.ready || state.reason==="retry_backoff" || state.reason==="dependency_delay"
     || state.reason==="global_capacity" || state.reason==="graph_capacity"
     || state.reason.startsWith("budget_") || state.reason==="ownership_conflict");
   const status=humanBlocked || !transient?"blocked":"quiescent";

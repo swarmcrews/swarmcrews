@@ -1,6 +1,7 @@
 import { z } from "zod/v4";
 import { resolveTaskGraphExperiments, type TaskGraphExperiments } from "../../shared/task-graph-experiments.ts";
 import { graphDecisionView } from "./decision-view.ts";
+import { graphInspectionProcedure, graphOrientation } from "./reorientation.ts";
 import { createMinionContextTools } from "./context-tools.ts";
 import { leaderProcedurePointer } from "../../shared/leader-procedures.ts";
 import {
@@ -116,11 +117,10 @@ export function createTaskGraphPlanningTools(input: {
       && (input.mode === "plan" || !snapshot.autoStartEligible)) {
       input.markDecisionNeeded?.("The execution plan is ready for review and approval.", stillNeedsInput);
     }
+    const inspection = { plan: snapshot, runtime: null, history: [] };
     const view = experiments.decisionContinuations
-      ? graphDecisionView({ plan: snapshot, runtime: null, history: [] }, experiments) : snapshot;
-    return { ...view, procedure: leaderProcedurePointer(
-      snapshot.state === "ready" || snapshot.state === "needs_input" ? "review_start"
-        : snapshot.state === "running" ? (experiments.decisionContinuations ? "review_start" : "graph_authoring") : "adjudication") };
+      ? graphDecisionView(inspection, experiments) : { ...snapshot, ooda: graphOrientation(inspection) };
+    return { ...view, procedure: leaderProcedurePointer(graphInspectionProcedure(inspection)) };
   };
   return [
     ...createMinionContextTools({ resolveAuthority: () => input.coordinator.options
@@ -229,7 +229,7 @@ export function createTaskGraphPlanningTools(input: {
     },
     {
       name: "get_graph_plan",
-      description: "Read current or historical plans, runtime and bounded history across Leader continuations in this WorkItem. Select by proposalId or graphRunId. For a connected Full-context Leader, select only its structured context-group source-id with connectedSourceId; that path is read-only. Earlier Leader runs are read-only; mutations retain current-run authority.",
+      description: "Read current or historical plans, runtime, bounded history and advisory OODA reorientation signals across Leader continuations in this WorkItem. Select by proposalId or graphRunId. For a connected Full-context Leader, select only its structured context-group source-id with connectedSourceId; that path is read-only. Earlier Leader runs are read-only; mutations retain current-run authority. Reorientation never automatically cancels or replaces execution.",
       inputSchema: getSchema,
       handler: async (raw) => {
         const args=getSchema.parse(raw);
@@ -238,10 +238,12 @@ export function createTaskGraphPlanningTools(input: {
           recipientPrimaryRunKey:input.primaryRunKey,source:await connectedSource(connectedSourceId)})
           : input.coordinator.inspection(input.workItemId,input.primaryRunKey,selector);
         const decision = experiments.decisionContinuations && args.detail !== "full";
-        return jsonResult({ ...(decision ? graphDecisionView(inspection, experiments, args.nodeOffset) : inspection),
-          historicalReadOnly: Boolean(inspection.plan && inspection.plan.primaryRunKey !== input.primaryRunKey),
-          procedure: leaderProcedurePointer(inspection.plan?.state === "ready" || inspection.plan?.state === "needs_input"
-            ? "review_start" : experiments.decisionContinuations && inspection.plan?.state === "running" ? "review_start" : "adjudication"),
+        const historicalReadOnly = Boolean(inspection.plan && inspection.plan.primaryRunKey !== input.primaryRunKey);
+        const readOnly = Boolean(connectedSourceId) || historicalReadOnly;
+        return jsonResult({ ...(decision ? graphDecisionView(inspection, experiments, args.nodeOffset, readOnly)
+          : { ...inspection, ooda: graphOrientation(inspection, readOnly) }),
+          historicalReadOnly,
+          procedure: leaderProcedurePointer(graphInspectionProcedure(inspection)),
         });
       },
     },

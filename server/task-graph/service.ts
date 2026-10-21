@@ -314,12 +314,7 @@ export class TaskGraphService {
       this.options.db.prepare("INSERT INTO task_human_inputs VALUES(?,?,?,?,?,?,?,?)")
         .run(id,input.runId,input.nodeId,JSON.stringify(edges.map(edge=>edge.id)),input.actor.trim(),
           contentHash(input.value.trim()),JSON.stringify({value:input.value.trim()}),at);
-      const upsert=this.options.db.prepare(`INSERT INTO task_edge_evaluations VALUES(?,?,?,?,?,?,?)
-        ON CONFLICT(run_id,edge_id) DO UPDATE SET satisfied=excluded.satisfied,reason=excluded.reason,
-        input_fingerprint=excluded.input_fingerprint,run_revision=excluded.run_revision,
-        evaluated_at=excluded.evaluated_at`);
-      for (const edge of edges) upsert.run(input.runId,edge.id,1,"human_input_provided",
-        contentHash({edgeId:edge.id,inputId:id}),revision,at);
+      this.evidence.evaluate(input.runId,revision,at);
       this.repo.appendEvent(input.runId,revision,"human_input_provided",input.nodeId,
         `human-input:${id}`,{inputId:id,edgeIds:edges.map(edge=>edge.id),actor:input.actor.trim()},at);
     }).immediate();

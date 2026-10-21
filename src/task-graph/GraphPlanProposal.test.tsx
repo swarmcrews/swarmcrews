@@ -37,6 +37,13 @@ function actions(onStart = vi.fn()) {
 }
 
 describe("GraphPlanProposal", () => {
+  it("discloses dependency cooldown durations before graph start",()=>{
+    const value=snapshot({canStart:true});
+    value.steps[0]!.dependencyDelays=[{stepKey:"deploy",delayMs:300_000}];
+    render(<GraphPlanProposalDialog snapshot={value} actions={actions()} onClose={vi.fn()}/>);
+    expect(screen.getByText("Wait 300 seconds after deploy satisfies its dependency")).toBeInTheDocument();
+  });
+
   it("enables Start while exposing reviews deferred until integration", () => {
     const onStart = vi.fn();
     render(<GraphPlanProposalCard snapshot={snapshot({ canStart: true, reviews: true })}

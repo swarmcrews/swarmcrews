@@ -140,6 +140,9 @@ export function GraphPlanProposalDialog({ snapshot, actions, onClose, navigation
             <p>{step.objective}</p><small>{step.dependsOn.length
               ? `After ${step.dependsOn.map((key) => snapshot.steps.find((candidate) => candidate.key === key)?.title ?? key).join(", ")}` : "No dependencies"}
               {step.contextSelectors.length ? ` · Context: ${step.contextSelectors.join(", ")}` : ""}</small>
+            {step.dependencyDelays?.map(dependency=><small key={dependency.stepKey}>
+              {`Wait ${dependency.delayMs / 1000} seconds after ${snapshot.steps.find(candidate=>candidate.key===dependency.stepKey)?.title ?? dependency.stepKey} satisfies its dependency`}
+            </small>)}
             {Object.keys(step.outputSchemas).length ? <details className="tg-plan-contracts">
               <summary>Artifact contracts ({Object.keys(step.outputSchemas).length})</summary>
               {Object.entries(step.outputSchemas).map(([name,schema]) => <section key={name}>

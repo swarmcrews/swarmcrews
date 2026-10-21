@@ -267,7 +267,10 @@ export class TaskGraphScheduler {
       }
       if (!mutate(row)) return false;
       const revision = this.repo.casRun(event.runId,event.expectedRunRevision,{},event.at);
-      if (type === "attempt_terminal") this.updateFailureProjection(event.runId,revision,event.at);
+      if (type === "attempt_terminal") {
+        this.updateFailureProjection(event.runId,revision,event.at);
+        new TaskGraphEvidence(this.repo).evaluate(event.runId,revision,event.at);
+      }
       this.repo.appendEvent(event.runId,revision,type,event.attemptId,event.idempotencyKey,{ ...payload as object,nextRuntime },event.at);
       return true;
     }).immediate();

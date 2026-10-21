@@ -58,12 +58,15 @@ export const taskNodeSchema = z.object({
   failurePolicy: z.enum(["fail_graph", "block_for_decision", "continue_optional", "satisfy_all_terminal_only", "activate_fallback_node"]),
   expansionPolicy: expansionPolicySchema,
 });
+export const dependencyDelayMsSchema = z.number().int().nonnegative().max(604_800_000)
+  .describe("Scheduler-owned delay in milliseconds after this dependency is satisfied (maximum seven days). Omit or use 0 for immediate eligibility. Optional edges never gate admission; other dependencies and scheduling constraints still apply.");
 export const taskEdgeSchema = z.object({
   id: z.string().min(1), sourceNodeId: z.string().min(1), targetNodeId: z.string().min(1),
   kind: z.enum(["control", "artifact", "verified_artifact", "human_gate"]),
   sourceOutput: z.string().nullable().default(null), targetInput: z.string().nullable().default(null),
   satisfactionPolicy: z.enum(["all_success", "all_terminal", "any_success", "quorum", "reduce"]),
   quorum: z.number().int().positive().optional(),
+  delayMs: dependencyDelayMsSchema.optional(),
   failurePolicy: z.enum(["block", "skip", "fail"]), optional: z.boolean().default(false),
 });
 export const graphRevisionInputSchema = z.object({

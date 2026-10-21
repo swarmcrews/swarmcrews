@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { artifactInputSchema, attemptEventSchema, hashSchema, verificationInputSchema,
   type ArtifactInput, type AttemptEvent, type VerificationInput } from "../../shared/task-graph-contracts.ts";
 import { TaskGraphConflictError, TaskGraphValidationError } from "./errors.ts";
+import { recordDependencyDelay } from "./dependency-delay.ts";
 import { contentHash } from "./hash.ts";
 import { TaskGraphRepository } from "./repository.ts";
 import path from "node:path";
@@ -202,9 +203,11 @@ export class TaskGraphEvidence {
     if (["completed","failed","cancelled"].includes(String(run.status))) return;
     const spec = this.repo.getRevision(String(run.revision_id)); const satisfied = new Set<string>();
     const terminal = new Set<string>();
+    const producerAttempts = new Map<string,string>();
     for (const node of spec.nodes) {
       const attempt = this.db.prepare(`SELECT * FROM task_node_attempts WHERE run_id=? AND node_id=?
         ORDER BY attempt_number DESC LIMIT 1`).get(runId,node.id) as Row | undefined;
+      if (attempt) producerAttempts.set(node.id,String(attempt.id));
       const adjudication=attempt ? this.db.prepare(`SELECT * FROM task_node_adjudications
         WHERE run_id=? AND node_id=? AND attempt_id=? ORDER BY created_at DESC,id DESC LIMIT 1`)
         .get(runId,node.id,attempt.id) as Row|undefined:undefined;
@@ -253,6 +256,9 @@ export class TaskGraphEvidence {
       const ok = edge.kind === "human_gate" ? Boolean(humanInput)
         : edge.satisfactionPolicy === "all_terminal" ? terminal.has(edge.sourceNodeId) && artifactReady
           : failureSkipped || (satisfied.has(edge.sourceNodeId) && artifactReady);
+      recordDependencyDelay(this.db,runId,edge,ok,contentHash(edge.kind==="human_gate"
+        ? {humanInput:Boolean(humanInput)} : {attemptId:producerAttempts.get(edge.sourceNodeId),
+          hashes:edge.kind==="control"?[]:artifacts.map(a=>a.content_hash)}),at);
       upsert.run(runId,edge.id,Number(ok),failureSkipped ? "upstream_failure_skipped"
         : ok ? "satisfied" : "upstream_not_satisfied",
         contentHash({ edgeId:edge.id,hashes:artifacts.map(a=>a.content_hash),ok }),runRevision,at);

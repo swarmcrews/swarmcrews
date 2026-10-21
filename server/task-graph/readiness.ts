@@ -1,9 +1,10 @@
 import type Database from "better-sqlite3";
 import type { GraphRevisionInput, TaskNode } from "../../shared/task-graph-contracts.ts";
+import { dependencyJoinReadiness } from "./dependency-delay.ts";
 import {isAcceptedNodeAdjudication} from "./adjudication.ts";
 
 type Row = Record<string, unknown>;
-export interface NodeReadiness { nodeId: string; ready: boolean; reason: string; }
+export interface NodeReadiness { nodeId: string; ready: boolean; reason: string; scheduledReleaseAt?: number; }
 
 export function readiness(db: Database.Database, runId: string, revision: GraphRevisionInput, now: number): NodeReadiness[] {
   const attempts = db.prepare("SELECT * FROM task_node_attempts WHERE run_id=? ORDER BY attempt_number DESC").all(runId) as Row[];
@@ -11,6 +12,8 @@ export function readiness(db: Database.Database, runId: string, revision: GraphR
   for (const attempt of attempts) byNode.set(String(attempt.node_id), [...(byNode.get(String(attempt.node_id)) ?? []), attempt]);
   const evaluations = new Map((db.prepare("SELECT * FROM task_edge_evaluations WHERE run_id=?").all(runId) as Row[])
     .map(row => [String(row.edge_id), Boolean(row.satisfied)]));
+  const releases = new Map((db.prepare("SELECT edge_id,release_at FROM task_edge_delays WHERE run_id=?").all(runId) as Row[])
+    .map(row => [String(row.edge_id),Number(row.release_at)]));
   const joins = new Map((db.prepare("SELECT * FROM task_frozen_joins WHERE run_id=?").all(runId) as Row[])
     .map(row => [String(row.node_id),row]));
   const retryGrants = new Map((db.prepare("SELECT node_id,remaining FROM task_manual_retry_grants WHERE run_id=?")
@@ -29,13 +32,13 @@ export function readiness(db: Database.Database, runId: string, revision: GraphR
     .get(runId) as Row).source_snapshot_id);
   return revision.nodes.map(node => assess(node, revision, byNode.get(node.id) ?? [], evaluations,
     joins.get(node.id),retryGrants.get(node.id)??0,terminationPending.has(node.id),
-    invalidatedAttempts,adjudications,sourceSnapshotId,now));
+    invalidatedAttempts,adjudications,sourceSnapshotId,now,releases));
 }
 
 function assess(node: TaskNode, revision: GraphRevisionInput, attempts: Row[], edges: Map<string, boolean>,
   join: Row|undefined,manualRetries:number,terminationPending:boolean,
   invalidatedAttempts:Set<string>,adjudications:Map<string,Row>,sourceSnapshotId:string,
-  now:number):NodeReadiness {
+  now:number,releases:Map<string,number>):NodeReadiness {
   const current = attempts[0];
   if (current && current.runtime !== "terminal") return { nodeId: node.id, ready: false, reason: "attempt_active" };
   if (terminationPending) return {nodeId:node.id,ready:false,reason:"termination_pending"};
@@ -55,23 +58,5 @@ function assess(node: TaskNode, revision: GraphRevisionInput, attempts: Row[], e
     return { nodeId: node.id, ready: false, reason: "attempts_exhausted" };
   }
   if (current?.backoff_until && Number(current.backoff_until) > now) return { nodeId: node.id, ready: false, reason: "retry_backoff" };
-  const incoming = revision.edges.filter(edge => edge.targetNodeId === node.id && !edge.optional);
-  const policy = String(join?.policy ?? "all_success");
-  const cohort = policy === "quorum" ? frozenCohort(join) : [];
-  const satisfied = policy === "quorum"
-    ? cohort.filter(member => {
-      const memberEdges = incoming.filter(edge => edge.sourceNodeId === member);
-      return memberEdges.length > 0 && memberEdges.every(edge => edges.get(edge.id) === true);
-    }).length
-    : incoming.filter(edge => edges.get(edge.id) === true).length;
-  const required = policy === "any_success" ? Math.min(1,incoming.length)
-    : policy === "quorum" ? Number(join?.quorum ?? cohort.length) : incoming.length;
-  if (satisfied < required) return { nodeId: node.id, ready: false, reason: `join_unsatisfied:${satisfied}/${required}` };
-  return { nodeId: node.id, ready: true, reason: "ready" };
-}
-
-function frozenCohort(join: Row|undefined): string[] {
-  const parsed = JSON.parse(String(join?.cohort_json ?? "[]")) as unknown;
-  if (!Array.isArray(parsed)) return [];
-  return [...new Set(parsed.filter((member): member is string => typeof member === "string"))];
+  return dependencyJoinReadiness(node.id,revision.edges,edges,releases,join,now);
 }

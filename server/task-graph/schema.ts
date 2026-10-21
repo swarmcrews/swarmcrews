@@ -87,6 +87,11 @@ export function migrateTaskGraph(db: Database.Database): void {
       input_fingerprint TEXT NOT NULL, run_revision INTEGER NOT NULL, evaluated_at INTEGER NOT NULL,
       PRIMARY KEY(run_id,edge_id)
     );
+    CREATE TABLE IF NOT EXISTS task_edge_delays (
+      run_id TEXT NOT NULL, edge_id TEXT NOT NULL, witness TEXT NOT NULL,
+      satisfied_at INTEGER NOT NULL, release_at INTEGER NOT NULL, released_at INTEGER,
+      PRIMARY KEY(run_id,edge_id)
+    );
     CREATE TABLE IF NOT EXISTS task_frozen_joins (
       run_id TEXT NOT NULL, node_id TEXT NOT NULL, policy TEXT NOT NULL, quorum INTEGER,
       cohort_json TEXT NOT NULL, frozen_at INTEGER NOT NULL, PRIMARY KEY(run_id,node_id)

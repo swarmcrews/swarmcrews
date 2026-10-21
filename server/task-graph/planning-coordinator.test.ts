@@ -89,6 +89,47 @@ function setup() {
 }
 
 describe("TaskGraphPlanningCoordinator", () => {
+  it("exposes OODA routing in compact and full tools and preserves fenced reorientation history", async () => {
+    const { coordinator, db } = setup();
+    try {
+      const tools = createTaskGraphPlanningTools({ coordinator, workItemId: "work",
+        primaryRunKey: "primary", leaderSessionKey: "primary", mode: "auto",
+        experiments: { decisionContinuations: true, semanticPartitioning: false, questionGraph: false } });
+      const inspect = tools.find(tool => tool.name === "get_graph_plan")!;
+      const first = await coordinator.submit({ workItemId: "work", primaryRunKey: "primary",
+        mode: "auto", requestId: "ooda-first", baseProposalRevision: null, plan: semanticPlan() });
+      const read = async (detail: "decision" | "full") => {
+        const result = await inspect.handler({ detail });
+        return JSON.parse(result.content.find(item => item.type === "text")!.text);
+      };
+      const compact = await read("decision");
+      const full = await read("full");
+      expect(compact.ooda).toEqual(full.ooda);
+      expect(compact.procedure).toContain('"id":"reorientation"');
+      expect(compact.ooda.successor).toMatchObject({ baseProposalRevision: 1, episode: 2,
+        requiresCancellation: true });
+      const currentRevision = full.runtime.revision;
+      await expect(coordinator.cancel({ workItemId: "work", primaryRunKey: "primary",
+        runId: first.graphRunId!, expectedRunRevision: currentRevision - 1, requestId: "stale-ooda" }))
+        .rejects.toThrow(/revision/);
+      await coordinator.cancel({ workItemId: "work", primaryRunKey: "primary",
+        runId: first.graphRunId!, expectedRunRevision: currentRevision, requestId: "cancel-ooda" });
+      const cancelled = await read("full");
+      expect(cancelled.ooda.successor.requiresCancellation).toBe(false);
+      const iteration = { strategy: "successor_revision" as const, episode: 2,
+        reason: "User guidance changes the implementation approach", evidenceRefs: ["human:scope-note"],
+        stopCondition: "Remaining acceptance tests pass" };
+      const successor = await coordinator.submit({ workItemId: "work", primaryRunKey: "primary",
+        mode: "plan", requestId: "ooda-successor", baseProposalRevision: cancelled.plan.proposalRevision,
+        plan: { ...semanticPlan(), iteration } });
+      expect(successor).toMatchObject({ state: "ready", proposalRevision: 2, iteration });
+      expect(coordinator.repo.get(first.proposalId)).toMatchObject({ state: "cancelled",
+        graphRunId: first.graphRunId });
+      const ready = await read("decision");
+      expect(ready.procedure).toContain('"id":"review_start"');
+      expect(ready.ooda.choices).toEqual(["review_start", "revise"]);
+    } finally { coordinator.dispose(); db.close(); }
+  });
   it("rechecks a staged plan approval and suppresses user waits while the graph runs", async () => {
     const { coordinator, db, transport } = setup();
     const host = new SessionHost("primary", process.cwd());
