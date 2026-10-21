@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SkillTemplate } from "../skills/types.ts";
@@ -99,6 +100,27 @@ describe("LaunchSkillsPanel", () => {
     rerender(<LaunchSkillsPanel {...props} />);
     fireEvent.click(screen.getByRole("dialog"));
     expect(props.onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it("takes an added skill to its required field and clears the notice when filled", async () => {
+    const skill = { ...CODE_SKILL, variables: [{ name: "scope", label: "Scope", type: "select" as const,
+      required: true, options: [{ value: "src", label: "Source" }] }] };
+    function Probe() {
+      const [ids, setIds] = useState<string[]>([]);
+      const [value, setValue] = useState("");
+      return <LaunchSkillsPanel {...baseProps()} availableSkills={[skill]} selectedSkillIds={ids}
+        skillValues={{ lint: { scope: value } }} onToggleSkill={() => setIds(["lint"])}
+        onVarChange={(_id, _name, next) => setValue(next)} />;
+    }
+    render(<Probe />);
+    fireEvent.click(screen.getByRole("button", { name: /Lint Cleanup/ }));
+    const input = screen.getByRole("combobox", { name: /Scope/ });
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("aria-required", "true");
+    expect(screen.getByText("Lint Cleanup: Scope")).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "src" } });
+    expect(screen.queryByText("Lint Cleanup: Scope")).not.toBeInTheDocument();
   });
 
   it("reflects the selected count in the Done button label", () => {

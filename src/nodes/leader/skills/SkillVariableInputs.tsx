@@ -31,18 +31,21 @@ export function SkillVariableInputs({
           ) => onChange(variable.name, event.target.value),
           "aria-describedby": descriptionId,
           "aria-required": variable.required || undefined,
+          "aria-invalid": !readOnly && variable.required && !(values[variable.name] ?? variable.defaultValue ?? "").trim() || undefined,
+          "data-skill-input": skill.id,
         };
 
         return (
           <div className="skill-variable-inputs__field" key={variable.name}>
             <label htmlFor={inputId}>
-              {variable.label}
+              {variable.label || variable.name}
               {variable.required && (
-                <span title="Required" aria-label="required">*</span>
+                <span>Required</span>
               )}
             </label>
             {variable.type === "select" ? (
               <select {...commonProps} disabled={readOnly}>
+                <option value="">Select an option…</option>
                 {variable.options?.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

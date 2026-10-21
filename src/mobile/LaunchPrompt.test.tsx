@@ -35,6 +35,8 @@ describe("LaunchPrompt", () => {
     render(<Prompt />);
     const prompt = screen.getByLabelText("Prompt");
     const toggle = screen.getByRole("button", { name: "/ Commands" });
+    // Typing / remains the keyboard entry point; the touch shortcut is skipped.
+    expect(toggle).toHaveAttribute("tabindex", "-1");
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(screen.getByRole("button", { name: "Close commands" }));

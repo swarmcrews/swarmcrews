@@ -59,7 +59,7 @@ export function useMobileCommandPicker({ onChange, commands, onSelect, disabled 
     close: () => setQuery(null),
     toolbar: (
       <div className="mob-launch-command-toolbar">
-        <button type="button" disabled={disabled} aria-expanded={open} aria-controls={open ? `${id}-commands` : undefined}
+        <button type="button" tabIndex={-1} disabled={disabled} aria-expanded={open} aria-controls={open ? `${id}-commands` : undefined}
           onClick={() => { setQuery(open ? null : ""); setSelectedIndex(0); }}>
           / Commands
         </button>

@@ -104,6 +104,7 @@ import { LeaderPromptBar, LeaderSlashCommandsProvider } from "./nodes/leader/pro
 import { LeaderPromptSkillsContext } from "./nodes/leader/prompt/LeaderPromptSkillsContext.ts";
 import { buildSlashCommands, type SlashCommand } from "./nodes/leader/prompt/slash-commands.ts";
 import { SkillFlyout } from "./nodes/leader/skills/SkillFlyout.tsx";
+import { SkillRequirements } from "./skills/SkillRequirements.tsx";
 import { SkillsPill } from "./nodes/leader/skills/SkillsPill.tsx";
 import { getSkill } from "./skills/registry.ts";
 import { compileSkills } from "./skills/types.ts";
@@ -1056,7 +1057,7 @@ function Inspector({
                 <SkillsPill skillIds={skillIds} open={skillFlyoutOpen} onOpen={() => setSkillFlyoutOpen(true)} />
               </div>
               {skillNotice && <p role="status">{skillNotice}</p>}
-              {missingSkillValues && <p role="status">Complete required skill settings before sending.</p>}
+              <SkillRequirements skills={selectedSkills} values={skillValues} onConfigure={() => setSkillFlyoutOpen(true)} />
               <div data-activity-target="reply">
                 <PromptAttachmentsContext.Provider value={promptAttachments}>
                   <LeaderSlashCommandsProvider commands={slashCommands} onSelect={selectCommand}>

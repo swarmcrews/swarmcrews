@@ -1,3 +1,4 @@
+import { hasNavigationDraft } from "../navigation-drafts.tsx";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -384,8 +385,7 @@ describe("LaunchScreen", () => {
     fireEvent.change(screen.getByLabelText("Prompt"), {
       target: { value: "Build the mobile launch flow" },
     });
-    await waitFor(() => expect(submit).toBeEnabled());
-
+    expect(hasNavigationDraft(document)).toBe(true);
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
@@ -454,6 +454,46 @@ describe("LaunchScreen", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Unable to launch");
     expect(submit).toBeEnabled();
     expect(submit).not.toHaveAttribute("aria-busy");
+  });
+
+  it("clears a failed draft and pending ownership after successful retry while mounted", async () => {
+    let started!: (key: string) => void;
+    let failed!: (error: string) => void;
+    const canonicalLaunch = vi.fn((_input: unknown, onStarted: typeof started, onError: typeof failed) => {
+      started = onStarted; failed = onError;
+    });
+    const onLaunched = vi.fn();
+    render(<LaunchScreen canonicalLaunch={canonicalLaunch} onLaunched={onLaunched}
+      lockedProject={{ id: "alpha", path: "/work/alpha", name: "Alpha" }} />);
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Keep until success" } });
+    const submit = screen.getByRole("button", { name: "Launch leader" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Launch file attachments"), {
+      target: { files: [new File(["Retry context"], "notes.txt", { type: "text/plain" })] },
+    });
+    await screen.findByText("notes.txt");
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(screen.getByRole("checkbox", { name: "Worktree isolation" }));
+    fireEvent.click(submit);
+    act(() => failed("Maximum session limit (50) reached"));
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Keep until success");
+    expect(screen.getByRole("button", { name: "Remove notes.txt" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Worktree isolation" })).toBeChecked();
+    expect(hasNavigationDraft(document)).toBe(true);
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    expect(canonicalLaunch.mock.calls[1]![0]).toEqual(canonicalLaunch.mock.calls[0]![0]);
+    act(() => started("run-retry"));
+    expect(onLaunched).toHaveBeenCalledWith("run-retry");
+    expect(hasNavigationDraft(document)).toBe(false);
+    expect(screen.getByLabelText("Prompt")).toHaveValue("");
+    expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Worktree isolation" })).not.toBeChecked();
+    expect(submit).not.toHaveAttribute("aria-busy");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Next launch" } });
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    expect(canonicalLaunch).toHaveBeenCalledTimes(3);
   });
 
   it("keeps launch unavailable when the selected project has no identity", () => {
@@ -676,6 +716,18 @@ describe("LaunchScreen", () => {
     expect((launch.mock.calls[0]![0] as { options: object }).options).not.toHaveProperty("model");
   });
 
+  it("does not treat saved launch defaults as a draft and permits explicit discard of a changed configuration", async () => {
+    vi.mocked(getProjectSettings).mockResolvedValue({ defaultLeaderHarness: "claude", defaultLeaderModel: "claude-sonnet-5", defaultWorktreeIsolation: true });
+    render(<LaunchScreen canonicalLaunch={vi.fn()} onLaunched={vi.fn()} lockedProject={{ id: "project-test", path: "/work/files", name: "Files" }} />);
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Worktree isolation" })).toBeChecked());
+    expect(hasNavigationDraft(document)).toBe(false);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Worktree isolation" }));
+    expect(hasNavigationDraft(document)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    expect(hasNavigationDraft(document)).toBe(false);
+    expect(screen.getByRole("checkbox", { name: "Worktree isolation" })).toBeChecked();
+  });
+
   it("launches with selected text files folded into the initial prompt", async () => {
     const launch = vi.fn((_input: unknown, onStarted: (key: string) => void) => onStarted("run-1"));
 
@@ -690,16 +742,17 @@ describe("LaunchScreen", () => {
     const submit = screen.getByRole("button", { name: "Launch leader" });
     expect(submit).toBeDisabled();
 
+    expect(hasNavigationDraft(document)).toBe(false);
     const file = new File(["<main>Hello</main>"], "index.html", { type: "text/html" });
     fireEvent.change(screen.getByLabelText("Launch file attachments"), {
       target: { files: [file] },
     });
+    expect(hasNavigationDraft(document)).toBe(true);
 
     await waitFor(() => {
       expect(screen.getByText("index.html")).toBeInTheDocument();
     });
-    await waitFor(() => expect(submit).toBeEnabled());
-
+    expect(hasNavigationDraft(document)).toBe(true);
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
@@ -762,6 +815,29 @@ describe("LaunchScreen", () => {
     expect(payload.skillIds).toEqual(["lint"]);
     expect(payload.skillValues).toEqual({});
     expect(payload.systemPrompt).toContain("Clean up all lint violations.");
+  });
+
+  it("exposes missing skill requirements outside optional setup with a direct fix", async () => {
+    vi.mocked(getProjectSkills).mockResolvedValue([{ ...LINT_SKILL, isDefault: true,
+      variables: [{ name: "scope", label: "Scope", type: "text", required: true }] }]);
+    const launch = vi.fn();
+    render(<LaunchScreen canonicalLaunch={launch} onLaunched={vi.fn()}
+      lockedProject={{ id: "requirements", path: "/work/project", name: "Project" }} />);
+    const action = await screen.findByRole("button", { name: "Complete required skill inputs" });
+    expect(action.closest("details")).toBeNull();
+    expect(screen.getByText("Lint Cleanup: Scope")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Fix lint" } });
+    const submit = screen.getByRole("button", { name: "Launch leader" });
+    expect(submit).toBeDisabled();
+    fireEvent.submit(submit.closest("form")!);
+    expect(launch).not.toHaveBeenCalled();
+    fireEvent.click(action);
+    const field = screen.getByLabelText(/Scope/);
+    expect(field).toHaveFocus();
+    fireEvent.change(field, { target: { value: "src" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Done/ }));
+    expect(screen.queryByText("Lint Cleanup: Scope")).not.toBeInTheDocument();
+    expect(submit).toBeEnabled();
   });
 
   it("preselects defaults even when self-serve is disabled, and lets the user deselect them", async () => {

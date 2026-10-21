@@ -1,8 +1,9 @@
-import { createRef } from "react";
+import { createRef, useState } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SkillTemplate } from "../../../skills/types.ts";
 import { SkillFlyout } from "./SkillFlyout.tsx";
+import { registerSkill, unregisterSkill } from "../../../skills/registry.ts";
 
 const skills: SkillTemplate[] = [
   {
@@ -46,10 +47,6 @@ const skills: SkillTemplate[] = [
   },
 ];
 
-vi.mock("../../../skills/registry.ts", () => ({
-  getPickableSkills: () => skills,
-  getSkill: (id: string) => skills.find((skill) => skill.id === id),
-}));
 
 type SkillUpdate = {
   skillIds?: string[];
@@ -91,6 +88,7 @@ function renderFlyout({
 
 describe("SkillFlyout", () => {
   beforeEach(() => {
+    skills.forEach(registerSkill);
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
       value: 1100,
@@ -102,6 +100,7 @@ describe("SkillFlyout", () => {
   });
 
   afterEach(() => {
+    skills.forEach(skill => unregisterSkill(skill.id));
     document
       .querySelectorAll("[data-test-anchor]")
       .forEach((anchor) => anchor.remove());
@@ -109,7 +108,7 @@ describe("SkillFlyout", () => {
 
   it("makes searching, adding, and removing skills explicit", async () => {
     const onUpdate = vi.fn();
-    renderFlyout({ skillIds: ["code-review"], onUpdate });
+    renderFlyout({ skillIds: ["code-review"], skillValues: { "code-review": { focus: "API" } }, onUpdate });
 
     expect(screen.getByRole("dialog", { name: "Skills" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Remove Code Review" })).toBeInTheDocument();
@@ -197,7 +196,7 @@ describe("SkillFlyout", () => {
       configurable: true,
       value: 420,
     });
-    renderFlyout({ skillIds: ["code-review"] });
+    renderFlyout({ skillIds: ["code-review"], skillValues: { "code-review": { focus: "API" } } });
 
     const browseTab = screen.getByRole("tab", { name: "Browse" });
     const configureTab = screen.getByRole("tab", { name: /Configure/ });
@@ -212,6 +211,35 @@ describe("SkillFlyout", () => {
       screen.getByRole("region", { name: "Browse skills", hidden: true }),
     ).toHaveAttribute("data-hidden", "true");
     expect(screen.getByRole("textbox", { name: /review focus/i })).toBeInTheDocument();
+  });
+
+  it.each([1100, 420])("takes a newly added skill straight to its missing inputs at %s px", async (width) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+    function Probe() {
+      const [state, setState] = useState({ skillIds: ["release-check"], skillValues: {} });
+      return <SkillFlyout {...state} open readOnly={false} onClose={vi.fn()}
+        onUpdate={patch => setState(current => ({ ...current, ...patch }))} />;
+    }
+    render(<Probe />);
+    fireEvent.click(screen.getByRole("button", { name: "Add Code Review" }));
+    const field = screen.getByRole("textbox", { name: /review focus/i });
+    await waitFor(() => expect(field).toHaveFocus());
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("Required: Review focus")).toBeInTheDocument();
+    if (width === 420) expect(screen.getByRole("tab", { name: /Configure/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.change(field, { target: { value: "Security" } });
+    expect(field).not.toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByText("Required: Review focus")).not.toBeInTheDocument();
+  });
+
+  it("opens at the first unresolved field, but does not steal focus as values change", async () => {
+    const view = renderFlyout({ skillIds: ["code-review"] });
+    await waitFor(() => expect(screen.getByRole("textbox", { name: /review focus/i })).toHaveFocus());
+    const search = screen.getByRole("searchbox");
+    search.focus();
+    view.rerender(<SkillFlyout skillIds={["code-review"]} skillValues={{ "code-review": { focus: "done" } }}
+      open readOnly={false} onUpdate={vi.fn()} onClose={vi.fn()} anchorRef={view.anchorRef} />);
+    expect(search).toHaveFocus();
   });
 
   it("keeps read-only skills visible without editable actions", () => {

@@ -42,7 +42,9 @@ describe("mobile iteration commands", () => {
     expect(send.mock.calls.some(([message]) => message.type === "send_message")).toBe(false);
     expect(screen.getByText(/Unavailable skills were not armed: missing/)).toHaveAttribute("role", "status");
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: /Command skills/ }));
+    expect(screen.getByText("Audit skill: Target")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Complete required skill inputs" }));
+    expect(screen.getByLabelText(/Target/)).toHaveFocus();
     fireEvent.change(screen.getByLabelText(/Target/), { target: { value: "tests" } });
     fireEvent.click(screen.getByRole("button", { name: "Close skills" }));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

@@ -1303,7 +1303,8 @@ describe("ActivityView", () => {
       expect(screen.getByRole("button", { name: /^send$/i })).toBeDisabled();
       fireEvent.keyDown(composer, { key: "Enter" });
       expect(onPromptWorkItem).not.toHaveBeenCalled();
-      fireEvent.click(screen.getByRole("button", { name: "Configure skills, 1 active" }));
+      expect(screen.getByText("Iteration Config: Review target")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Complete required skill inputs" }));
       fireEvent.change(screen.getByLabelText(/Review target/), { target: { value: "the parser" } });
       fireEvent.click(screen.getByRole("button", { name: "Close skills" }));
       fireEvent.click(screen.getByRole("button", { name: /^send$/i }));

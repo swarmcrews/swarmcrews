@@ -1,3 +1,6 @@
+import { useEffect, useRef, useState } from "react";
+import { SkillRequirements, focusMissingSkillInput } from "../skills/SkillRequirements.tsx";
+import { missingSkillInputs } from "../skills/required-inputs.ts";
 import { SkillIcon } from "../components/SkillIcon.tsx";
 import type { SkillTemplate } from "../skills/types.ts";
 
@@ -43,6 +46,14 @@ export function LaunchSkillsPanel({
   onVarChange,
   onClose,
 }: LaunchSkillsPanelProps) {
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [pendingSkill, setPendingSkill] = useState<string | null>(null);
+  useEffect(() => { if (open) focusMissingSkillInput(sheetRef.current); }, [open]);
+  useEffect(() => {
+    if (!open || !pendingSkill || !selectedSkillIds.includes(pendingSkill)) return;
+    focusMissingSkillInput(sheetRef.current, pendingSkill);
+    setPendingSkill(null);
+  }, [open, pendingSkill, selectedSkillIds]);
   if (!open) return null;
 
   const selectedSkills = selectedSkillIds
@@ -62,7 +73,7 @@ export function LaunchSkillsPanel({
       aria-label="Skills"
       onClick={onClose}
     >
-      <div className="mob-skills-sheet" onClick={(event) => event.stopPropagation()}>
+      <div ref={sheetRef} className="mob-skills-sheet" onClick={(event) => event.stopPropagation()}>
         <header className="mob-skills-head">
           <h2>Skills</h2>
           <button
@@ -76,6 +87,8 @@ export function LaunchSkillsPanel({
         </header>
 
         <div className="mob-skills-body">
+          <SkillRequirements skills={selectedSkills} values={skillValues}
+            onConfigure={() => focusMissingSkillInput(sheetRef.current)} />
           {availableSkills.length === 0 ? (
             <p className="mob-muted">No skills in this project's library yet.</p>
           ) : (
@@ -103,25 +116,26 @@ export function LaunchSkillsPanel({
                             variable.defaultValue ??
                             "";
                           const fieldId = `skill-${skill.id}-${variable.name}`;
+                          const status = { "data-skill-input": skill.id, "aria-required": variable.required || undefined,
+                            "aria-invalid": variable.required && !value.trim() || undefined };
                           return (
                             <label className="mob-skill-var" key={variable.name} htmlFor={fieldId}>
                               <span>
                                 {variable.label}
                                 {variable.required ? (
-                                  <em className="mob-skill-var-req" aria-hidden="true">
-                                    {" "}
-                                    *
-                                  </em>
+                                  <em className="mob-skill-var-req"> Required</em>
                                 ) : null}
                               </span>
                               {variable.type === "select" ? (
                                 <select
+                                  {...status}
                                   id={fieldId}
                                   value={value}
                                   onChange={(event) =>
                                     onVarChange(skill.id, variable.name, event.currentTarget.value)
                                   }
                                 >
+                                  <option value="">Select an option…</option>
                                   {(variable.options ?? []).map((opt) => (
                                     <option key={opt.value} value={opt.value}>
                                       {opt.label}
@@ -130,6 +144,7 @@ export function LaunchSkillsPanel({
                                 </select>
                               ) : variable.type === "textarea" ? (
                                 <textarea
+                                  {...status}
                                   id={fieldId}
                                   value={value}
                                   rows={2}
@@ -140,6 +155,7 @@ export function LaunchSkillsPanel({
                                 />
                               ) : (
                                 <input
+                                  {...status}
                                   id={fieldId}
                                   type="text"
                                   value={value}
@@ -175,7 +191,10 @@ export function LaunchSkillsPanel({
                           className="mob-skill-row"
                           data-active={active}
                           aria-pressed={active}
-                          onClick={() => onToggleSkill(skill.id)}
+                          onClick={() => {
+                            onToggleSkill(skill.id);
+                            if (!active && missingSkillInputs(skill, skillValues[skill.id]).length) setPendingSkill(skill.id);
+                          }}
                         >
                           <span className="mob-skill-icon" aria-hidden="true">
                             <SkillIcon skill={skill} />
@@ -183,6 +202,8 @@ export function LaunchSkillsPanel({
                           <span className="mob-skill-row-text">
                             <strong>{skill.name}</strong>
                             <small>{skill.description}</small>
+                            {missingSkillInputs(skill, skillValues[skill.id]).length > 0 &&
+                              <small className="skill-required-hint">{active ? "Required inputs incomplete" : "Requires setup after adding"}</small>}
                           </span>
                           <span className="mob-skill-row-mark" aria-hidden="true">
                             {active ? "✓" : "+"}

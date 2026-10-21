@@ -3,6 +3,7 @@ import { getProjectSettings, getProjectSkills, type ProjectSettings } from "../a
 import { invokeContextAction } from "../../shared/context-actions.ts";
 import { buildSlashCommands, type SlashCommand } from "../nodes/leader/prompt/slash-commands.ts";
 import { compileSkills, type SkillTemplate } from "../skills/types.ts";
+import { SkillRequirements } from "../skills/SkillRequirements.tsx";
 import { LaunchSkillsPanel } from "./LaunchSkillsPanel.tsx";
 
 export interface IterationCommandSkills {
@@ -60,7 +61,7 @@ export function useIterationCommands(projectId: string | null | undefined, enabl
       {selection && <div className="mob-iteration-skills">
         <button type="button" onClick={() => setEditing(true)}>Command skills ({selection.skillIds.length})</button>
         <button type="button" onClick={() => { setSelection(undefined); setNotice(null); }}>Clear command skills</button>
-        {missingValues && <span>Complete required skill fields before sending.</span>}
+        <SkillRequirements skills={selectedSkills} values={selection.skillValues} onConfigure={() => setEditing(true)} />
         {ready && unavailableSkills.length > 0 && <span role="status">Command skills unavailable: {unavailableSkills.join(", ")}. Clear command skills to continue.</span>}
       </div>}
     </>,

@@ -26,6 +26,13 @@ test("keeps New Leader configuration and popovers contained", async ({ page }) =
 
   const addAgent = page.getByRole("region", { name: "Add an agent" });
   await expect(addAgent).toBeVisible();
+  const name = addAgent.getByLabel(/Name/);
+  const goal = addAgent.getByLabel("Leader prompt", { exact: true });
+  await name.fill("Keyboard onboarding");
+  await name.press("Tab");
+  await expect(goal).toBeFocused();
+  await goal.press("Shift+Tab");
+  await expect(name).toBeFocused();
 
   await page.setViewportSize({ width: 1440, height: 520 });
   const emptyPrompt = addAgent.locator(".leader-launch-prompt");

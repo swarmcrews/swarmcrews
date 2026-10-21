@@ -86,11 +86,20 @@ describe("Activity launch readiness", () => {
       name: "claude", capabilities: { permissionPrompts: true }, models: [{ id: "opus", label: "Opus" }],
       builtInTools: [], commands: [], agents: [], account: { provider: "anthropic" },
     }] }));
-    expect(screen.getByText("Ready to launch")).toBeInTheDocument();
+    const readiness = screen.getByRole("status", { name: "Launch readiness" });
+    expect(readiness).toBeEmptyDOMElement();
+    expect(screen.queryByText("Ready to launch")).not.toBeInTheDocument();
     const launch = screen.getByRole("button", { name: "Launch leader" });
+    expect(launch).toBeEnabled();
+    fireEvent.change(screen.getByPlaceholderText("Goal"), { target: { value: "" } });
+    expect(readiness).toHaveTextContent("Describe a goal to launch");
+    expect(launch).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText("Goal"), { target: { value: "My exact goal" } });
+    expect(readiness).toBeEmptyDOMElement();
     fireEvent.click(launch); fireEvent.click(launch);
     expect(submit).toHaveBeenCalledOnce();
     expect(screen.getByRole("button", { name: "Starting leader…" })).toBeDisabled();
+    expect(readiness).toHaveTextContent("Starting leader…");
     expect(screen.getByPlaceholderText("Goal")).toHaveValue("My exact goal");
     fireEvent.click(screen.getByText("Reject"));
     expect(screen.getByRole("alert")).toHaveTextContent("Launch rejected");
@@ -255,6 +264,11 @@ describe("Activity launch contextual controls", () => {
       expect(within(settings).getByLabelText(new RegExp(name))).toBeRequired();
     }
     expect(screen.getByLabelText(/Mode Required/)).toHaveValue("");
+    fireEvent.click(advanced.querySelector("summary")!);
+    expect(screen.getByText("Required: Target, Notes, Mode")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Set up Release checks" }));
+    expect(screen.getByLabelText(/Target Required/)).toHaveFocus();
+
     const launch = screen.getByRole("button", { name: "Launch leader" });
     expect(launch.closest(".leader-launch-work")).toContainElement(screen.getByPlaceholderText("Goal"));
     fireEvent.change(screen.getByPlaceholderText("Goal"), { target: { value: "Ship it" } });

@@ -1,0 +1,14 @@
+.skill-requirements { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-block: 8px; font-size: var(--text-size-ui, 12px); }
+.skill-requirements > div { display: grid; gap: 3px; min-width: 0; flex: 1 1 180px; overflow-wrap: anywhere; }
+.skill-requirements strong, .skill-required-hint { color: var(--text-secondary); }
+.skill-requirements span { color: var(--text-secondary); }
+.skill-requirements button, .skill-setup-action { min-height: 32px; max-width: 100%; overflow-wrap: anywhere; padding: 5px 8px; border: 1px solid var(--border-default); border-radius: var(--radius-control, 6px); background: var(--bg-elevated); color: var(--text-primary); font: inherit; cursor: pointer; }
+.skill-requirements button:hover, .skill-setup-action:hover { border-color: var(--accent); }
+.skill-requirements button:focus-visible, .skill-setup-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.skill-required-hint { display: block; margin-block: 5px; font-size: var(--text-size-caption, 11px); line-height: 1.4; overflow-wrap: anywhere; }
+.skill-flyout__skill-copy .skill-setup-action { margin-top: 5px; font-size: 11px; }
+[data-skill-input][aria-invalid="true"] { border-color: var(--status-warning, var(--accent)); }
+@media (max-width: 720px) { .skill-requirements button, .skill-setup-action { min-height: 44px; } }
+.skill-flyout__config-card > .skill-required-hint { margin: 0; padding: 8px 10px 0; }
+.skill-variable-inputs__field [data-skill-input][aria-invalid="true"],
+.leader-launch-skill-vars [data-skill-input][aria-invalid="true"] { border-color: var(--status-warning, var(--accent)); }

@@ -1,5 +1,5 @@
 import { SkillIcon } from "../../components/SkillIcon.tsx";
-import { useContext, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useContext, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   Settings2,
   Sparkles,
@@ -17,6 +17,8 @@ import type { SlashCommand } from "./prompt/slash-commands.ts";
 import type { LeaderData } from "./types.ts";
 import { SandboxPolicyControls } from "./SandboxPolicyControls.tsx";
 import { LaunchRunSummary } from "../../components/LaunchRunSummary.tsx";
+import { missingSkillInputs } from "../../skills/required-inputs.ts";
+import { focusMissingSkillInput } from "../../skills/SkillRequirements.tsx";
 import { SelectedSetting } from "./SelectedSetting.tsx";
 
 const PERMISSIONS: Array<{ value: PermissionMode; label: string; description: string }> = [
@@ -57,11 +59,12 @@ function SkillVariables({
       {skill.variables.map((variable) => {
         const value = values[variable.name] ?? variable.defaultValue ?? "";
         const id = `leader-launch-skill-${skill.id}-${variable.name}`;
+        const status = { "data-skill-input": skill.id, "aria-invalid": variable.required && !value.trim() || undefined };
         return (
           <label key={variable.name} htmlFor={id}>
             <span>{variable.label} <small>{variable.required ? "Required" : "Optional"}</small></span>
             {variable.type === "select" ? (
-              <select id={id} required={variable.required} value={value} onChange={(event) => onChange(variable.name, event.target.value)}>
+              <select {...status} id={id} required={variable.required} value={value} onChange={(event) => onChange(variable.name, event.target.value)}>
                 <option value="">Select an option…</option>
                 {(variable.options ?? []).map((option) => (
                   <option key={option.value} value={option.value}>{option.label}</option>
@@ -69,6 +72,7 @@ function SkillVariables({
               </select>
             ) : variable.type === "textarea" ? (
               <textarea
+                {...status}
                 id={id}
                 required={variable.required}
                 rows={2}
@@ -78,6 +82,7 @@ function SkillVariables({
               />
             ) : (
               <input
+                {...status}
                 id={id}
                 required={variable.required}
                 value={value}
@@ -127,6 +132,7 @@ export function ActivityLaunchForm({
   onSubmit: () => void;
   onUpdate: (patch: Partial<LeaderData>) => void;
 }) {
+  const formRef = useRef<HTMLDivElement>(null);
   const { harnesses, loaded: harnessesLoaded } = useHarnessList();
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const activeHarnessName = data.harness ?? "claude";
@@ -156,8 +162,8 @@ export function ActivityLaunchForm({
     || (missingVariable ? "Complete required skill inputs" : !input.trim() && !attachments?.items.length ? "Describe a goal to launch"
       : !harnessesLoaded ? "Checking model availability…"
       : !activeHarness || !selectedModel ? "Selected model unavailable"
-      : submitDisabled ? "Launch unavailable" : "Ready to launch");
-  const ready = readiness === "Ready to launch";
+      : submitDisabled ? "Launch unavailable" : null);
+  const ready = readiness === null;
 
   function updateSkill(id: string, checked: boolean) {
     const skillIds = checked
@@ -178,7 +184,7 @@ export function ActivityLaunchForm({
   }
 
   return (
-    <div className="leader-launch-form">
+    <div ref={formRef} className="leader-launch-form">
       <div className="leader-launch-layout">
         <section className="leader-launch-primary" aria-label="Define the work">
           <div className="leader-launch-work">
@@ -205,13 +211,6 @@ export function ActivityLaunchForm({
                 <span>Goal</span>
                 <small>Type / for commands</small>
               </div>
-              <div className="leader-launch-starters" aria-label="Prompt starters">
-                {PROMPT_STARTERS.map((starter) => (
-                  <button key={starter.label} type="button" onClick={() => onInputChange(starter.value)}>
-                    {starter.label}
-                  </button>
-                ))}
-              </div>
             </div>
             <div className="leader-launch-prompt">
               <LeaderPromptBar
@@ -233,6 +232,14 @@ export function ActivityLaunchForm({
                 autoFocus
                 textareaRef={textareaRef}
               />
+            </div>
+
+            <div className="leader-launch-starters" aria-label="Prompt starters">
+              {PROMPT_STARTERS.map((starter) => (
+                <button key={starter.label} type="button" onClick={() => onInputChange(starter.value)}>
+                  {starter.label}
+                </button>
+              ))}
             </div>
 
             {selectedSkills.some(skill => skill.variables.length > 0) && (
@@ -401,6 +408,11 @@ export function ActivityLaunchForm({
                             <strong>{skill.name}</strong>
                           </span>
                         </label>
+                        {selected && missingSkillInputs(skill, data.skillValues?.[skill.id]).length > 0 && <>
+                          <small className="skill-required-hint">Required: {missingSkillInputs(skill, data.skillValues?.[skill.id]).map(field => field.label || field.name).join(", ")}</small>
+                          <button type="button" className="skill-setup-action"
+                            onClick={() => focusMissingSkillInput(formRef.current, skill.id)}>Set up {skill.name}</button>
+                        </>}
                       </div>
                     );
                   })}

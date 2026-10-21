@@ -1,3 +1,4 @@
+import { NavigationDraft } from "../navigation-drafts.tsx";
 import { ConnectionsPicker } from "../mcp-connections/ConnectionsPicker.tsx";
 import { LaunchRunSummary } from "../components/LaunchRunSummary.tsx";
 import { SkillIcon } from "../components/SkillIcon.tsx";
@@ -22,6 +23,8 @@ import {
   DEFAULT_SANDBOX_POLICY,
   type SandboxPolicy,
 } from "../../shared/workspace-contracts.ts";
+import { SkillRequirements } from "../skills/SkillRequirements.tsx";
+import { missingSkillInputs } from "../skills/required-inputs.ts";
 import { LaunchSkillsPanel } from "./LaunchSkillsPanel.tsx";
 import { MobileLeaderRuntimeControls } from "./MobileLeaderRuntimeControls.tsx";
 import { MobileSandboxAccessControl } from "./MobileSandboxAccessControl.tsx";
@@ -64,6 +67,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const [modelValue, setModelValue] = useState("");
   const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([]);
   const [textAttachments, setTextAttachments] = useState<TextAttachment[]>([]);
+  const [attachmentReads, setAttachmentReads] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [worktreeIsolation, setWorktreeIsolation] = useState(false);
   const [loading, setLoading] = useState(!lockedProject);
@@ -198,8 +202,20 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const trimmedPrompt = prompt.trim();
   const attachedFileCount = imageAttachments.length + textAttachments.length;
   const skillsReady = targetProjectId === loadedSkillsProjectId;
+  const settingsReady = targetProjectId === loadedSettingsProjectId;
+  const selectedSkills = useMemo(
+    () =>
+      selectedSkillIds
+        .map((id) => availableSkills.find((skill) => skill.id === id))
+        .filter((skill): skill is SkillTemplate => skill !== undefined),
+    [selectedSkillIds, availableSkills],
+  );
+  const missingSkillValues = selectedSkills.some(skill => missingSkillInputs(skill, skillValues[skill.id]).length > 0);
   const canSubmit = targetProjectId !== null
     && skillsReady
+    && settingsReady
+    && attachmentReads === 0
+    && !missingSkillValues
     && targetPath !== null
     && (trimmedPrompt.length > 0 || attachedFileCount > 0);
   const launchStatus = launching
@@ -208,9 +224,15 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       ? "Choose a project before launch."
       : !skillsReady
         ? "Preparing project skills before launch."
-        : trimmedPrompt.length === 0 && attachedFileCount === 0
-          ? "Add a prompt or attach a file before launch."
-          : null;
+        : !settingsReady
+          ? "Loading project defaults before launch."
+          : attachmentReads > 0
+            ? "Preparing attachments before launch."
+            : missingSkillValues
+              ? "Complete required skill inputs before launch."
+              : trimmedPrompt.length === 0 && attachedFileCount === 0
+                ? "Add a prompt or attach a file before launch."
+                : null;
   const selectedModel = parseLaunchModelValue(modelValue);
   const selectedModelGroup = selectedModel
     ? modelGroups.find((group) => group.harness === selectedModel.harness)
@@ -249,13 +271,6 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
   const sandboxSupport = harnessesLoaded
     ? activeHarness?.capabilities.sandboxEnforcement ?? null
     : undefined;
-  const selectedSkills = useMemo(
-    () =>
-      selectedSkillIds
-        .map((id) => availableSkills.find((skill) => skill.id === id))
-        .filter((skill): skill is SkillTemplate => skill !== undefined),
-    [selectedSkillIds, availableSkills],
-  );
 
   function toggleSkill(id: string) {
     setSelectedSkillIds((current) =>
@@ -282,7 +297,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!skillsReady || launchingRef.current || !targetPath || (!trimmedPrompt && attachedFileCount === 0)) return;
+    if (!canSubmit || launchingRef.current) return;
 
     launchingRef.current = true;
     setLaunching(true);
@@ -325,7 +340,13 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       changeMode: worktreeIsolation ? "worktree" : "live",
       prompt: launchPrompt,
       options: { ...runtimeOptions, orchestrationMode: "auto" },
-    }, onLaunched, (message) => {
+    }, (sessionKey) => {
+      // A retained launcher must relinquish ownership once the run starts.
+      launchingRef.current = false;
+      setLaunching(false);
+      discardDraft();
+      onLaunched(sessionKey);
+    }, (message) => {
       launchingRef.current = false;
       setLaunching(false);
       setError(message);
@@ -339,6 +360,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
     event.currentTarget.value = "";
     if (files.length === 0) return;
 
+    setAttachmentReads(count => count + 1);
     const imageFiles = files.filter((file) => isAcceptedImageType(file.type));
     const textFiles = files.filter((file) => !isAcceptedImageType(file.type) && isAcceptedTextFile(file));
     const rejectedCount = files.length - imageFiles.length - textFiles.length;
@@ -346,6 +368,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
       Promise.allSettled(imageFiles.map((file) => fileToImageAttachment(file))),
       Promise.allSettled(textFiles.map((file) => fileToTextAttachment(file))),
     ]);
+    setAttachmentReads(count => count - 1);
     const acceptedImages = imageSettled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
     const acceptedText = textSettled.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
     const failedCount =
@@ -388,19 +411,34 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
     );
   }
 
+  const defaultModel = projectSettings.defaultLeaderModel ?? projectSettings.defaultModel;
+  const defaultModelValue = projectSettings.defaultLeaderHarness && defaultModel ? `${projectSettings.defaultLeaderHarness}::${defaultModel}` : "";
+  const defaultSkills = availableSkills.filter(skill => skill.isDefault).map(skill => skill.id);
+  const hasLaunchDraft = !!prompt || !!imageAttachments.length || !!textAttachments.length
+    || modelValue !== defaultModelValue || worktreeIsolation !== (projectSettings.defaultWorktreeIsolation === true)
+    || JSON.stringify([...selectedSkillIds].sort()) !== JSON.stringify(defaultSkills.sort())
+    || Object.keys(skillValues).length > 0 || connectionSelection !== undefined
+    || thinkingOverride !== null || sandboxPolicyOverride !== null;
+  const discardDraft = () => {
+    setPrompt(""); setImageAttachments([]); setTextAttachments([]); setAttachmentError(null); setError(null);
+    setModelValue(defaultModelValue); setWorktreeIsolation(projectSettings.defaultWorktreeIsolation === true);
+    setSelectedSkillIds(defaultSkills); setSkillValues({}); setConnectionSelection(undefined);
+    setThinkingOverride(null); setSandboxPolicyOverride(null);
+  };
+
   return (
     <main className="mob-screen mob-launch" aria-label="New leader">
-      <header className="mob-screen-header">
-        <div>
-          <h1>New Leader</h1>
-          <p className="mob-screen-intro">Describe the outcome, then tune this run.</p>
-        </div>
-      </header>
-
-      {loading ? <div className="mob-launch-status">Loading projects...</div> : null}
-      {error ? <div className="mob-launch-error" role="alert">{error}</div> : null}
-
+      <NavigationDraft scope="mobile-launch" dirty={hasLaunchDraft} pending={launching || attachmentReads > 0} />
       <form className="mob-launch-form" onSubmit={handleSubmit}>
+        <div className="mob-launch-scroll">
+          <header className="mob-screen-header mob-launch-header">
+            <h1>New Leader</h1>
+            {hasLaunchDraft && <button type="button" className="mob-header-action" disabled={launching || attachmentReads > 0} onClick={discardDraft}>Discard draft</button>}
+            <p className="mob-screen-intro">Describe the outcome, then tune this run.</p>
+          </header>
+          {loading ? <div className="mob-launch-status">Loading projects...</div> : null}
+
+          <fieldset className="mob-launch-fields" disabled={launching} aria-label="Leader setup">
         <LaunchPrompt key={targetProjectId ?? "no-project"} value={prompt} onChange={setPrompt}
           commands={slashCommands}
           disabled={!skillsReady || loadedSettingsProjectId !== targetProjectId}
@@ -504,6 +542,7 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           </fieldset>
         )}
 
+        <fieldset className="mob-launch-settings" disabled={!settingsReady} aria-label="Run settings">
         <label className="mob-launch-checkbox">
           <input
             type="checkbox"
@@ -592,7 +631,12 @@ export function LaunchScreen({ onLaunched, onLaunchError, canonicalLaunch, locke
           </div>
         </details>
 
+        <SkillRequirements skills={selectedSkills} values={skillValues} onConfigure={() => setSkillsPanelOpen(true)} />
+        </fieldset>
+          </fieldset>
+        </div>
         <div className="mob-launch-action">
+          {error ? <div className="mob-launch-error" role="alert" tabIndex={0}>{error}</div> : null}
           <button
             className="mob-launch-submit"
             type="submit"

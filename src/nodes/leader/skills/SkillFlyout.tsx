@@ -15,6 +15,8 @@ import { getPickableSkills, getSkill } from "../../../skills/registry.ts";
 import type { SkillTemplate } from "../../../skills/types.ts";
 import { SkillTagChip } from "./SkillTagChip.tsx";
 import { SkillVariableInputs } from "./SkillVariableInputs.tsx";
+import { missingSkillInputs } from "../../../skills/required-inputs.ts";
+import { firstMissingSkillInput, focusMissingSkillInput } from "../../../skills/SkillRequirements.tsx";
 
 const SKILL_CATEGORIES: { key: SkillTemplate["category"]; label: string }[] = [
   { key: "code", label: "Code" },
@@ -60,6 +62,7 @@ export function SkillFlyout({
   onClose: () => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingSkill, setPendingSkill] = useState<string | null>(null);
   const [compactPane, setCompactPane] = useState<CompactPane>("browse");
   const [layout, setLayout] = useState<{
     top: number;
@@ -83,6 +86,7 @@ export function SkillFlyout({
   useLayoutEffect(() => {
     if (!open) {
       setLayout(null);
+      setPendingSkill(null);
       return;
     }
 
@@ -135,8 +139,12 @@ export function SkillFlyout({
     if (!open) return;
 
     setSearchQuery("");
-    setCompactPane("browse");
-    const frame = requestAnimationFrame(() => searchRef.current?.focus());
+    const needsSetup = !readOnly && firstMissingSkillInput(dialogRef.current);
+    setCompactPane(needsSetup ? "configure" : "browse");
+    const frame = requestAnimationFrame(() => {
+      if (needsSetup) focusMissingSkillInput(dialogRef.current);
+      else searchRef.current?.focus();
+    });
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -168,7 +176,14 @@ export function SkillFlyout({
       document.removeEventListener("keydown", handleKeyDown);
       anchorRef?.current?.focus();
     };
-  }, [open, anchorRef]);
+  }, [open, anchorRef, readOnly]);
+
+  useEffect(() => {
+    if (!open || !pendingSkill) return;
+    if (!skillIds.includes(pendingSkill)) return;
+    focusMissingSkillInput(dialogRef.current, pendingSkill);
+    setPendingSkill(null);
+  }, [open, pendingSkill, skillIds]);
 
   const allSkills = getPickableSkills();
   const selectedIds = useMemo(() => new Set(skillIds), [skillIds]);
@@ -179,6 +194,11 @@ export function SkillFlyout({
   const handleAddSkill = (id: string) => {
     if (!selectedIds.has(id)) {
       onUpdate({ skillIds: [...skillIds, id], skillPanelOpen: true });
+      const skill = getSkill(id);
+      if (skill && missingSkillInputs(skill, skillValues[id]).length) {
+        setCompactPane("configure");
+        setPendingSkill(id);
+      }
     }
   };
 
@@ -363,6 +383,7 @@ export function SkillFlyout({
                   <div>
                     {category.skills.map((skill) => {
                       const selected = selectedIds.has(skill.id);
+                      const missing = missingSkillInputs(skill, skillValues[skill.id]);
                       return (
                         <article
                           className="skill-flyout__skill-row"
@@ -376,6 +397,14 @@ export function SkillFlyout({
                           <div className="skill-flyout__skill-copy">
                             <strong>{skill.name}</strong>
                             <span>{skill.description}</span>
+                            {!readOnly && missing.length > 0 && (
+                              selected ? (
+                                <button type="button" className="skill-setup-action" onClick={() => {
+                                  setCompactPane("configure");
+                                  setPendingSkill(skill.id);
+                                }}>Set up {skill.name}</button>
+                              ) : <small className="skill-required-hint">Requires setup after adding</small>
+                            )}
                           </div>
                           {readOnly ? (
                             <span className="skill-flyout__readonly-state">
@@ -476,6 +505,9 @@ export function SkillFlyout({
                       </button>
                     )}
                   </header>
+                  {!readOnly && missingSkillInputs(skill, skillValues[skill.id]).length > 0 && (
+                    <p className="skill-required-hint">Required: {missingSkillInputs(skill, skillValues[skill.id]).map(field => field.label || field.name).join(", ")}</p>
+                  )}
                   {skill.variables.length === 0 ? (
                     <p className="skill-flyout__no-configuration">
                       <Check size={14} aria-hidden="true" />
