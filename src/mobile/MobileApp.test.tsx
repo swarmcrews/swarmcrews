@@ -329,7 +329,8 @@ describe("MobileApp", () => {
           events: [{ type: "sdk_event", sessionKey, timestamp: 1,
             event: { kind: "text", role: "assistant", text } }] });
       }
-      expect(screen.getByText("Earlier conversation")).toBeInTheDocument();
+      expect(screen.queryByText("Earlier conversation")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show transcript: Iteration 1 · completed" })).toBeInTheDocument();
       expect(within(screen.getByLabelText("Conversation")).getAllByText("Current conversation")).toHaveLength(1);
       const earlier = screen.getByRole("navigation", { name: "Iteration 1 navigation" });
       const current = screen.getByRole("navigation", { name: "Iteration 2 navigation" });
@@ -345,8 +346,9 @@ describe("MobileApp", () => {
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
         type: "get_work_item_runs", workItemId: "work-1", cursor: undefined,
       }));
-      expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-old" });
-      expect(screen.getByText("Earlier conversation")).toBeInTheDocument();
+      expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-old" });
+      expect(screen.queryByText("Earlier conversation")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Show transcript: Iteration 1 · completed" })).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: "Stop" }));
       expect(send).toHaveBeenCalledWith({ type: "stop_session", sessionKey: "run-new" });
       fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));

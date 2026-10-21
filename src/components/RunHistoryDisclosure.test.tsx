@@ -1,5 +1,8 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {}))));
+afterEach(() => vi.unstubAllGlobals());
 import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import { createGraphFixture } from "../task-graph/fixtures.ts";
 import type { RunTaskContext } from "../work-item-run-context.ts";
@@ -42,6 +45,48 @@ function harness(context: RunTaskContext = {}) {
 const runs = Array.from({ length: 8 }, (_, i) => run(i + 1));
 
 describe("progressive work-item transcript", () => {
+  it("loads historical iteration content on demand from durable history, one page at a time", async () => {
+    const page = (id: number, text: string, before: number | null) => ({
+      events: [{ type: "sdk_event", sessionKey: "run-1", historyId: id, timestamp: id,
+        event: { kind: "text", role: "assistant", text } }],
+      history: { before, highWater: 20, url: "/api/history/run-1" },
+    });
+    const fetchHistory = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(page(20, "Saved latest answer", 20))))
+      .mockResolvedValueOnce(new Response(JSON.stringify(page(10, "Saved earlier answer", null))));
+    vi.stubGlobal("fetch", fetchHistory);
+    const h = harness();
+    render(<h.View runs={[run(1), run(2)]} currentRunKey="run-2" />);
+    h.emit({ type: "sync_response", sessionKey: "run-1", found: false });
+    expect(fetchHistory).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Show transcript: Iteration 1 · completed" }));
+    expect(await screen.findByText("Saved latest answer")).toBeInTheDocument();
+    expect(fetchHistory).toHaveBeenCalledTimes(1);
+    expect(fetchHistory).toHaveBeenLastCalledWith("/api/history/run-1?format=json", expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: "Load earlier messages" }));
+    expect(await screen.findByText("Saved earlier answer")).toBeInTheDocument();
+    expect(fetchHistory).toHaveBeenLastCalledWith("/api/history/run-1?format=json&before=20", expect.anything());
+    expect(screen.getByText("Saved latest answer")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load earlier messages" })).not.toBeInTheDocument();
+    expect(screen.getByText("Live conversation")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide transcript: Iteration 1 · completed" }));
+    expect(screen.queryByText("Saved latest answer")).not.toBeInTheDocument();
+  });
+
+  it("loads durable child history when the session host is no longer available", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      events: [{ type: "sdk_event", sessionKey: "child", historyId: 1, timestamp: 10,
+        event: { kind: "text", role: "assistant", text: "Archived child output" } }],
+      history: { before: null },
+    }))));
+    const h = harness();
+    render(<h.View runs={[...runs, child]} />);
+    fireEvent.click(screen.getByRole("button", { name: /Show child transcript/ }));
+    h.emit({ type: "sync_response", sessionKey: "child", found: false });
+    expect(await screen.findByText("Archived child output")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith("/api/history/child?format=json", expect.anything());
+  });
+
   it("shows inline node context without loading the child transcript", () => {
     const node = createGraphFixture(1).nodes[0]!;
     const h = harness({ graphNodes: [{ ...node, id: "task", title: "Check regression",
@@ -74,7 +119,7 @@ describe("progressive work-item transcript", () => {
   it("keeps child output out of the feed and off the wire until explicitly expanded", () => {
     const h = harness();
     render(<h.View runs={[...runs, child]} />);
-    expect(h.send.mock.calls.map(([msg]) => msg.sessionKey)).toEqual(["run-6", "run-7", "run-8"]);
+    expect(h.send.mock.calls.map(([msg]) => msg.sessionKey)).toEqual(["run-8"]);
     expect(screen.getByText("Live conversation")).toBeInTheDocument();
     expect(screen.getByText("Live streaming")).toBeInTheDocument();
     expect(screen.getByText("Child run · Check regression · completed")).toBeInTheDocument();
@@ -92,28 +137,34 @@ describe("progressive work-item transcript", () => {
     expect(screen.queryByText("Visible output")).not.toBeInTheDocument();
     h.send.mockClear();
     h.emit({ type: "socket_reconnected" });
-    expect(h.send.mock.calls.map(([msg]) => msg.sessionKey)).toEqual(["run-6", "run-7", "run-8"]);
+    expect(h.send.mock.calls.map(([msg]) => msg.sessionKey)).toEqual(["run-8"]);
   });
 
-  it("offers skimmable older summaries and retrieves only the selected iteration", () => {
+  it("offers skimmable older summaries and retrieves only the selected iteration", async () => {
+    const fetchHistory = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ events: [
+        { type: "sdk_event", sessionKey: "run-5", historyId: 1, timestamp: 10,
+          event: { kind: "text", role: "assistant", text: "Earlier answer" } },
+      ], history: { before: null } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ events: [], history: { before: null } })));
+    vi.stubGlobal("fetch", fetchHistory);
     const h = harness();
     render(<h.View runs={runs} />);
     expect(screen.queryByText("Summary 5")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Browse older iterations/ }));
     expect(screen.getByText("Summary 5")).toBeInTheDocument();
-    expect(h.send).toHaveBeenCalledTimes(3);
+    expect(fetchHistory).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Iteration 5 · completed/ }));
-    expect(h.send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-5" });
-    h.replay("run-5", "Earlier answer");
-    expect(within(screen.getByRole("region", { name: "Iteration 5 preview" })).getByText("Earlier answer")).toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "Iteration 5 preview" })).findByText("Earlier answer")).toBeInTheDocument();
+    expect(fetchHistory).toHaveBeenLastCalledWith("/api/history/run-5?format=json", expect.anything());
     fireEvent.click(screen.getByRole("button", { name: "Older iteration" }));
-    expect(h.send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-4" });
+    expect(fetchHistory).toHaveBeenLastCalledWith("/api/history/run-4?format=json", expect.anything());
     expect(screen.queryByText("Earlier answer")).not.toBeInTheDocument();
-    h.emit({ type: "sync_response", sessionKey: "run-4", found: false });
-    expect(screen.getByText("This run's transcript is unavailable.")).toBeInTheDocument();
+    expect(await screen.findByText("No saved messages for this iteration.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Hide older iterations/ }));
-    expect(screen.queryByText("This run's transcript is unavailable.")).not.toBeInTheDocument();
+    expect(screen.queryByText("No saved messages for this iteration.")).not.toBeInTheDocument();
     expect(screen.getByText("Live conversation")).toBeInTheDocument();
+    expect(h.send).toHaveBeenCalledTimes(1);
   });
 
   it("does not drain metadata pages and loads another page as the reader scrolls", () => {
@@ -130,7 +181,7 @@ describe("progressive work-item transcript", () => {
     expect(h.loadRuns).toHaveBeenCalledTimes(1);
     rerender(<h.View runs={[run(0), ...entries]} currentRunKey="run-13" cursor={null} />);
     expect(screen.getByText("Summary 0")).toBeInTheDocument();
-    expect(h.send).toHaveBeenCalledTimes(3);
+    expect(h.send).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("button", { name: "Load older iterations" })).not.toBeInTheDocument();
   });
 
@@ -144,6 +195,6 @@ describe("progressive work-item transcript", () => {
     expect(screen.queryByText("Summary 1")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load older iterations" }));
     expect(within(index).getAllByRole("button")).toHaveLength(21);
-    expect(h.send).toHaveBeenCalledTimes(3);
+    expect(h.send).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { LeaderNodeRenderer, LEADER_DEFAULT_DATA, type LeaderData } from "./LeaderNode.tsx";
 import type { ServerMessage, SocketSubscribe } from "../use-socket.ts";
 import type { WorkItemRunSnapshot, WorkItemSnapshot } from "../../shared/work-item-contracts.ts";
@@ -15,6 +15,25 @@ beforeAll(() => {
   }
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
+function savedHistory(texts: Record<string, string[]>) {
+  const fetchHistory = vi.fn(async (url: string) => {
+    const key = /\/api\/history\/([^?]+)/.exec(url)?.[1] ?? "";
+    return new Response(JSON.stringify({ events: (texts[key] ?? []).map((text, index) => ({
+      type: "sdk_event", sessionKey: key, historyId: index + 1, timestamp: index + 1,
+      event: { kind: "text", role: "assistant", text },
+    })), history: { before: null } }));
+  });
+  vi.stubGlobal("fetch", fetchHistory);
+  return fetchHistory;
+}
+
+async function openIteration(feed: HTMLElement, number: number, text: string) {
+  fireEvent.click(within(feed).getByRole("button", { name: `Show transcript: Iteration ${number} · completed` }));
+  expect(await within(feed).findByText(text)).toBeInTheDocument();
+}
+
 function run(number: number): WorkItemRunSnapshot {
   return {
     runKey: `run-${number}`, workItemId: "work-1", runKind: "primary",
@@ -27,6 +46,7 @@ function run(number: number): WorkItemRunSnapshot {
 
 describe("Canvas leader iteration history", () => {
   it.each(["receipt-first", "event-first"])("keeps a submitted iteration prompt in its new run only (%s)", async (order) => {
+    savedHistory({ "run-1": ["Original request", "Previous answer"] });
     const listeners = new Set<(message: unknown) => void>();
     const subscribe = (listener: (message: unknown) => void) => {
       listeners.add(listener);
@@ -75,7 +95,8 @@ describe("Canvas leader iteration history", () => {
     await emit({ type: "sdk_event", sessionKey: "run-2", timestamp: 3,
       event: { kind: "text", role: "user", id: "server-prompt", text: "Next iteration prompt" } });
     if (order === "event-first") await emit(receipt);
-    const checkFeed = (feed: HTMLElement) => {
+    const checkFeed = async (feed: HTMLElement) => {
+      await openIteration(feed, 1, "Original request");
       expect(within(feed).getAllByText("Original request")).toHaveLength(1);
       expect(within(feed).getByText("Previous answer")).toBeInTheDocument();
       const prompts = within(feed).getAllByText("Next iteration prompt");
@@ -83,12 +104,14 @@ describe("Canvas leader iteration history", () => {
       const boundary = within(feed).getByRole("navigation", { name: "Iteration 2 navigation" });
       expect(boundary.compareDocumentPosition(prompts[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     };
-    checkFeed(screen.getByLabelText("Conversation messages"));
+    await checkFeed(screen.getByLabelText("Conversation messages"));
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
-    checkFeed(screen.getByRole("region", { name: "Conversation messages" }));
+    await checkFeed(screen.getByRole("region", { name: "Conversation messages" }));
   });
 
-  it.each(["topics", "legacy"])("progressively loads iterations in card and fullscreen with %s sockets", (mode) => {
+  it.each(["topics", "legacy"])("progressively loads iterations in card and fullscreen with %s sockets", async (mode) => {
+    const fetchHistory = savedHistory({ "run-1": ["Earlier conversation 1"], "run-2": ["Earlier conversation 2"],
+      "run-3": ["Current conversation", "New live output"] });
     const listeners = new Set<(message: unknown) => void>();
     const subscribe = Object.assign((topicOrListener: string | ((message: unknown) => void),
       callback?: (message: unknown) => void) => {
@@ -120,12 +143,15 @@ describe("Canvas leader iteration history", () => {
       result: { workItemId: "work-1", runs: [run(1), { ...run(1), runKey: "child", runKind: "child" }], nextCursor: null } });
     expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "child" });
     for (const number of [1, 2]) {
-      expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: `run-${number}` });
+      expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: `run-${number}` });
       emit({ type: "sync_response", found: true, sessionKey: `run-${number}`, status: "completed",
         events: [{ type: "sdk_event", sessionKey: `run-${number}`, timestamp: number,
           event: { kind: "text", role: "assistant", text: `Earlier conversation ${number}` } }] });
     }
     const card = screen.getByLabelText("Conversation messages");
+    expect(fetchHistory).not.toHaveBeenCalled();
+    await openIteration(card, 1, "Earlier conversation 1");
+    await openIteration(card, 2, "Earlier conversation 2");
     expect(within(card).getByText("Earlier conversation 1")).toBeInTheDocument();
     expect(within(card).getByText("Earlier conversation 2")).toBeInTheDocument();
     expect(within(card).getAllByText("Current conversation")).toHaveLength(1);
@@ -151,6 +177,7 @@ describe("Canvas leader iteration history", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Enter fullscreen" }));
     const fullscreen = screen.getByRole("region", { name: "Conversation messages" });
+    await openIteration(fullscreen, 1, "Earlier conversation 1");
     expect(within(fullscreen).getByText("Earlier conversation 1")).toBeInTheDocument();
     expect(within(fullscreen).getByText("Current conversation")).toBeInTheDocument();
     const fullscreenFirst = within(fullscreen).getByRole("navigation", { name: "Iteration 1 navigation" });
@@ -163,7 +190,7 @@ describe("Canvas leader iteration history", () => {
     send.mockClear();
     emit({ type: "socket_reconnected" });
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "get_work_item_runs", cursor: undefined }));
-    expect(send).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-1" });
+    expect(send).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-1" });
     // Other leaders' ledger pages must not appear in this conversation.
     emit({ type: "work_item_response", command: "get_work_item_runs", success: true,
       result: { workItemId: "other-work", runs: [{ ...run(9), workItemId: "other-work" }], nextCursor: null } });
@@ -186,16 +213,17 @@ describe("Canvas leader iteration history", () => {
     expect(within(nextFullscreen).queryByText("Earlier conversation 1")).not.toBeInTheDocument();
     fireEvent.click(within(nextFullscreen).getByRole("button", { name: /Browse older iterations/ }));
     fireEvent.click(within(nextFullscreen).getByRole("button", { name: /Iteration 1 · completed/ }));
-    expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-1" });
+    expect(fetchHistory).toHaveBeenLastCalledWith("/api/history/run-1?format=json", expect.anything());
     emit({ type: "sync_response", found: true, sessionKey: "run-1", status: "completed",
       events: [{ type: "sdk_event", sessionKey: "run-1", timestamp: 1,
         event: { kind: "text", role: "assistant", text: "Earlier conversation 1" } }] });
-    expect(within(nextFullscreen).getByText("Earlier conversation 1")).toBeInTheDocument();
+    expect(await within(nextFullscreen).findByText("Earlier conversation 1")).toBeInTheDocument();
+    await openIteration(nextFullscreen, 3, "New live output");
     expect(within(nextFullscreen).getAllByText("Current conversation")).toHaveLength(1);
     expect(within(nextFullscreen).getAllByText("New live output")).toHaveLength(1);
     expect(within(nextFullscreen).getByText("Fourth iteration output")).toBeInTheDocument();
     expect(persisted.at(-1)?.messages.map((message) => message.content)).toEqual(["Fourth iteration output"]);
-    // A delayed replay replaces the cached copy without duplicating messages.
+    // A delayed live replay must not duplicate the independently loaded archive.
     emit({ type: "sync_response", found: true, sessionKey: "run-3", status: "completed",
       events: ["Current conversation", "New live output"].map((text, index) => ({
         type: "sdk_event", sessionKey: "run-3", timestamp: 3 + index,
@@ -203,6 +231,7 @@ describe("Canvas leader iteration history", () => {
       })) });
     fireEvent.keyDown(window, { key: "Escape" });
     const nextCard = screen.getByLabelText("Conversation messages");
+    await openIteration(nextCard, 3, "New live output");
     expect(within(nextCard).queryByText("Earlier conversation 1")).not.toBeInTheDocument();
     expect(within(nextCard).getByRole("button", { name: /Browse older iterations/ })).toBeInTheDocument();
     expect(within(nextCard).getAllByText("Current conversation")).toHaveLength(1);

@@ -4,10 +4,20 @@ import type { WorkItemRunSnapshot } from "../../shared/work-item-contracts.ts";
 import type { WorkItemHistoryState } from "../use-work-item-history.ts";
 import { childRunContext, type RunTaskContext } from "../work-item-run-context.ts";
 import { SessionTranscript } from "./SessionTranscript.tsx";
+import { ArchivedRunTranscript } from "./ArchivedRunTranscript.tsx";
 import "./run-history-disclosure.css";
 
-/** Mounting a preview is the only trigger for retrieving a non-recent run. */
 export function RunReplay({ run, history }: {
+  run: WorkItemRunSnapshot;
+  history: WorkItemHistoryState;
+}) {
+  return run.runKind === "primary"
+    ? <ArchivedRunTranscript runKey={run.runKey} />
+    : <ChildRunReplay run={run} history={history} />;
+}
+
+/** Active child runs still use live replay; evicted hosts fall back to the durable log. */
+function ChildRunReplay({ run, history }: {
   run: WorkItemRunSnapshot;
   history: WorkItemHistoryState;
 }) {
@@ -17,10 +27,30 @@ export function RunReplay({ run, history }: {
     return () => releaseRun(run.runKey);
   }, [loadRun, releaseRun, run.runKey]);
   const status = history.runStatus[run.runKey];
-  if (status === "unavailable") return <p role="status">This run's transcript is unavailable.</p>;
+  if (status === "unavailable") return <ArchivedRunTranscript runKey={run.runKey} />;
   if (status !== "ready") return <p role="status">Loading run transcript…</p>;
   const stream = history.streams[run.runKey];
   return <SessionTranscript messages={stream?.messages ?? []} streamingText={stream?.streamingText ?? ""} streamingThinkingText={stream?.streamingThinkingText} autoFollow={false} />;
+}
+
+/** Recent historical boundaries are expandable too, not just the older-run index. */
+export function IterationDisclosure({ run, navigation }: {
+  run: WorkItemRunSnapshot; navigation: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const title = `Iteration ${run.runNumber ?? "?"} · ${run.outcome === "none" ? "Active now" : run.outcome}`;
+  return <section className="run-history-iteration" aria-label={`Iteration ${run.runNumber} transcript`}>
+    <div className="run-history-heading">
+      <button className="run-history-toggle" type="button" aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} transcript: ${title}`} onClick={() => setOpen(!open)}>
+        {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+        <span>{title}</span>
+        <span className="run-history-hint">{open ? "Hide messages" : "Load messages"}</span>
+      </button>
+      {navigation}
+    </div>
+    {open && <ArchivedRunTranscript runKey={run.runKey} />}
+  </section>;
 }
 
 export function ChildRunDisclosure({ run, history, context = {}, navigation }: {

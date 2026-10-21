@@ -44,6 +44,7 @@ import {
 } from "./mobile/mobile-activity-actions.ts";
 import { timeAgo } from "./nodes/leader-message-helpers.ts";
 import { ActivityTranscript } from "./WorkItemTranscript.tsx";
+import { ArchivedRunTranscript } from "./components/ArchivedRunTranscript.tsx";
 import { useChatFollow } from "./use-chat-follow.ts";
 import { JumpToLatest } from "./components/JumpToLatest.tsx";
 import {
@@ -95,7 +96,6 @@ import {
 } from "./session-stream.ts";
 import { useSessionStream } from "./use-session-stream.ts";
 import { useWorkItemHistory } from "./use-work-item-history.ts";
-import { SessionTranscript } from "./components/SessionTranscript.tsx";
 import { previousPrimaryRuns } from "./work-item-run-history.ts";
 import type { DisplayMessage } from "./sdk-messages.ts";
 import { LeaderTaskGraphBridge } from "./task-graph/LeaderTaskGraphBridge.tsx";
@@ -841,13 +841,6 @@ function Inspector({
     [session.sessionKey, workItemHistory.orderedRuns],
   );
   const previewRun = historicalRuns.find((run) => run.runKey === previewRunKey) ?? null;
-  const previewStream = previewRun ? workItemHistory.streams[previewRun.runKey] : undefined;
-  const { loadRun: loadPreviewRun, releaseRun: releasePreviewRun } = workItemHistory;
-  useEffect(() => {
-    if (!previewRunKey) return;
-    loadPreviewRun(previewRunKey);
-    return () => releasePreviewRun(previewRunKey);
-  }, [previewRunKey, loadPreviewRun, releasePreviewRun]);
   useEffect(() => {
     if (previewRunKey && !historicalRuns.some((run) => run.runKey === previewRunKey)) {
       setPreviewRunKey(null);
@@ -1369,13 +1362,7 @@ function Inspector({
                               <X size={13} aria-hidden />
                             </button>
                           </header>
-                          {workItemHistory.runStatus[previewRun.runKey] === "unavailable" ? (
-                            <p role="status">This run's transcript is unavailable.</p>
-                          ) : previewStream ? (
-                            <SessionTranscript messages={previewStream.messages} streamingText="" />
-                          ) : (
-                            <p className="act-empty-copy" role="status">Loading iteration preview…</p>
-                          )}
+                          <ArchivedRunTranscript runKey={previewRun.runKey} />
                           {previewRun.finalReport ? (
                             <div className="act-run-preview-report">
                               <strong>Final report</strong>

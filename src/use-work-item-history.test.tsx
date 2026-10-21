@@ -36,7 +36,7 @@ function socketHarness() {
 }
 
 describe("useWorkItemHistory", () => {
-  it("does not replay children or iterations older than the latest three", () => {
+  it("does not replay children or historical iterations until explicitly opened", () => {
     const socket = socketHarness();
     const send = vi.fn();
     const loadRuns = vi.fn();
@@ -46,11 +46,11 @@ describe("useWorkItemHistory", () => {
       workItemId: "work-1", runs, runNextCursor: "older-page",
       onLoadRuns: loadRuns, socketSend: send, socketSubscribe: socket.subscribe,
     }));
-    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-3", "run-4", "run-5"]);
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-5"]);
     expect(loadRuns).not.toHaveBeenCalled();
     socket.emit({ type: "sdk_event", sessionKey: "child", timestamp: 56,
       event: { kind: "text", role: "assistant", text: "Hidden child" } });
-    expect(send).toHaveBeenCalledTimes(3);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it("releases closed transcripts, shares open requests, and reconnects only visible runs", () => {
@@ -61,7 +61,7 @@ describe("useWorkItemHistory", () => {
       workItemId: "work-1", runs, runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe,
     }));
     act(() => { result.current.loadRun("run-1"); result.current.loadRun("run-1"); });
-    expect(send).toHaveBeenCalledTimes(4);
+    expect(send).toHaveBeenCalledTimes(2);
     socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, events: [
       { type: "sdk_event", sessionKey: "run-1", timestamp: 11,
         event: { kind: "text", role: "assistant", text: "Old answer" } },
@@ -73,7 +73,7 @@ describe("useWorkItemHistory", () => {
     expect(result.current.streams["run-1"]).toBeUndefined();
     send.mockClear();
     socket.emit({ type: "socket_reconnected" });
-    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-3", "run-4", "run-5"]);
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-5"]);
     socket.emit({ type: "sync_response", sessionKey: "run-1", found: true, events: [] });
     expect(result.current.streams["run-1"]).toBeUndefined();
   });
@@ -85,7 +85,7 @@ describe("useWorkItemHistory", () => {
       workItemId: "work-1", runs: [1, 2, 3].map((n) => run(`run-${n}`, n * 10, n)),
       currentRunKey: "run-4", runNextCursor: null, socketSend: send, socketSubscribe: socket.subscribe,
     }));
-    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-2", "run-3"]);
+    expect(send.mock.calls.map(([command]) => command.sessionKey)).toEqual(["run-4"]);
     expect(result.current.olderRuns.map((entry) => entry.runKey)).toEqual(["run-1"]);
   });
 
@@ -138,7 +138,6 @@ describe("useWorkItemHistory", () => {
 
     expect(loadRuns).toHaveBeenCalledWith("page-2");
     expect(send.mock.calls.map(([command]) => command)).toEqual([
-      { type: "sync_session", sessionKey: "run-1" },
       { type: "sync_session", sessionKey: "run-2" },
     ]);
 
@@ -149,8 +148,7 @@ describe("useWorkItemHistory", () => {
         event: { kind: "text", role: "assistant", text: "First iteration output" },
       }],
     });
-    expect(result.current.streams["run-1"]?.messages[0]?.content)
-      .toBe("First iteration output");
+    expect(result.current.streams["run-1"]).toBeUndefined();
 
     rerender({ cursor: null });
     expect(result.current.orderedRuns.map((entry) => entry.runKey)).toEqual(["run-1", "run-2"]);
@@ -234,14 +232,14 @@ describe("useWorkItemHistory", () => {
       expect(loadRuns).toHaveBeenCalledExactlyOnceWith(undefined);
       expect(send).toHaveBeenCalledExactlyOnceWith({ type: "sync_session", sessionKey: "run-2" });
       rerender({ entries: [run("run-1", 10, 1), ...runs], nextCursor: null });
-      expect(send).toHaveBeenLastCalledWith({ type: "sync_session", sessionKey: "run-1" });
+      expect(send).toHaveBeenCalledExactlyOnceWith({ type: "sync_session", sessionKey: "run-2" });
       socket.emit({
         type: "sync_response", sessionKey: "run-1", found: true,
         events: [{ type: "sdk_event", sessionKey: "run-1", timestamp: 11,
           event: { kind: "text", role: "assistant", text: "Recovered earlier iteration" } }],
       });
-      expect(result.current.streams["run-1"]?.messages[0]?.content)
-        .toBe("Recovered earlier iteration");
+      expect(result.current.streams["run-1"]).toBeUndefined();
+      expect(result.current.orderedRuns.map((entry) => entry.runKey)).toEqual(["run-1", "run-2"]);
     },
   );
 });

@@ -1,4 +1,4 @@
-import { ChildRunDisclosure, RunHistoryDisclosure } from "./components/RunHistoryDisclosure.tsx";
+import { ChildRunDisclosure, IterationDisclosure, RunHistoryDisclosure } from "./components/RunHistoryDisclosure.tsx";
 import type { WorkItemRunSnapshot } from "../shared/work-item-contracts.ts";
 import type { DisplayMessage } from "./sdk-messages.ts";
 import { preserveOptimisticUserMessages, type SessionStreamState } from "./session-stream.ts";
@@ -49,6 +49,11 @@ export function buildUnifiedWorkItemMessages(input: {
     if (run.runKind === "child") {
       if (history) boundary.disclosure = (navigation) => <ChildRunDisclosure run={run} history={history}
         context={input} navigation={navigation} />;
+      unified.push(boundary);
+      continue;
+    }
+    if (history && run.runKey !== currentRunKey && run !== initialRun) {
+      boundary.disclosure = (navigation) => <IterationDisclosure run={run} navigation={navigation} />;
       unified.push(boundary);
       continue;
     }

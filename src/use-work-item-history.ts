@@ -23,7 +23,7 @@ export interface WorkItemHistoryState {
 }
 
 /**
- * Rebuild only recent primary runs and explicitly opened transcripts with bounded
+ * Rebuild only the current primary run and explicitly opened child transcripts with bounded
  * sync replay. Run metadata remains owned by the canonical work-item
  * ledger; this hook only joins those immutable run keys to their session logs.
  */
@@ -66,7 +66,10 @@ export function useWorkItemHistory(input: {
     ? recentKeys.has(run.runKey) : Boolean(run.parentRunKey && recentKeys.has(run.parentRunKey)));
   const olderRuns = primaryRuns.filter((run) => !recentKeys.has(run.runKey)).reverse();
   const openedKeys = opened.workItemId === workItemId ? opened.keys : [];
-  const runKeySignature = [...new Set([...recentPrimary.map((run) => run.runKey), ...openedKeys])].join("\u0000");
+  // Historical primary content is fetched from the durable archive on demand;
+  // syncing its hidden session here wastes replay and requires a hydrated host.
+  const liveRunKey = currentRunKey || primaryRuns.at(-1)?.runKey;
+  const runKeySignature = [...new Set([...(liveRunKey ? [liveRunKey] : []), ...openedKeys])].join("\u0000");
   const loadRun = useCallback((runKey: string) => {
     setOpened((current) => {
       const keys = current.workItemId === workItemId ? current.keys : [];

@@ -2563,7 +2563,12 @@ describe("ActivityView", () => {
     expect(socketSend).toHaveBeenCalledWith({ type: "sync_session", sessionKey: "server-only" });
   });
 
-  it("renders one ordered transcript across every run in a work item", async () => {
+  it("loads historical transcripts on demand alongside the current work-item run", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      events: [{ type: "sdk_event", sessionKey: "run-1", historyId: 1, timestamp: 11,
+        event: { kind: "text", role: "assistant", text: "Earlier iteration output" } }],
+      history: { before: null },
+    }))));
     const socketSend = vi.fn();
     const listeners = new Set<(message: unknown) => void>();
     const socketSubscribe = ((
@@ -2599,9 +2604,10 @@ describe("ActivityView", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: /unified work/i }));
-    await waitFor(() => expect(socketSend).toHaveBeenCalledWith({
-      type: "sync_session", sessionKey: "run-1",
-    }));
+    expect(socketSend).not.toHaveBeenCalledWith({ type: "sync_session", sessionKey: "run-1" });
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Show transcript: Iteration 1 · completed" }));
+    expect(await screen.findByText("Earlier iteration output")).toBeInTheDocument();
 
     act(() => {
       for (const listener of listeners) {
@@ -2631,13 +2637,14 @@ describe("ActivityView", () => {
 
     fireEvent.click(within(history).getByRole("button", { name: /iteration 1/i }));
     const preview = screen.getByRole("region", { name: "Preview of iteration 1" });
-    expect(within(preview).getByText("Earlier iteration output")).toBeInTheDocument();
+    expect(await within(preview).findByText("Earlier iteration output")).toBeInTheDocument();
     expect(within(preview).getByText("First complete")).toBeInTheDocument();
     const reportLink = within(preview).getByRole("link", { name: "Earlier audit" });
     const reportUrl = new URL(reportLink.getAttribute("href")!, "http://localhost");
     expect(reportUrl.pathname).toBe("/file-view");
     expect(reportUrl.searchParams.get("path")).toBe("/tmp/project/docs/earlier.md");
     expect(within(preview).getByText("Read-only preview")).toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 
   it("loads iteration history once when a work-item session opens", async () => {
