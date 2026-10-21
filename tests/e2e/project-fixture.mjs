@@ -16,6 +16,6 @@ export async function openProjectFixture(page, name) {
   expect(response.status(), await response.text()).toBe(201);
   const project = await response.json();
   await page.goto("/");
-  await page.getByText(name, { exact: true }).click();
+  await page.getByRole("button", { name: `Open ${name}`, exact: true }).click();
   return project;
 }

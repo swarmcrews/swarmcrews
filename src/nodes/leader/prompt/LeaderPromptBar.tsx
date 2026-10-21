@@ -1,3 +1,4 @@
+import { NavigationDraft } from "../../../navigation-drafts.tsx";
 import {
   createContext,
   useContext,
@@ -202,6 +203,7 @@ export function LeaderPromptBar({
       className={`leader-prompt-bar leader-prompt-bar--${variant}`}
       style={isOverlay ? { paddingTop: 10 + overlayMenuSpace } : undefined}
     >
+      <NavigationDraft scope="leader-prompt" dirty={!!input || !!attachments?.drafts.length} />
       <div className="leader-prompt-bar__surface">
         {attachments && <PromptAttachmentList attachments={attachments} />}
         <div className="leader-prompt-bar__input-wrap" ref={inputWrapRef}>

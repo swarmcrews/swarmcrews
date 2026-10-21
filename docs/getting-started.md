@@ -165,9 +165,11 @@ the agents will edit.
 
 ## 3. Open your project
 
-On the Projects page, select **Open Folder**, enter the absolute repository
-path, or use **Browse** to select a folder, and click **Open**. Typing a partial
-path also suggests matching folders. Paths refer to the server machine, including
+On the Projects page, choose your repository folder from **Home**. Use
+**Search folders** to filter the current location, open folders to explore, and
+confirm with **Use “folder-name”**. Then click **Open**. To paste an absolute
+path, opt into **Enter a path instead** and confirm with **Use this path**.
+Paths refer to the server machine, including
 when you connect from a phone. See [Choosing repository folders](./repository-folders.md)
 for Windows paths and additional browsing locations.
 
@@ -176,7 +178,8 @@ for Windows paths and additional browsing locations.
 *The upper card opens or creates a workspace. The lower card takes you back to
 a recent project.*
 
-**New Project** creates a workspace at a new folder path. If Swarmcrews detects
+**Register repository** registers a project for a folder. To create a new folder,
+choose **Enter a path instead**, enter the new path, confirm it, and click **Create**. If Swarmcrews detects
 that the folder is not a Git repository, it offers Git initialization or a
 choice to continue without Git. For this walkthrough, use a repository with an
 initial commit so you can practice isolated-worktree review.

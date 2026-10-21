@@ -1,0 +1,7 @@
+.pl-missing-list { list-style: none; padding: 0; margin: 0; }
+.pl-missing-list li { border-bottom: 1px solid var(--border-default); padding-block: 10px; }
+.pl-missing-list .pl-check { align-items: flex-start; gap: 12px; }
+.pl-missing-list .pl-check > span { min-width: 0; }
+.pl-missing-path { display: block; overflow-wrap: anywhere; color: var(--text-secondary); font: .8125rem/1.6 var(--font-mono); }
+.pl-missing-reason { display: block; color: var(--text-secondary); font-size: .8125rem; line-height: 1.6; margin-top: 4px; }
+.pl-missing-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: .875rem; }

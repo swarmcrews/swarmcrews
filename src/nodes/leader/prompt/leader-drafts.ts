@@ -68,6 +68,12 @@ export function forgetLeaderDrafts(keep: ReadonlySet<string> = new Set()) {
   }
 }
 
+/** Explicitly leaving a project must also discard its unmounted browser-memory composers. */
+export function forgetProjectLeaderDrafts(projectId: string) {
+  const keep = new Set([...entries.keys()].filter(scope => JSON.parse(scope)[0] !== projectId));
+  forgetLeaderDrafts(keep);
+}
+
 export function useLeaderDraftLifetimes(projectId: string, nodes: CanvasNode[], loaded: boolean) {
   useEffect(() => {
     if (!loaded) return;

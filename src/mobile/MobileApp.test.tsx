@@ -1,10 +1,43 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getProjectSettings, listProjects, restartServer, updateProjectSettings } from "../api.ts";
+import { clearAuthToken, getProjectSettings, restartServer, updateProjectSettings, type ProjectSummary } from "../api.ts";
 import MobileApp from "./MobileApp.tsx";
+import { hasNavigationDraft } from "../navigation-drafts.tsx";
 import { createGraphFixture } from "../task-graph/fixtures.ts";
+import { rememberDestination } from "../project-library/model.ts";
 import { themeMap } from "../themes.ts";
+
+let listedProjects: ProjectSummary[] = [];
+let libraryActivity = { activeLeaders: 0, activeCrew: 0 };
+const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+beforeEach(() => {
+  sessionStorage.clear();
+  listedProjects = [];
+  libraryActivity = { activeLeaders: 0, activeCrew: 0 };
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/auth/token") return jsonResponse({ token: "test" });
+    if (url === "/api/projects/library") return jsonResponse({ projects: listedProjects.map(project => ({
+      ...project, id: project.workspaceId ?? project.id, workspaceId: project.workspaceId ?? project.id,
+      sourceRoot: project.path, displayName: null, description: "", tags: [], collectionIds: [],
+      archived: false, focusOrder: null, revision: 0, createdAt: "2026-01-01T00:00:00.000Z",
+    })), collections: [], focusRevision: 0 });
+    if (url === "/api/projects/library/summary") {
+      const { projectIds } = JSON.parse(options?.body as string) as { projectIds: string[] };
+      return jsonResponse(projectIds.map(projectId => ({ projectId, freshness: "fresh",
+        checkedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15000).toISOString(),
+        state: libraryActivity.activeLeaders || libraryActivity.activeCrew ? "running" : "up_to_date",
+        ...libraryActivity, activeOther: 0, activeWorkItems: 0,
+        attention: { total: 0, decision: 0, review: 0, conflict: 0 }, unread: 0, recent: null,
+        archiveEligible: !libraryActivity.activeLeaders && !libraryActivity.activeCrew,
+      })));
+    }
+    if (url.endsWith("/events?limit=50")) return jsonResponse({ events: [], receipt: "test-receipt", nextCursor: null });
+    if (url.endsWith("/attention?limit=50")) return jsonResponse({ items: [], nextCursor: null });
+    throw new Error(`Unexpected shell fixture request: ${url}`);
+  }));
+});
 
 const send = vi.fn();
 const manualReconnect = vi.fn();
@@ -31,7 +64,6 @@ function emitSocketMessage(msg: unknown) {
 vi.mock("../api.ts", async importOriginal => ({
   ...await importOriginal<typeof import("../api.ts")>(),
   getProjectSettings: vi.fn(async () => ({})),
-  listProjects: vi.fn(async () => []),
   getHarnessReadiness: vi.fn(async () => ({ schemaVersion: 1, checkedAt: "", expiresAt: "", ready: true, readyHarnesses: ["claude"], harnesses: [] })),
   restartServer: vi.fn(async () => ({ ok: true, restarting: true })),
   updateProjectSettings: vi.fn(async () => ({})),
@@ -86,12 +118,12 @@ function installPushGlobals() {
 }
 
 afterEach(() => {
+  clearAuthToken();
   send.mockClear();
   manualReconnect.mockClear();
   socketSubscribers.splice(0);
   socketSubscribe.mockClear();
-  vi.mocked(listProjects).mockReset();
-  vi.mocked(listProjects).mockResolvedValue([]);
+  listedProjects = [];
   vi.mocked(getProjectSettings).mockReset();
   vi.mocked(getProjectSettings).mockResolvedValue({});
   vi.mocked(restartServer).mockReset();
@@ -105,29 +137,86 @@ afterEach(() => {
 
 describe("MobileApp", () => {
 
-  it("uses compact project badges and loads scoped inventory only after selection", async () => {
+  it("shows compact running counts and opens scoped Activity directly from Running or the project name", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true },
-    ]);
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
-      url.includes("auth/token") ? { token: "test" } : [{ projectId: "alpha", activeLeaders: 1, activeCrew: 2 }]
-    ), { status: 200 })));
+    ];
+    libraryActivity = { activeLeaders: 1, activeCrew: 2 };
     render(<MobileApp />);
-    expect(await screen.findByText("1 active Leader · 2 active crew")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Running" })).toHaveAccessibleDescription("1 active leader · 2 active crew");
     expect(send.mock.calls.some(([command]) => command.type === "list_sessions" && command.projectId)).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /^Alpha/ }));
+    // Running is a direct Activity destination, not an updates/count dialog.
+    rememberDestination("alpha", { view: "activity", workItemId: "older-work" });
+    fireEvent.click(screen.getByRole("button", { name: "Running" }));
+    expect(await screen.findByRole("main", { name: "Activity" })).toBeVisible();
+    expect(new URL(location.href).searchParams.get("project")).toBe("alpha");
+    expect(new URL(location.href).searchParams.has("session")).toBe(false);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(send).toHaveBeenCalledWith({ type: "list_sessions", projectId: "alpha" });
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => /events|attention/.test(String(url)))).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
-    expect(await screen.findByText("1 active Leader · 2 active crew")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Running" })).toHaveAccessibleDescription("1 active leader · 2 active crew");
     expect(send).toHaveBeenCalledWith({ type: "list_sessions", projectId: null });
+    fireEvent.click(screen.getByRole("button", { name: "Open Alpha" }));
+    expect(await screen.findByRole("main", { name: "Activity" })).toBeVisible();
+    expect(send.mock.calls.filter(([command]) => command.type === "list_sessions" && command.projectId === "alpha")).toHaveLength(2);
+  });
+
+  it("protects name-only Library details in a portal from native history", async () => {
+    installPushGlobals(); listedProjects = [{ id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true }];
+    render(<MobileApp />); fireEvent.click(await screen.findByRole("button", { name: "Open Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to projects" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Details and organization for Alpha" }));
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Library draft" } });
+    await act(async () => { history.replaceState({}, "", "/?project=alpha"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    expect(new URL(location.href).searchParams.has("project")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    expect(screen.getByLabelText("Display name")).toHaveValue("Library draft");
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    await act(async () => { history.replaceState({}, "", "/?project=alpha"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    await screen.findByRole("main", { name: "Activity" });
+  });
+
+  it("confirms losing a Library draft and resumes the requested project switch", async () => {
+    installPushGlobals(); listedProjects = [{ id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true }];
+    render(<MobileApp />);
+    fireEvent.click(await screen.findByRole("button", { name: "Details and organization for Alpha" }));
+    fireEvent.change(screen.getByLabelText("Display name"), { target: { value: "Discard this draft" } });
+    await act(async () => { history.replaceState({}, "", "/?project=alpha"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    expect(new URL(location.href).searchParams.has("project")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Leave and lose draft" }));
+    await screen.findByRole("main", { name: "Activity" });
+    expect(new URL(location.href).searchParams.get("project")).toBe("alpha");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("retains an exact Library destination on canonical failure and retries without opening historical data", async () => {
+    installPushGlobals(); listedProjects = [{ id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true }];
+    rememberDestination("alpha", { view: "activity", workItemId: "requested-work" });
+    render(<MobileApp />); fireEvent.click(await screen.findByRole("button", { name: "Open Alpha" }));
+    emitSocketMessage({ type: "session_list", sessions: [{ sessionKey: "old-primary", workItemId: "requested-work", role: "leader", runKind: "primary", cwd: "/work/alpha", status: "completed", taskName: "Old primary" }] });
+    const first = send.mock.calls.find(([c]) => c.type === "list_work_items" && c.projectId === "alpha")![0];
+    emitSocketMessage({ type: "work_item_response", command: "list_work_items", requestId: first.requestId, success: false, error: "canonical offline" });
+    expect(new URL(location.href).searchParams.has("session")).toBe(false);
+    expect(screen.getByRole("main", { name: "Activity" })).toBeVisible();
+    expect(send.mock.calls.some(([c]) => c.type === "sync_session" && c.sessionKey === "old-primary")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Retry requested work item" }));
+    const retry = send.mock.calls.filter(([c]) => c.type === "list_work_items" && c.projectId === "alpha").at(-1)![0];
+    expect(retry.requestId).not.toBe(first.requestId);
+    emitSocketMessage({ type: "work_item_response", command: "list_work_items", requestId: retry.requestId, success: true, result: { projectId: "alpha", nextCursor: null, items: [{
+      id: "requested-work", projectId: "alpha", projectPath: "/work/alpha", title: "Current work", currentRunKey: "new-primary", iteration: 2, updatedAt: 2, lastTransitionAt: 2,
+      lifecycle: { runtimeState: "inactive", outcome: "completed", resolution: "reviewed", integrationState: "live_clean", changeMode: "live", lifecycleRevision: 2 },
+    }] } });
+    await waitFor(() => expect(new URL(location.href).searchParams.get("session")).toBe("new-primary"));
+    expect(screen.getByRole("heading", { name: "Current work", level: 1 })).toBeInTheDocument();
   });
 
   it("restores Activity filters and scroll, keeps drafts per session, and uses the same shell for review", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
     render(<MobileApp />);
     fireEvent.click(await screen.findByText("Alpha"));
     emitSocketMessage({ type: "session_list", sessions: [
@@ -165,9 +254,9 @@ describe("MobileApp", () => {
   it.each(["work item first", "session list first", "session list only"])(
     "follows a submitted iteration without leaving chat (%s)", async (eventOrder) => {
       installPushGlobals();
-      vi.mocked(listProjects).mockResolvedValue([
+      listedProjects = [
         { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-      ]);
+      ];
       render(<MobileApp />);
       fireEvent.click(await screen.findByText("Alpha"));
       const oldSession = {
@@ -250,7 +339,8 @@ describe("MobileApp", () => {
       expect(earlier.scrollIntoView).toHaveBeenCalledWith({ block: "start" });
       expect(earlier).toHaveFocus();
       expect(new URL(window.location.href).searchParams.get("session")).toBe("run-new");
-      send.mockClear();
+      clearAuthToken();
+  send.mockClear();
       emitSocketMessage({ type: "socket_reconnected" });
       expect(send).toHaveBeenCalledWith(expect.objectContaining({
         type: "get_work_item_runs", workItemId: "work-1", cursor: undefined,
@@ -316,9 +406,9 @@ describe("MobileApp", () => {
 
   it("shows the project picker first and scopes to a project on selection", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
 
@@ -350,9 +440,9 @@ describe("MobileApp", () => {
 
   it("opens the existing launch screen from the no-sessions Activity action", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
     fireEvent.click(await screen.findByText("Alpha"));
@@ -412,9 +502,9 @@ describe("MobileApp", () => {
 
   it("keeps the current conversation available after returning to Activity", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
     fireEvent.click(await screen.findByText("Alpha"));
@@ -440,9 +530,9 @@ describe("MobileApp", () => {
 
   it("keeps needs-you work visible on Activity", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
     fireEvent.click(await screen.findByText("Alpha"));
@@ -463,9 +553,9 @@ describe("MobileApp", () => {
 
   it("manages default Minion settings from the mobile settings tab", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
     vi.mocked(getProjectSettings).mockResolvedValue({
       defaultMinionHarness: "claude",
       defaultMinionModel: "claude-sonnet-5",
@@ -499,11 +589,39 @@ describe("MobileApp", () => {
     });
   });
 
+  it("allows untouched Context Actions navigation but protects cleared/name-only edits through header and history", async () => {
+    installPushGlobals(); listedProjects = [{ id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "", hasSidecar: true }];
+    vi.mocked(getProjectSettings).mockResolvedValue({ dashboardLeaderActions: [{ id: "saved", name: "Saved action", prompt: "Persisted prompt", icon: "zap", skillIds: [] }] });
+    const boundary = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (url, options) => String(url).includes("/skills") ? jsonResponse([]) : boundary(url, options));
+    render(<MobileApp />); fireEvent.click(await screen.findByRole("button", { name: "Open Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Context actions/ }));
+    await screen.findByLabelText("Prompt");
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    await screen.findByRole("main", { name: "Activity" });
+    expect(screen.queryByRole("dialog", { name: "Leave active draft?" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Context actions/ }));
+    fireEvent.change(await screen.findByLabelText("Prompt"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Draft name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    expect(screen.getByRole("dialog", { name: "Leave active draft?" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    await act(async () => { history.replaceState({}, "", "/?project=alpha"); window.dispatchEvent(new PopStateEvent("popstate")); });
+    expect(new URL(location.href).searchParams.get("view")).toBe("settings");
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    expect(screen.getByLabelText("Name")).toHaveValue("Draft name");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    await screen.findByRole("main", { name: "Activity" });
+  });
+
   it("confirms before restarting the server from mobile settings", async () => {
     installPushGlobals();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
 
@@ -536,9 +654,9 @@ describe("MobileApp", () => {
     let uuidSequence = 10;
     vi.spyOn(crypto, "randomUUID").mockImplementation(() =>
       `00000000-0000-4000-8000-${String(uuidSequence++).padStart(12, "0")}`);
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-    ]);
+    ];
 
     render(<MobileApp />);
 
@@ -626,14 +744,44 @@ describe("MobileApp", () => {
       type: "stop_session",
       sessionKey: "leader-old",
     });
+    emitSocketMessage({ type: "session_status", sessionKey: "leader-old", status: "stopped" });
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    await screen.findByRole("main", { name: "Activity" });
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open draft" }));
+    expect(screen.getByLabelText("Prompt")).toHaveValue("Start a new leader");
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    const retryCreate = send.mock.calls.filter(([m]) => m.type === "create_work_item").at(-1)![0];
+    expect(retryCreate.requestId).not.toBe(createPayload!.requestId);
+    const retryWork = { id: "work-retry", projectId: "alpha", projectPath: "/work/alpha", title: "Start a new leader",
+      lifecycle: { runtimeState: "draft", outcome: "none", resolution: "open", changeMode: "live", integrationState: "live_clean", lifecycleRevision: 0 },
+      waitKind: null, currentRunKey: null, iteration: 0, lastTransitionAt: 1, createdAt: 1, updatedAt: 1 };
+    emitSocketMessage({ type: "work_item_response", command: "create_work_item", requestId: retryCreate.requestId, success: true,
+      result: { workItem: retryWork, bindings: [], currentRun: null, runs: [], nextCursor: null } });
+    const retryContinue = send.mock.calls.filter(([m]) => m.type === "continue_work_item").at(-1)![0];
+    expect(retryContinue).toMatchObject({ workItemId: "work-retry", prompt: "Start a new leader" });
+    emitSocketMessage({ type: "work_item_response", command: "continue_work_item", requestId: retryContinue.requestId, success: true,
+      result: { workItem: { ...retryWork, currentRunKey: "leader-retry" }, bindings: [], currentRun: null, runs: [], nextCursor: null } });
+    expect(new URL(location.href).searchParams.get("session")).toBe("leader-retry");
+    expect(hasNavigationDraft(document)).toBe(false);
+    expect(document.querySelector('[data-navigation-scope="mobile-launch"]')).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    await screen.findByRole("main", { name: "Activity" });
+    expect(screen.queryByRole("dialog", { name: "Leave active draft?" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(screen.getByLabelText("Prompt")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "Another task" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch leader" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Launch leader" }));
+    expect(send.mock.calls.filter(([m]) => m.type === "create_work_item")).toHaveLength(3);
   });
 });
 
 it("returns from Graph to Work and keeps session navigation usable across history and session switches", async () => {
   installPushGlobals();
-  vi.mocked(listProjects).mockResolvedValue([
+  listedProjects = [
     { id: "alpha", name: "Alpha", path: "/work/alpha", lastOpened: "2026-06-01T00:00:00.000Z", hasSidecar: true },
-  ]);
+  ];
   render(<MobileApp />);
   fireEvent.click(await screen.findByText("Alpha"));
   const sessions = [

@@ -1,0 +1,35 @@
+/* Page actions belong to the heading; expanding forms never relocate their trigger. */
+.project-library .pl-registration-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-control);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: 600 .8125rem/1.5 var(--font-sans);
+}
+.project-library .pl-registration-toggle:hover { border-color: var(--text-secondary); background: var(--bg-elevated); }
+.pl-registration-toggle > svg { flex-shrink: 0; color: var(--accent); }
+.pl-registration-toggle > .pl-registration-chevron { color: var(--text-secondary); transition: transform 150ms ease; }
+.pl-registration-toggle[aria-expanded="true"] > .pl-registration-chevron { transform: rotate(180deg); }
+.pl-registration-panel:not([hidden]) { margin-block: 12px; }
+
+/* Sorting belongs to the result set, not the search/filter decisions above it. */
+.pl-section-heading > .pl-sort { display: flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; color: var(--text-secondary); font: 400 .8125rem/1.4 var(--font-sans); }
+.pl-section-heading .pl-sort select { min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 28px 8px 10px; border: 1px solid var(--text-secondary); border-radius: var(--radius-control); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.project-library .pl-highlights-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; border-color: transparent; background: transparent; color: var(--text-secondary); text-align: left; }
+.pl-highlights-toggle[aria-expanded="true"] > svg { transform: rotate(180deg); }
+
+@container library (max-width: 37.5rem) {
+  .pl-heading > h1 { flex-basis: 100%; }
+  .pl-heading > .pl-heading-actions { width: 100%; justify-content: space-between; }
+  .pl-section-heading > .pl-sort { flex-basis: 100%; margin-left: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .pl-section-heading .pl-sort select { width: 100%; }
+  .project-library .pl-highlights-toggle { font-size: .75rem; }
+}
+@container library (max-width: 22.5rem) {
+  .project-library .pl-highlights-toggle { margin-left: 0; }
+}

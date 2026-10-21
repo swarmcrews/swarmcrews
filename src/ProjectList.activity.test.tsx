@@ -1,83 +1,40 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, fireEvent, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ProjectList } from "./ProjectList.tsx";
+import { libraryBoundary, summary } from "./project-library/test-fixture.ts";
 import { clearAuthToken } from "./api.ts";
-
-let summary: unknown;
-let polls = 0;
-
-beforeEach(() => {
-  vi.useFakeTimers();
-  clearAuthToken();
-  polls = 0;
-  summary = [{ projectId: "p", activeLeaders: 2, activeCrew: 3 }];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
-    const url = String(input);
-    let body: unknown;
-    switch (url) {
-      case "/api/auth/token": body = { token: "test-token" }; break;
-      case "/api/projects": body = [{
-        id: "p", workspaceId: "p", name: "Alpha", path: "/repo/alpha",
-        lastOpened: "2026-01-01", hasSidecar: true,
-      }]; break;
-      case "/api/readiness": body = { ready: true, readyHarnesses: ["codex"], harnesses: [] }; break;
-      case "/api/projects/activity-summary":
-        expect(options?.method).toBe("POST");
-        expect(JSON.parse(options?.body as string)).toEqual({ projectIds: ["p"] });
-        polls++;
-        body = summary;
-        break;
-      default: throw new Error(`Unexpected fetch: ${url}`);
-    }
-    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-  });
+let boundary: ReturnType<typeof libraryBoundary>;
+beforeEach(() => { vi.useFakeTimers(); sessionStorage.clear(); boundary=libraryBoundary(); });
+afterEach(() => { cleanup(); clearAuthToken(); vi.useRealTimers(); vi.restoreAllMocks(); });
+const poll = () => act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+it("keeps execution, attention and unread indicators distinct in compact rows", async () => {
+  const onOpenProject = vi.fn();
+  await act(async () => { render(<ProjectList onOpenProject={onOpenProject} />); });
+  const card=screen.getByRole("article", {name:"Alpha"});
+  expect(card.querySelector(".pl-state, footer")).toBeNull();
+  boundary.setSummaries([summary({state:"running",activeCrew:2,archiveEligible:false})]); await poll();
+  fireEvent.click(screen.getByRole("button",{name:"Running"})); await act(async () => {});
+  expect(onOpenProject).toHaveBeenCalledWith("alpha", "/repo/alpha");
+  expect(JSON.parse(sessionStorage.getItem("swarmcrews:project-destination:alpha")!)).toEqual({ view: "activity" });
+  boundary.setSummaries([summary({state:"attention",attention:{total:2,decision:1,review:2,conflict:0},unread:3,archiveEligible:false})]); await poll();
+  expect(screen.getByRole("button",{name:"Needs attention"})).toBeVisible();
+  expect(screen.getByRole("button",{name:"3 new updates for Alpha"})).toBeVisible();
+  expect(within(card).queryByText(/need attention/)).not.toBeInTheDocument();
+  boundary.setSummaries([summary({freshness:"unknown",state:"unknown",unread:null,attention:null,archiveEligible:false})]); await poll();
+  expect(card.querySelector(".pl-state, footer")).toBeNull();
+  boundary.setSummaries([summary({state:"running",activeCrew:2,unread:3,expiresAt:new Date(Date.now()-1).toISOString()})]); await poll();
+  expect(card.querySelector(".pl-state, .pl-card-agents, footer")).toBeNull();
+  expect(boundary.requests.every(r=>!r.url.includes("sessions")&&!r.url.includes("/state")&&!r.url.includes("transcript"))).toBe(true);
 });
-
-afterEach(() => {
-  cleanup();
-  clearAuthToken();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-});
-
-const refresh = () => act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
-
-describe("project page periodic activity HTTP data", () => {
-  it("renders and refreshes both counters through the real API client and polling component", async () => {
-    await act(async () => { render(<ProjectList onOpenProject={vi.fn()} />); });
-    expect(polls).toBe(1);
-    expect(screen.getByText("2 active leaders")).toBeVisible();
-    expect(screen.getByText("3 crew")).toBeVisible();
-
-    summary = [{ projectId: "p", activeLeaders: 0, activeCrew: 1 }];
-    await refresh();
-    expect(polls).toBe(2);
-    expect(screen.getByText("0 active leaders")).toBeVisible();
-    expect(screen.getByText("1 crew")).toBeVisible();
-    expect(screen.getByRole("img", { name: "Alpha has 0 active leaders and 1 crew" }))
-      .toHaveClass("project-list-recent__activity--active");
-
-    summary = [{ projectId: "p", activeLeaders: 0, activeCrew: 0 }];
-    await refresh();
-    expect(screen.getByText("0 crew")).toBeVisible();
-    expect(screen.getByRole("img", { name: "Alpha is sleeping with no active sessions" })).toBeVisible();
-  });
-
-  it("does not turn a stale server payload into zeroes and recovers on a later poll", async () => {
-    summary = [{ projectId: "p", activeSessions: 4 }];
-    await act(async () => { render(<ProjectList onOpenProject={vi.fn()} />); });
-    expect(screen.getByText("Activity unavailable")).toBeVisible();
-    expect(screen.queryByText("0 active leaders")).not.toBeInTheDocument();
-    expect(screen.queryByText("0 crew")).not.toBeInTheDocument();
-
-    summary = [{ projectId: "p", activeLeaders: 1, activeCrew: 2 }];
-    await refresh();
-    expect(screen.getByText("1 active leader")).toBeVisible();
-    expect(screen.getByText("2 crew")).toBeVisible();
-
-    summary = [{ projectId: "p", activeLeaders: 1 }];
-    await refresh();
-    expect(screen.getByText("1 active leader")).toBeVisible();
-    expect(screen.getByText("2 crew")).toBeVisible();
-  });
+it("lets last-known activity expire after failed refreshes and recovers without per-card messages", async () => {
+  boundary.setSummaries([summary({state:"running",activeCrew:1,archiveEligible:false})]);
+  await act(async () => { render(<ProjectList onOpenProject={vi.fn()} />); });
+  const card=screen.getByRole("article", {name:"Alpha"});
+  expect(screen.getByRole("button",{name:"Running"})).toBeVisible();
+  for(let i=0;i<3;i++){ boundary.failNext("/summary"); await poll(); }
+  expect(card.querySelector(".pl-state, .pl-card-agents, footer")).toBeNull();
+  expect(screen.getByText(/Status refresh unavailable/)).toBeVisible();
+  boundary.setSummaries([summary({state:"new",unread:1})]);
+  await act(async () => { window.dispatchEvent(new Event("online")); });
+  expect(screen.getByRole("button",{name:"New updates"})).toBeVisible();
 });

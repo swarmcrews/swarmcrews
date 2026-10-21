@@ -1,3 +1,4 @@
+import { NavigationDraft } from "./navigation-drafts.tsx";
 import { useState, type FormEvent } from "react";
 import { isValidEmptyCanvasDescription } from "./empty-canvas.ts";
 
@@ -35,6 +36,7 @@ export function EmptyCanvasState({
         padding: 24,
       }}
     >
+      <NavigationDraft scope="empty-canvas-context" dirty={description.length > 0} />
       <form
         onSubmit={handleSubmit}
         onMouseDown={(event) => event.stopPropagation()}

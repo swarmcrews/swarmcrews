@@ -21,6 +21,8 @@
 .project-header-logo:focus-visible,
 .project-switcher__trigger:focus-visible,
 .project-switcher__project:focus-visible,
+.project-switcher__search button:focus-visible,
+.project-switcher__retry:focus-visible,
 .project-switcher__actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -97,6 +99,59 @@
   letter-spacing: var(--letter-spacing-label);
   text-transform: var(--label-transform);
 }
+
+.project-switcher__search {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 10px;
+  padding: 0 8px 0 10px;
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+}
+
+.project-switcher__search:focus-within {
+  border-color: var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  outline-offset: 1px;
+}
+
+.project-switcher__search > svg { flex-shrink: 0; }
+
+.project-switcher__search input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  height: 36px;
+  padding: 0;
+  color: var(--text-primary);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font: 400 var(--text-size-label)/1.4 var(--font-sans);
+  caret-color: var(--accent);
+}
+
+.project-switcher__search input::placeholder { color: var(--text-muted); opacity: 1; }
+.project-switcher__search input::-webkit-search-cancel-button { display: none; }
+
+.project-switcher__search button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+
+.project-switcher__search button:hover { background: var(--state-hover); }
 
 .project-switcher__list {
   min-height: 0;
@@ -261,6 +316,20 @@
   color: var(--danger-color);
 }
 
+.project-switcher__retry {
+  display: block;
+  margin-top: 8px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-switcher__retry:hover { background: var(--state-hover); }
+
 .project-switcher__actions {
   display: grid;
   flex-shrink: 0;
@@ -306,6 +375,9 @@
   .project-switcher__trigger {
     max-width: 32vw;
   }
+
+  .project-switcher__search input { height: 44px; }
+  .project-switcher__search button { flex-basis: 36px; height: 36px; }
 
   .project-switcher__menu {
     position: fixed;

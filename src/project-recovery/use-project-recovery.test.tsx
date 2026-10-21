@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAuthToken, updateProject } from "../api.ts";
 import { ProjectList } from "../ProjectList.tsx";
@@ -19,10 +19,19 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 beforeEach(() => {
   clearAuthToken();
+  sessionStorage.clear();
   requests.length = 0;
   response = path => {
     if (path === "/api/auth/token") return json({ token: "test" });
-    if (path === "/api/projects") return json([project]);
+    if (path === "/api/projects/library") return json({ projects: [{ ...project,
+      workspaceId: project.id, sourceRoot: project.path, displayName: null, description: "", tags: [],
+      collectionIds: [], archived: false, focusOrder: null, revision: 0, createdAt: project.lastOpened,
+    }], collections: [], focusRevision: 0 });
+    if (path === "/api/projects/library/summary") return json([{ projectId: project.id,
+      freshness: "fresh", checkedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15000).toISOString(),
+      state: "up_to_date", activeLeaders: 0, activeCrew: 0, activeOther: 0, activeWorkItems: 0,
+      attention: { total: 0, decision: 0, review: 0, conflict: 0 }, unread: 0, recent: null, archiveEligible: true,
+    }]);
     if (path === "/api/projects/activity-summary") return json([{ projectId: "one", activeLeaders: 0, activeCrew: 0 }]);
     if (path.startsWith("/api/readiness")) return json({ ready: true });
     if (path === "/api/projects/git-status") return json({ isRepository: true });
@@ -162,20 +171,32 @@ describe("project recovery at the HTTP boundary", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("keeps failed removal visible and routes Retry through the existing confirmation", async () => {
+  it("keeps failed archive visible, requires explicit retry, and lets cancellation preserve the project", async () => {
     const initial = response;
-    response = (path, init) => init?.method === "DELETE" ? json({ error: "remove denied" }, 403) : initial(path, init);
+    const archivePath = "/api/projects/library/projects/one/archive";
+    response = (path, init) => path === archivePath ? json({ error: "archive denied" }, 403) : initial(path, init);
     render(<ProjectList onOpenProject={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
-    fireEvent.click(screen.getByRole("button", { name: "Remove project" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("remove denied");
+    fireEvent.click(await screen.findByRole("button", { name: "Details and organization for Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: "Archive project" }));
+    const dialog = screen.getByRole("dialog", { name: "Archive Alpha?" });
+    expect(dialog).toHaveTextContent("Repository files, workspace identity, Canvas, work history, tags and collections are preserved");
+    const confirm = within(dialog).getByRole("button", { name: "Confirm archive" });
+    await waitFor(() => expect(confirm).toBeEnabled());
+    fireEvent.click(confirm);
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("archive denied");
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(requests.filter(r => r.path === archivePath)).toHaveLength(1);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(requests.filter(r => r.path === archivePath)).toHaveLength(2));
+    await waitFor(() => expect(confirm).toBeEnabled());
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("archive denied");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Alpha" })).toBeEnabled();
-    // The alert can appear before React flushes the passive focus effect.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Retry removal" })).toHaveFocus());
-    fireEvent.click(screen.getByRole("button", { name: "Retry removal" }));
-    expect(screen.getByRole("dialog")).toHaveTextContent("Your project folder and files will remain on disk");
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(requests.filter(r => r.method === "DELETE")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Open Alpha" })).toBeEnabled();
+    expect(requests.filter(r => r.path === archivePath)).toEqual([
+      { path: archivePath, method: "POST", body: { expectedRevision: 0 } },
+      { path: archivePath, method: "POST", body: { expectedRevision: 0 } },
+    ]);
+    expect(requests.some(r => r.method === "DELETE")).toBe(false);
   });
 });

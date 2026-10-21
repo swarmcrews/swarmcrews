@@ -1,3 +1,4 @@
+import { NavigationDraft } from "./navigation-drafts.tsx";
 import { CrewToolApprovals } from "./components/CrewToolApprovals.tsx";
 import { activeWorkspaceId, GLOBAL_WORKSPACE_ID, readWorkspaces } from "./canvas-zones.ts";
 import { WorkspacePicker } from "./components/WorkspacePicker.tsx";
@@ -978,7 +979,6 @@ function Inspector({
       </header>
 
       <div className="act-compact-navigation" role="group" aria-label="Session view">
-      <CrewToolApprovals approvalChildren={session.approvalChildren} members={minions} sessionKey={session.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />
         <button ref={conversationToggle} type="button" aria-pressed={compactPane === "conversation"}
           onClick={() => setCompactPane("conversation")}>Conversation</button>
         <button type="button" aria-pressed={compactPane === "context"}
@@ -987,6 +987,7 @@ function Inspector({
         </button>
       </div>
 
+      <CrewToolApprovals approvalChildren={session.approvalChildren} members={minions} sessionKey={session.sessionKey} socketSend={socketSend} socketSubscribe={socketSubscribe} />
       <div className="act-inspector-layout">
         <main className="act-conversation-pane" aria-label="Conversation">
           {session.reviewLifecycle && session.reviewLifecycle.reviewState !== "none" &&
@@ -1794,6 +1795,7 @@ export function ActivityView({
 
   return (
     <div className={`act-root${launchNode && launchVisible ? " act-root--composing" : ""}${activityCollapsed && selectedSession ? " act-root--list-collapsed" : ""}`} {...removalFocus}>
+      <NavigationDraft scope="activity-launch" dirty={hasLaunchDraft} onOpen={resumeDraft} />
       <div className="act-main" id="activity-session-list">
         <div className="act-list-toolbar">
           <header className="act-header">

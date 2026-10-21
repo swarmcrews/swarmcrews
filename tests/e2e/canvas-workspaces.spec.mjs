@@ -53,7 +53,7 @@ test("switches, fits, saves, and reloads workspace canvases with a permanent Glo
   // Save the selected workspace before reload.
   await switchedSave;
   await page.reload();
-  await page.getByText("Workspace Journey", { exact: true }).click();
+  await expect(page.locator(".project-header")).toContainText("Workspace Journey");
   await page.getByRole("tab", { name: "Canvas" }).click();
   await openWorkspaces();
   await expect(release).toHaveAttribute("aria-current", "true");

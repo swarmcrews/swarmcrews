@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { legacyLibraryRoutes } from './project-library-fixture.mjs';
 import { createGraphFixture } from '../../src/task-graph/fixtures.ts';
 
 test.use({ isMobile: true, hasTouch: true });
@@ -21,6 +22,7 @@ async function openWorkspace(page) {
       : path.includes('skills') ? [] : {};
     return route.fulfill({ json });
   });
+  await legacyLibraryRoutes(page, [project]);
   await page.routeWebSocket('**/ws*', socket => socket.onMessage(raw => {
     const message = JSON.parse(raw);
     if (message.type === 'get_task_graph_snapshot') {
@@ -35,6 +37,8 @@ async function openWorkspace(page) {
     }
     if (message.type === 'list_work_items') socket.send(JSON.stringify({ topic: 'global', type: 'work_item_response', command: message.type, requestId: message.requestId, success: true, result: { projectId: project.id, items: [], nextCursor: null } }));
     if (message.type === 'list_harnesses') socket.send(JSON.stringify({ topic: 'global', type: 'harness_list', harnesses: [] }));
+    if (message.type === 'create_work_item') socket.send(JSON.stringify({ topic: 'global', type: 'work_item_response',
+      command: message.type, requestId: message.requestId, success: false, error: 'Connection lost. Try again.' }));
   }));
   await page.goto('/m');
   await page.getByRole('button', { name: /Mobile layout workspace/ }).click();
@@ -70,13 +74,32 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     expect(feed.height).toBeGreaterThan(70);
     await page.getByRole('button', { name: 'Back to activity', exact: true }).click();
     await page.getByRole('button', { name: 'New', exact: true }).click();
-    await page.getByRole('textbox', { name: 'Prompt' }).fill('Review the mobile navigation.');
+    const launch = page.getByRole('button', { name: 'Launch leader', exact: true });
+    const prompt = page.getByRole('textbox', { name: 'Prompt' });
+    await expect(launch).toBeInViewport({ ratio: 1 });
+    const promptTop = (await prompt.boundingBox()).y;
+    await prompt.fill('Review the mobile navigation.');
+    // Showing Discard draft must not shift the prompt under the user's finger.
+    expect(Math.abs((await prompt.boundingBox()).y - promptTop)).toBeLessThan(1);
     await expectContained(page);
     await page.locator('.mob-launch-options > summary').click();
+    await page.locator('.mob-launch-scroll').evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await expect(launch).toBeInViewport({ ratio: 1 });
+    const setup = await page.locator('.mob-launch-options').boundingBox();
+    const action = await page.locator('.mob-launch-action').boundingBox();
+    expect(setup.y + setup.height).toBeLessThanOrEqual(action.y);
     await expectContained(page);
     await page.getByRole('button', { name: 'Back to activity', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Leave active draft?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Open draft', exact: true }).click();
+    await expect(prompt).toHaveValue('Review the mobile navigation.');
+    await page.getByRole('button', { name: 'Back to activity', exact: true }).click();
+    await page.getByRole('button', { name: 'Leave and lose draft', exact: true }).click();
+    await expect(page.getByRole('main', { name: 'Activity', exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Project defaults', exact: true })).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Settings categories' })).toBeVisible();
+    await page.getByRole('button', { name: /^Agent defaults/ }).click();
+    await expect(page.getByRole('heading', { name: 'Agent defaults', level: 1 })).toBeVisible();
     await expectContained(page);
     const fonts = await page.locator('.mob-settings select').evaluateAll(els => els.map(el => parseFloat(getComputedStyle(el).fontSize)));
     expect(fonts.length).toBeGreaterThan(0);
@@ -166,5 +189,53 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'Back to activity', exact: true }).click();
     await expect(page.getByRole('main', { name: 'Activity', exact: true })).toBeVisible();
     await expectContained(page);
+  });
+}
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+  test(`new leader keeps launch, attachments and retry feedback reachable at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await openWorkspace(page);
+    await page.getByRole('button', { name: 'New', exact: true }).click();
+    const prompt = page.getByRole('textbox', { name: 'Prompt' });
+    const launch = page.getByRole('button', { name: 'Launch leader', exact: true });
+    await prompt.fill('Preserve this draft and its files.');
+    await page.getByLabel('Launch file attachments', { exact: true }).setInputFiles({
+      name: 'context-with-a-deliberately-long-filename-for-a-narrow-phone.txt',
+      mimeType: 'text/plain', buffer: Buffer.from('Launch context'),
+    });
+    const remove = page.getByRole('button', { name: /^Remove context-with/ });
+    await expect(remove).toBeVisible();
+    const target = await remove.boundingBox();
+    expect(target.width).toBeGreaterThanOrEqual(44);
+    expect(target.height).toBeGreaterThanOrEqual(44);
+    await expect(launch).toBeInViewport({ ratio: 1 });
+
+    await prompt.focus();
+    // Simulate the same visual viewport events as an on-screen keyboard.
+    await page.evaluate(() => {
+      Object.defineProperty(window.visualViewport, 'height', { configurable: true, value: 360 });
+      Object.defineProperty(window.visualViewport, 'offsetTop', { configurable: true, value: 0 });
+      window.visualViewport.dispatchEvent(new Event('resize'));
+    });
+    await expect(page.locator('.mob-app')).toHaveAttribute('data-keyboard', 'open');
+    const action = await page.locator('.mob-launch-action').boundingBox();
+    expect(action.y + action.height).toBeLessThanOrEqual(360);
+    expect(await page.locator('.mob-launch-scroll').evaluate(el => el.clientHeight)).toBeGreaterThan(100);
+    await prompt.scrollIntoViewIfNeeded();
+    await expect(prompt).toBeInViewport({ ratio: 1 });
+    await expect(launch).toBeInViewport({ ratio: 1 });
+    await expectContained(page);
+
+    await launch.click();
+    const error = page.getByRole('alert').filter({ hasText: 'Connection lost. Try again.' });
+    await expect(error).toBeInViewport({ ratio: 1 });
+    await expect(launch).toBeEnabled();
+    await expect(launch).toBeInViewport({ ratio: 1 });
+    // Moving focus to Launch must not drop the action behind a closing keyboard.
+    const retryAction = await page.locator('.mob-launch-action').boundingBox();
+    expect(retryAction.y + retryAction.height).toBeLessThanOrEqual(360);
+    await expect(prompt).toHaveValue('Preserve this draft and its files.');
+    await expect(remove).toHaveCount(1);
   });
 }

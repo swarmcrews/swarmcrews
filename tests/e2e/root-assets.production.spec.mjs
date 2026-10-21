@@ -1,3 +1,4 @@
+import { legacyLibraryRoutes } from "./project-library-fixture.mjs";
 import { expect, test } from '@playwright/test';
 
 for (const route of [
@@ -16,6 +17,7 @@ for (const route of [
       return request.fulfill({ json: path.endsWith('/auth/token') ? { token: 'asset-test' }
         : path === '/api/projects' || path.includes('skills') ? [] : {} });
     });
+    await legacyLibraryRoutes(page, []);
     await page.routeWebSocket('**/ws*', socket => socket.onMessage(() => {}));
     await page.goto(route.path);
 

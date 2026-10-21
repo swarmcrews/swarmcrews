@@ -1,16 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectHeader } from "./ProjectHeader.tsx";
-import { listProjects } from "./api.ts";
+import { fromRecent, libraryProject, boundaryResponse } from "./project-library/test-fixture.ts";
+import { clearAuthToken } from "./api.ts";
 import type { SessionInfo } from "./use-socket.ts";
-
-vi.mock("./api.ts", () => ({
-  listProjects: vi.fn(),
-}));
-
-vi.mock("./SettingsMenu.tsx", () => ({
-  SettingsMenu: () => null,
-}));
 
 const projects = [
   { id: "project-1", name: "Alpha", path: "/repo/alpha", lastOpened: "2026-01-01", hasSidecar: true },
@@ -38,7 +31,95 @@ function renderHeader(overrides: Partial<React.ComponentProps<typeof ProjectHead
 
 describe("ProjectHeader project navigation", () => {
   beforeEach(() => {
-    vi.mocked(listProjects).mockResolvedValue(projects);
+    clearAuthToken();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url === "/api/auth/token" ? { token: "test" }
+        : url === "/api/projects/library" ? { projects:projects.map(fromRecent), collections:[], focusRevision:0 }
+        : url === "/api/projects/activity-summary" ? [] : undefined;
+      if (body === undefined) throw new Error(`Unexpected fetch: ${url}`);
+      return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+    });
+  });
+  afterEach(() => {
+    clearAuthToken();
+    vi.restoreAllMocks();
+  });
+
+  it("opens search with Ctrl K, retains input on a list error and retries without closing the menu", async () => {
+    let unavailable = true;
+    const previous = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, options) => {
+      if (String(input) === "/api/projects/library" && unavailable) return new Response(JSON.stringify({error:"offline"}), {status:503});
+      return previous(input, options);
+    });
+    renderHeader();
+    fireEvent.keyDown(window, {key:"k",ctrlKey:true});
+    await screen.findByRole("button", {name:"Retry project list"});
+    expect(screen.getByLabelText("Search projects")).toHaveFocus();
+    fireEvent.change(screen.getByLabelText("Search projects"), {target:{value:"Beta"}});
+    expect(screen.queryByText("No matching projects")).not.toBeInTheDocument();
+    unavailable = false;
+    fireEvent.click(screen.getByRole("button", {name:"Retry project list"}));
+    expect(await screen.findByRole("menuitemradio", {name:/Beta/})).toBeVisible();
+    expect(screen.getByLabelText("Search projects")).toHaveValue("Beta");
+    expect(screen.queryByRole("menuitemradio", {name:/Alpha/})).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByLabelText("Search projects"), {key:"Escape"});
+    expect(screen.getByRole("button", {name:"Alpha"})).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("orders by most recently opened, not Focus or name, with unopened projects last", async () => {
+    const previous = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, options) => String(input) === "/api/projects/library"
+      ? boundaryResponse({ projects: [
+        libraryProject({ id: "old", name: "A focused", focusOrder: 0, lastOpened: "2026-01-01" }),
+        libraryProject({ id: "never", name: "B unopened", lastOpened: null, createdAt: "2026-05-01" }),
+        libraryProject({ id: "recent", name: "Z recent", lastOpened: "2026-04-01" }),
+        libraryProject({ id: "archived", name: "Archived", archived: true, lastOpened: "2026-06-01" }),
+      ], collections: [], focusRevision: 0 }) : previous(input, options));
+    renderHeader();
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    const rows = await screen.findAllByRole("menuitemradio");
+    expect(rows.map(row => row.querySelector(".project-switcher__project-name")?.textContent))
+      .toEqual(["Z recent", "A focused", "B unopened"]);
+  });
+
+  it("uses one trimmed search for results and empty state, and resets on reopening", async () => {
+    renderHeader();
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    await screen.findByRole("menuitemradio", { name: /Beta/ });
+    const search = screen.getByRole("searchbox", { name: "Search projects" });
+    fireEvent.change(search, { target: { value: "  Beta  " } });
+    expect(screen.getByRole("menuitemradio", { name: /Beta/ })).toBeVisible();
+    expect(screen.queryByText("No matching projects")).not.toBeInTheDocument();
+    fireEvent.change(search, { target: { value: "no match" } });
+    expect(screen.getByText("No matching projects")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+    expect(screen.getAllByRole("menuitemradio")).toHaveLength(2);
+    fireEvent.change(search, { target: { value: "Beta" } });
+    fireEvent.keyDown(search, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(await screen.findAllByRole("menuitemradio")).toHaveLength(2);
+  });
+
+  it("navigates from search with arrows and selects the first match with Enter", async () => {
+    const props = renderHeader();
+    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    const beta = await screen.findByRole("menuitemradio", { name: /Beta/ });
+    const search = screen.getByRole("searchbox");
+    fireEvent.keyDown(search, { key: "ArrowDown" });
+    expect(beta).toHaveFocus();
+    fireEvent.keyDown(beta, { key: "ArrowUp" });
+    expect(search).toHaveFocus();
+    fireEvent.change(search, { target: { value: "Beta" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(props.onSwitchProject).toHaveBeenCalledWith("project-2", "/repo/beta");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alpha" })).toHaveFocus();
   });
 
   it("shows only the project identity without opening subtext in the switcher", async () => {
@@ -118,8 +199,9 @@ describe("ProjectHeader project navigation", () => {
       expect(alpha.queryByText(title)).not.toBeInTheDocument();
     }
     const beta = within(screen.getByRole("menuitemradio", { name: /Beta/ }));
-    expect(beta.getByText("Other workspace")).toBeVisible();
-    expect(beta.getByText("1 active leader")).toBeVisible();
+    // Other projects use counts-only summaries, not leftover session inventory.
+    expect(beta.queryByText("Other workspace")).not.toBeInTheDocument();
+    expect(beta.queryByText("1 active leader")).not.toBeInTheDocument();
   });
 
   it("counts executing crew across leader rosters and child sessions without duplicates", async () => {
@@ -158,7 +240,7 @@ describe("ProjectHeader project navigation", () => {
     expect(alpha.getByText("1 active leader").querySelector(".leader-status-icon")).toHaveAttribute("aria-hidden", "true");
     expect(alpha.getByText("4 crew").querySelector(".crew-icon")).toHaveAttribute("aria-hidden", "true");
     expect(alpha.queryByText("live")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("menuitemradio", { name: /Beta/ })).getByText("1 crew")).toBeVisible();
+    expect(within(screen.getByRole("menuitemradio", { name: /Beta/ })).queryByText("1 crew")).not.toBeInTheDocument();
 
     props.rerender(sessions.map((entry) => ({ ...entry, status: "completed", activeMinions: [] })));
     expect(alpha.queryByText(/crew$/)).not.toBeInTheDocument();
@@ -173,13 +255,14 @@ describe("ProjectHeader project navigation", () => {
     const props = renderHeader({ sessions: [session] });
     fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
     expect(await screen.findByText("Live task")).toBeVisible();
-    const calls = vi.mocked(listProjects).mock.calls.length;
+    const projectCalls = () => vi.mocked(fetch).mock.calls.filter(([url]) => url === "/api/projects/library").length;
+    const calls = projectCalls();
 
     props.rerender([{ ...session, status: "completed" }]);
 
     expect(screen.queryByText("Live task")).not.toBeInTheDocument();
     expect(screen.queryByText(/active leader/)).not.toBeInTheDocument();
     expect(screen.getByRole("menu", { name: "Switch project" })).toBeVisible();
-    expect(vi.mocked(listProjects).mock.calls.length).toBe(calls);
+    expect(projectCalls()).toBe(calls);
   });
 });

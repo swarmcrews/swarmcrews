@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { carryLeaderLaunchDraft, forgetLeaderDrafts, leaderDraftScope, useLeaderDraftField, useLeaderDraftLifetimes } from './leader-drafts.ts';
+import { carryLeaderLaunchDraft, forgetLeaderDrafts, forgetProjectLeaderDrafts, leaderDraftScope, useLeaderDraftField, useLeaderDraftLifetimes } from './leader-drafts.ts';
 import { LEADER_DEFAULT_DATA } from '../types.ts';
 import type { CanvasNode } from '../../../types.ts';
 
@@ -43,6 +43,18 @@ describe('identity-scoped browser-memory Leader drafts', () => {
     act(() => a.result.current[1](''));
     a.unmount();
     expect(field().result.current[0]).toBe('');
+  });
+
+  it('explicit project discard removes cached fields without clearing another project', () => {
+    const a = field(scope('discard-me'));
+    const b = field(scope('keep-me', 'work-1', 'run-1', 'other-project'));
+    act(() => { a.result.current[1]('Discard'); b.result.current[1]('Keep'); });
+    const staleSetter = a.result.current[1];
+    act(() => forgetProjectLeaderDrafts('project-1'));
+    act(() => staleSetter('Late callback'));
+    a.unmount();
+    expect(field(scope('discard-me')).result.current[0]).toBe('');
+    expect(b.result.current[0]).toBe('Keep');
   });
 
   it('removed identities cannot be resurrected by stale asynchronous callbacks', () => {

@@ -7,6 +7,10 @@ import { ProjectsScreen } from "./mobile/ProjectsScreen.tsx";
 
 const project = { id: "p1", path: "/repo/alpha", name: "Alpha", lastOpened: "2026-07-10T00:00:00Z", hasSidecar: true };
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+const library = (projects: typeof project[]) => json({ projects: projects.map(p => ({
+  ...p, workspaceId: p.id, sourceRoot: p.path, displayName: null, description: "", tags: [],
+  collectionIds: [], archived: false, focusOrder: null, revision: 0, createdAt: p.lastOpened,
+})), collections: [], focusRevision: 0 });
 
 for (const surface of ["desktop", "mobile"] as const) {
   describe(`${surface} project startup recovery`, () => {
@@ -14,11 +18,16 @@ for (const surface of ["desktop", "mobile"] as const) {
     beforeEach(() => {
       vi.useFakeTimers();
       clearAuthToken();
-      requests = vi.fn<() => Promise<Response>>().mockImplementation(() => Promise.resolve(json([])));
+      sessionStorage.clear();
+      requests = vi.fn<() => Promise<Response>>().mockImplementation(() => Promise.resolve(library([])));
       vi.stubGlobal("fetch", vi.fn((url: string) => {
         if (url === "/api/auth/token") return Promise.resolve(json({ token: "test-token" }));
-        if (url === "/api/projects") return requests();
-        if (url.includes("activity-summary")) return Promise.resolve(json([]));
+        if (url === "/api/projects/library") return requests();
+        if (url === "/api/projects/library/summary") return Promise.resolve(json([{ projectId: project.id,
+          freshness: "fresh", checkedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15000).toISOString(),
+          state: "up_to_date", activeLeaders: 0, activeCrew: 0, activeOther: 0, activeWorkItems: 0,
+          attention: { total: 0, decision: 0, review: 0, conflict: 0 }, unread: 0, recent: null, archiveEligible: true,
+        }]));
         return Promise.resolve(json({ ready: true, harnesses: [], readyHarnesses: [] }));
       }));
     });
@@ -40,7 +49,7 @@ for (const surface of ["desktop", "mobile"] as const) {
 
     it("automatically discovers projects after an initially empty response", async () => {
       let available = false;
-      requests.mockImplementation(() => Promise.resolve(json(available ? [project] : [])));
+      requests.mockImplementation(() => Promise.resolve(library(available ? [project] : [])));
       await mount();
       available = true;
       await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
@@ -53,11 +62,11 @@ for (const surface of ["desktop", "mobile"] as const) {
     it("recovers from a server that is unavailable on the first request", async () => {
       let available = false;
       requests.mockImplementation(() => available
-        ? Promise.resolve(json([project]))
+        ? Promise.resolve(library([project]))
         : Promise.reject(new TypeError("Failed to fetch")));
       await mount();
       expect(screen.getByRole("alert")).toBeVisible();
-      expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Start with a project" })).not.toBeInTheDocument();
       available = true;
       await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
       expect(screen.getByText("Alpha")).toBeVisible();
@@ -69,7 +78,7 @@ for (const surface of ["desktop", "mobile"] as const) {
       requests.mockImplementation(() => new Promise<Response>((done) => { resolve = done; }));
       await mount();
       expect(screen.getByText(/Loading/)).toBeVisible();
-      expect(screen.queryByRole("button", { name: "Start tutorial" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Start with a project" })).not.toBeInTheDocument();
       const count = requests.mock.calls.length;
       await act(async () => {
         window.dispatchEvent(new Event("focus"));
@@ -77,8 +86,8 @@ for (const surface of ["desktop", "mobile"] as const) {
         await vi.advanceTimersByTimeAsync(15_000);
       });
       expect(requests).toHaveBeenCalledTimes(count);
-      await act(async () => { resolve(json([])); });
-      expect(screen.getByRole("button", { name: "Start tutorial" })).toBeVisible();
+      await act(async () => { resolve(library([])); });
+      expect(screen.getByRole("heading", { name: "Start with a project" })).toBeVisible();
     });
 
     it("pauses background requests in hidden tabs and rechecks when visible", async () => {
@@ -102,14 +111,14 @@ for (const surface of ["desktop", "mobile"] as const) {
       const initial = requests.mock.calls.length;
       view.unmount();
       await act(async () => {
-        resolve(json([]));
+        resolve(library([]));
         await vi.advanceTimersByTimeAsync(10_000);
       });
       expect(requests).toHaveBeenCalledTimes(initial);
     });
 
     it("rechecks on reconnect and stops checking after unmount", async () => {
-      requests.mockImplementation(() => Promise.resolve(json([])));
+      requests.mockImplementation(() => Promise.resolve(library([])));
       const view = await mount();
       const initial = requests.mock.calls.length;
       await act(async () => { window.dispatchEvent(new Event("online")); });

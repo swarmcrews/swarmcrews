@@ -1,8 +1,13 @@
+import { hasNavigationDraft, openNavigationDraft } from "../navigation-drafts.tsx";
+import { projectDestination, rememberDestination, type ProjectDestination } from "../project-library/model.ts";
+import { getLibrary } from "../project-library/api.ts";
+import { ContextReader } from "../project-library/ContextReader.tsx";
+import { DraftNavigationDialog } from "../project-library/DraftNavigationDialog.tsx";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Bell, BellRing, ChevronLeft, Plus, Settings } from "lucide-react";
 
-import { listProjects, type ProjectSummary } from "../api.ts";
+import { type ProjectSummary } from "../api.ts";
 import { useSocket } from "../use-socket.ts";
 import { HarnessListProvider } from "../use-harness-list.tsx";
 import { useSessionActivity } from "../use-session-activity.ts";
@@ -29,8 +34,7 @@ import {
 } from "./push.ts";
 import { useMobileKeyboard } from "./use-mobile-keyboard.ts";
 import { buildWsUrl } from "../ws-url.ts";
-import { applyTheme } from "../themes.ts";
-import { loadPersistedThemeId } from "../use-theme.ts";
+import { MobileThemeProvider } from "./MobileThemeProvider.tsx";
 import "./mobile.css";
 
 import { mobileRouteFromUrl, useMobileNavigation, type ProjectScope } from "./use-mobile-navigation.ts";
@@ -158,11 +162,6 @@ function MobileHeader({ connected, reconnectState, selectedProject, activeTab, o
 }
 
 export default function MobileApp() {
-  // The mobile route bypasses App, which initializes the desktop theme.
-  // Apply the same saved palette and skin before the first mobile paint.
-  useLayoutEffect(() => {
-    applyTheme(loadPersistedThemeId());
-  }, []);
 
   const { connected, send, subscribe, reconnectState, manualReconnect } = useSocket(buildWsUrl());
   const keyboard = useMobileKeyboard();
@@ -257,23 +256,70 @@ export default function MobileApp() {
     [scopedSessions],
   );
 
+  const [libraryDestination, setLibraryDestination] = useState<{ projectId: string; workItemId: string } | null>(null);
+  const [contextProject, setContextProject] = useState<string | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<(() => void) | null>(null);
+  const discardingDraft = useRef(false);
+  const launchDraftRoot = useRef<HTMLDivElement>(null);
+  const [launchHasDraft, setLaunchHasDraft] = useState(false);
+  const navigationUrl = useRef(window.location.href);
+  useLayoutEffect(() => { navigationUrl.current = window.location.href; discardingDraft.current = false; }, [route]);
+  // SessionChatScreen persists prompt/attachments in per-session memory before
+  // unmount; allow native same-app navigation without discarding those drafts.
+  const activeTabRef = useRef(activeTab); activeTabRef.current = activeTab;
+  const draftPresent = () => activeTabRef.current !== "chat" && hasNavigationDraft(document);
+  const requestNavigation = useCallback((proceed: () => void) => {
+    if (draftPresent()) setPendingNavigation(() => proceed);
+    else proceed();
+  }, []);
+  const confirmNavigation = () => {
+    const proceed = pendingNavigation;
+    setPendingNavigation(null); setLaunchHasDraft(false); discardingDraft.current = true;
+    proceed?.();
+  };
+  useEffect(() => {
+    if (!libraryDestination || selectedProject?.id !== libraryDestination.projectId || workItemState.loading || activeTab !== "activity") return;
+    const item = workItemState.items[libraryDestination.workItemId];
+    const session = !workItemState.loadError && item?.projectId === selectedProject.id
+      ? canonicalSessions.find(s => s.canonicalWorkItem && s.workItemId === item.id
+        && s.sessionKey === (item.currentRunKey ?? `work-item:${item.id}`)) : undefined;
+    if (session) {
+      setActivityNotice(null); setLibraryDestination(null);
+      navigate({ ...route, screen: "chat", sessionKey: session.sessionKey, view: "work" });
+    } else setActivityNotice({ title: "Work item unavailable", message: "The requested work item could not be resolved from current project records. Project Activity is shown; another run was not substituted.",
+      actionLabel: "Retry requested work item", onAction: workItemState.retryLoad,
+      onDismiss: () => { setLibraryDestination(null); setActivityNotice(null); } });
+  }, [libraryDestination, selectedProject, activeTab, workItemState.loading, workItemState.items, workItemState.loadError, workItemState.retryLoad, canonicalSessions, navigate, route]);
+  useEffect(() => {
+    if (selectedProject && activeTab === "chat" && selectedSession?.workItemId) rememberDestination(selectedProject.id, { view:"activity", workItemId:selectedSession.workItemId });
+  }, [selectedProject, activeTab, selectedSession?.workItemId]);
+
   const selectedApproval = approvalRows.find((approval) => approval.sessionKey === selectedSessionKey);
-  const selectProject = useCallback((project: ProjectSummary) => {
+  const selectProject = useCallback((project: ProjectSummary, requested?: ProjectDestination) => requestNavigation(() => {
+    const destination = requested ?? projectDestination(project.id);
+    if (destination.view === "canvas") {
+      const url = new URL("/", window.location.origin); url.searchParams.set("view", "desktop"); url.searchParams.set("project", project.id); url.searchParams.set("surface", "canvas"); window.location.assign(url.href); return;
+    }
+    if (destination.view === "context") setContextProject(project.id);
+    setLibraryDestination(destination.workItemId ? { projectId: project.id, workItemId: destination.workItemId } : null);
     navigate({ project: { id: project.id, path: project.path, name: project.name }, screen: "activity", sessionKey: null, view: "chat" });
-  }, [navigate]);
-  const backToProjects = useCallback(() => {
+  }), [navigate, requestNavigation]);
+  const backToProjects = useCallback(() => requestNavigation(() => {
     navigate({ project: null, screen: "activity", sessionKey: null, view: "chat" });
-  }, [navigate]);
+  }), [navigate, requestNavigation]);
   const openSession = useCallback((sessionKey: string) => {
+    setLibraryDestination(null); setActivityNotice(null);
     setLastSessionKey(sessionKey);
     navigate({ ...route, screen: "chat", sessionKey, view: "chat" });
   }, [navigate, route]);
   const handleLaunchSubmitted = useCallback((sessionKey: string) => {
+    setLaunchHasDraft(false);
     setPendingLaunchSessionKey(sessionKey);
     setActivityNotice(null);
     openSession(sessionKey);
   }, [openSession]);
   const openLaunch = useCallback(() => {
+    setLibraryDestination(null);
     navigate({ ...route, screen: "launch", sessionKey: null, view: "chat" });
   }, [navigate, route]);
   const openSettings = useCallback(() => {
@@ -292,7 +338,8 @@ export default function MobileApp() {
 
   const showSessionLimitNotice = useCallback(() => {
     setPendingLaunchSessionKey(null);
-    openActivity();
+    setLaunchHasDraft(hasNavigationDraft(launchDraftRoot.current));
+    navigate({ ...route, screen:"activity", sessionKey:null, view:"chat" }, true);
     const notice: ActivityNotice = {
       title: "Session limit reached",
       message:
@@ -304,7 +351,7 @@ export default function MobileApp() {
       notice.onAction = openSessionToStopForLimit;
     }
     setActivityNotice(notice);
-  }, [dismissActivityNotice, openSessionToStopForLimit, sessionToStopForLimit, openActivity]);
+  }, [dismissActivityNotice, openSessionToStopForLimit, sessionToStopForLimit, navigate, route]);
 
   useEffect(() => {
     return subscribe("*", (msg) => {
@@ -331,6 +378,7 @@ export default function MobileApp() {
   ]);
 
   const openReview = useCallback((sessionKey: string) => {
+    setLibraryDestination(null); setActivityNotice(null);
     setLastSessionKey(sessionKey);
     navigate({ ...route, screen: "chat", sessionKey, view: "changes" });
   }, [navigate, route]);
@@ -338,9 +386,8 @@ export default function MobileApp() {
   const applyMobileUrl = useCallback((url: string) => {
     const parsed = new URL(url, window.location.origin);
     if (parsed.origin !== window.location.origin || !parsed.searchParams.get("session")) return;
-    const next = mobileRouteFromUrl(url);
-    navigate(next);
-  }, [navigate]);
+    requestNavigation(() => navigate(mobileRouteFromUrl(url)));
+  }, [navigate, requestNavigation]);
 
   // Deep links recover their project from current metadata, including sessions
   // whose worktree lives outside the source repository. Reject stale project IDs.
@@ -348,12 +395,13 @@ export default function MobileApp() {
   useEffect(() => {
     if (selectedProject || (!selectedSession && !requestedProjectId)) return;
     let cancelled = false;
-    void listProjects().then((projects) => {
+    void getLibrary().then(({ projects }) => {
       if (cancelled) return;
-      const project = projects.find((candidate) => selectedSession
+      const project = projects.find((candidate) => !candidate.archived && (selectedSession
         ? sessionBelongsToProject(selectedSession, candidate.path, candidate.id)
-        : candidate.id === requestedProjectId);
+        : candidate.id === requestedProjectId));
       if (project) navigate({ ...route, project }, true);
+      else if (requestedProjectId) setActivityNotice({ title:"Project unavailable", message:"This project is unavailable or archived. Choose a Library project, or explicitly restore it from Archived." });
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [selectedProject, selectedSession, requestedProjectId, navigate, route]);
@@ -378,6 +426,20 @@ export default function MobileApp() {
     };
   }, [applyMobileUrl]);
 
+  useEffect(() => {
+    const protect = (e: PopStateEvent) => {
+      if (discardingDraft.current || !draftPresent()) return;
+      e.stopImmediatePropagation();
+      const target = window.location.href; const targetState: unknown = window.history.state;
+      setPendingNavigation(() => () => {
+        window.history.replaceState(targetState, "", target);
+        window.dispatchEvent(new PopStateEvent("popstate", { state: targetState }));
+      });
+      window.history.replaceState(window.history.state, "", navigationUrl.current);
+    };
+    window.addEventListener("popstate", protect, true); return () => window.removeEventListener("popstate", protect, true);
+  }, [route, selectedProject]);
+
   const showingActiveSession = activeTab === "chat" && selectedSessionKey !== null;
   const activityKey = selectedProject?.id ?? "projects";
   if (!activityMemories.current.has(activityKey)) activityMemories.current.set(activityKey, {});
@@ -388,6 +450,13 @@ export default function MobileApp() {
   const unavailable = sessionsLoaded && !(selectedProject && workItemState.loading) && !selectedSession && pendingLaunchSessionKey !== selectedSessionKey;
 
   return (
+    <MobileThemeProvider>
+    {contextProject && <ContextReader projectId={contextProject} onClose={() => setContextProject(null)} />}
+    {pendingNavigation && <DraftNavigationDialog onClose={() => setPendingNavigation(null)} onConfirm={confirmNavigation} onOpenDraft={() => {
+      setPendingNavigation(null);
+      if (hasNavigationDraft(launchDraftRoot.current)) navigate({ ...route, screen:"launch", sessionKey:null, view:"chat" });
+      openNavigationDraft();
+    }} />}
     <HarnessListProvider send={send} subscribe={subscribe} connected={connected}>
     <div className="mob-app" data-keyboard={keyboard.open ? "open" : "closed"}
       style={{
@@ -397,19 +466,20 @@ export default function MobileApp() {
       } as CSSProperties}>
       {showingActiveSession ? null : <MobileHeader connected={connected} reconnectState={reconnectState}
         selectedProject={selectedProject} activeTab={activeTab}
-        onBack={activeTab === "activity" ? backToProjects : openActivity}
-        onReconnect={manualReconnect} onSettings={openSettings} onNew={openLaunch} />}
+        onBack={() => activeTab === "activity" ? backToProjects() : requestNavigation(openActivity)}
+        onReconnect={manualReconnect} onSettings={() => requestNavigation(openSettings)} onNew={() => requestNavigation(openLaunch)} />}
 
+      {selectedProject && (activeTab === "launch" || launchHasDraft) && <div ref={launchDraftRoot} hidden={activeTab !== "launch"} style={{ flex:1, minHeight:0, display:activeTab === "launch" ? "flex" : "none", flexDirection:"column" }}><LaunchScreen onLaunched={handleLaunchSubmitted} onLaunchError={message => { if (/Maximum session limit/i.test(message)) showSessionLimitNotice(); }} canonicalLaunch={workItemState.launch} lockedProject={selectedProject} /></div>}
       {showingActiveSession ? (
         <SessionChatScreen key={selectedSessionKey} sessionKey={selectedSessionKey}
           session={selectedSession} sessionOptions={scopedSessions}
           runs={selectedSession?.workItemId ? workItemState.runs[selectedSession.workItemId] ?? [] : []}
           runNextCursor={selectedSession?.workItemId ? workItemState.runNextCursor[selectedSession.workItemId] : undefined}
           onLoadRuns={workItemState.loadRuns}
-          subscribe={subscribe} send={send} onBack={openActivity} onSelectSession={openSession}
+          subscribe={subscribe} send={send} onBack={() => requestNavigation(openActivity)} onSelectSession={key => requestNavigation(() => openSession(key))}
           projectName={selectedProject?.name ?? selectedSession?.cwd?.split("/").filter(Boolean).at(-1)}
           connected={connected} reconnectState={reconnectState} onReconnect={manualReconnect}
-          view={route.view} onCloseGraph={closeGraph} onViewChange={(view) => navigate({ ...route, view })}
+          view={route.view} onCloseGraph={closeGraph} onViewChange={view => requestNavigation(() => navigate({ ...route, view }))}
           memory={sessionMemories.current.get(selectedSessionKey)!}
           unavailable={unavailable} loading={!selectedSession && !unavailable}
           changeMode={selectedSession?.workItemId ? workItemState.items[selectedSession.workItemId]?.lifecycle.changeMode : undefined}
@@ -435,12 +505,8 @@ export default function MobileApp() {
           ) : undefined} />
       ) : !selectedProject ? (
         <ProjectsScreen onSelectProject={selectProject} />
-      ) : activeTab === "launch" ? (
-        <LaunchScreen onLaunched={handleLaunchSubmitted}
-          onLaunchError={(message) => { if (/Maximum session limit/i.test(message)) showSessionLimitNotice(); }}
-          canonicalLaunch={workItemState.launch} lockedProject={selectedProject} />
-      ) : activeTab === "settings" ? (
-        <SettingsScreen project={selectedProject} />
+      ) : activeTab === "launch" ? null : activeTab === "settings" ? (
+        <SettingsScreen project={selectedProject} socketSend={send} socketSubscribe={subscribe} />
       ) : (
         <ActivityScreen key={activityKey} memory={activityMemories.current.get(activityKey)!}
           resumeSession={resumableSession} onOpenReview={openReview}
@@ -453,5 +519,6 @@ export default function MobileApp() {
       )}
     </div>
     </HarnessListProvider>
+    </MobileThemeProvider>
   );
 }

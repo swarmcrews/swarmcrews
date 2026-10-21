@@ -1,0 +1,83 @@
+/* Project surfaces and their inset actions have independent interaction ownership.
+   Generic button hover chrome intentionally excludes these two action classes. */
+.project-library .pl-project-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+}
+.pl-project-action > span {
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.pl-project-action > svg {
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.pl-highlight-card, .pl-index-row {
+  isolation: isolate;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.project-library .pl-highlight-card .pl-highlight-project { padding-inline: 8px; }
+.project-library .pl-highlight-card .pl-highlight-session { padding-inline: 8px; border-radius: var(--radius-control); }
+.pl-highlight-sessions li + li { border-color: color-mix(in srgb, var(--border-default) 60%, transparent); }
+.project-library .pl-index-row .pl-inline-action { padding-inline: 8px; }
+.pl-index-state > span:not(.pl-sr-only) { padding-inline: 8px; }
+.project-library .pl-index-name { padding-inline: 8px; }
+.pl-index-path { padding-inline: 8px; }
+.pl-index-columns > span:nth-child(-n+2) { padding-inline: 8px; }
+
+/* A small, theme-native badge inside a full 44px target. The indicator means
+   unread, not execution; the count is still supplied by fresh summaries only. */
+.project-library .pl-highlight-card .pl-highlight-new { padding-inline: 0; }
+.pl-new-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: 500 .6875rem/1.5 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.pl-new-badge::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+
+/* Only pointer devices get hover; touch must not retain a synthetic selection.
+   No transforms, moving targets, or underline flashes on composite surfaces. */
+@media (hover: hover) and (pointer: fine) {
+  .pl-highlight-card:has(.pl-project-action:hover) { border-color: var(--border-hover); background: var(--bg-secondary); }
+  .pl-index-row:has(.pl-project-action:hover) { background: var(--bg-secondary); }
+  .pl-project-action:hover > svg { opacity: 1; }
+  .project-library .pl-inline-action:hover:not(:disabled) { background: var(--bg-secondary); box-shadow: inset 0 0 0 1px var(--border-default); }
+  .project-library .pl-inline-action:has(> .pl-new-badge):hover { background: transparent; box-shadow: none; }
+  .pl-inline-action:hover > .pl-new-badge { border-color: var(--border-hover); background: var(--bg-elevated); }
+}
+
+/* Keyboard focus belongs to exactly one action. The primary button draws its
+   ring on the entire hit area, inset so mobile scrolling cannot clip it. */
+.project-library .pl-project-action:focus-visible { outline: none; }
+.pl-project-action:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -3px; }
+.pl-project-action:focus-visible > svg { opacity: 1; }
+.project-library .pl-inline-action:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg-secondary); }
+.project-library .pl-inline-action:active:not(:disabled) { background: var(--bg-elevated); box-shadow: inset 0 0 0 1px var(--border-hover); }
+.project-library .pl-inline-action:has(> .pl-new-badge):active { background: transparent; box-shadow: none; }
+.pl-inline-action:active > .pl-new-badge { background: var(--bg-elevated); border-color: var(--text-secondary); }
+.pl-highlight-card:has(.pl-project-action:active), .pl-index-row:has(.pl-project-action:active) { background: var(--bg-elevated); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-highlight-card, .pl-index-row, .pl-project-action > svg, .pl-new-badge { transition: none; }
+}
+@media (forced-colors: active) {
+  .pl-new-badge { border-color: ButtonText; }
+  .pl-project-action:focus-visible::after, .project-library .pl-inline-action:focus-visible { outline-color: Highlight; }
+}

@@ -1,39 +1,47 @@
 import { ACTIVE_LEADER_LABELS, projectAgentActivity } from "../shared/project-agent-activity.ts";
 import { Brand } from "./components/Brand.tsx";
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { Activity, Check, ChevronDown, Folder, FolderKanban, LayoutGrid, Pencil } from "lucide-react";
+import { Activity, Check, ChevronDown, Folder, FolderKanban, LayoutGrid, Pencil, Search, X } from "lucide-react";
 import { CrewIcon } from "./components/CrewIcon.tsx";
 import { LeaderStatusIcon } from "./nodes/leader/LeaderStatusIcon.tsx";
 import type { SaveStatus } from "./use-autosave.ts";
-import { listProjects, type ProjectSettings, type ProjectSummary } from "./api.ts";
+import { type ProjectSettings, type ProjectSummary } from "./api.ts";
 import { SettingsMenu } from "./SettingsMenu.tsx";
 import type { SessionInfo, SocketSubscribe } from "./use-socket.ts";
 import { sessionBelongsToProject, sessionDisplayTitle } from "./mobile/mobile-selectors.ts";
 import type { SettingsSaveState } from "./ContextActionsSettings.tsx";
 import "./project-header.css";
 import { ProjectRename } from "./project-recovery/ProjectRename.tsx";
+import { ProjectSessionActivity } from "./ProjectSessionActivity.tsx";
+import type { ProjectActivitySummary } from "../shared/project-activity.ts";
+
+import { getLibrary } from "./project-library/api.ts";
+import { asProjectSummary, defaultFilters, selectProjects } from "./project-library/model.ts";
 
 export type ActiveView = "activity" | "canvas";
 
-function ProjectAgentPreview({ project, sessions }: {
+function ProjectAgentPreview({ project, sessions, summary }: {
   project: ProjectSummary;
   sessions: SessionInfo[];
+  summary?: ProjectActivitySummary | undefined;
 }) {
   const workspaceId = project.workspaceId ?? project.id;
   const belongsToProject = (session: SessionInfo) =>
     session.projectId
       ? session.projectId === workspaceId
       : sessionBelongsToProject(session, project.sourceRoot ?? project.path, workspaceId);
-  const { active, activeCrew } = projectAgentActivity(sessions, belongsToProject);
-  if (active.length === 0 && activeCrew === 0) return null;
+  const { active, activeCrew: liveCrew } = projectAgentActivity(sessions, belongsToProject);
+  const activeLeaders = summary?.activeLeaders ?? active.length;
+  const activeCrew = summary?.activeCrew ?? liveCrew;
+  if (activeLeaders === 0 && activeCrew === 0) return null;
 
-  const leaderLabel = `${active.length} active leader${active.length === 1 ? "" : "s"}`;
+  const leaderLabel = `${activeLeaders} active leader${activeLeaders === 1 ? "" : "s"}`;
 
   return (
     <span className="project-switcher__preview">
       <span className="project-switcher__preview-heading">
         <span className="project-switcher__metric">
-          <LeaderStatusIcon size={12} active decorative />
+          <LeaderStatusIcon size={12} active={activeLeaders > 0} decorative />
           {leaderLabel}
         </span>
         <span className="project-switcher__metric" title="Minions currently starting or executing">
@@ -64,7 +72,7 @@ interface ProjectHeaderProps {
   onRename: (name: string) => void | Promise<void>;
   onBack: () => void;
   onSwitchProject: (id: string, path: string) => void;
-  /** Live sessions across all workspaces, including delegated minions. */
+  /** Live sessions scoped to the current project, including delegated minions. */
   sessions?: SessionInfo[];
   retryCount?: number;
   retry?: () => void;
@@ -109,24 +117,54 @@ export function ProjectHeader({
   const [editing, setEditing] = useState(false);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [search, setSearch] = useState("");
+  const [projectListVersion, setProjectListVersion] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [projectTags, setProjectTags] = useState<Record<string, string[]>>({});
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState(false);
+  const [activity, setActivity] = useState<ProjectActivitySummary[]>([]);
+  const activityByProject = new Map(activity.map((summary) => [summary.projectId, summary]));
   const switcherRef = useRef<HTMLDivElement>(null);
   const switcherButtonRef = useRef<HTMLButtonElement>(null);
+  const query = search.trim().toLocaleLowerCase();
+  const filteredProjects = projects.filter(project =>
+    [project.id === projectId ? name : project.name, project.path, ...(projectTags[project.id] ?? [])]
+      .some(value => value.toLocaleLowerCase().includes(query)));
+
+  useEffect(() => {
+    const jump = (e: KeyboardEvent) => {
+      if (!editing && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (!switcherOpen) setProjectsLoading(true);
+        setSwitcherOpen(true);
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", jump); return () => window.removeEventListener("keydown", jump);
+  }, [editing, switcherOpen]);
 
   useEffect(() => {
     if (!editing) switcherButtonRef.current?.focus();
   }, [editing]);
 
   useEffect(() => {
-    if (!switcherOpen) return;
+    if (!switcherOpen) {
+      setSearch("");
+      return;
+    }
 
     let cancelled = false;
+    searchRef.current?.focus();
     setProjectsLoading(true);
     setProjectsError(false);
-    void listProjects()
-      .then((nextProjects) => {
-        if (!cancelled) setProjects(nextProjects);
+    void getLibrary()
+      .then((library) => {
+        if (!cancelled) {
+          // Quick switching follows recency, independently of the library's Focus order.
+          setProjects(selectProjects(library, defaultFilters).map(asProjectSummary));
+          setProjectTags(Object.fromEntries(library.projects.map(p => [p.id, p.tags])));
+        }
       })
       .catch(() => {
         if (!cancelled) setProjectsError(true);
@@ -138,7 +176,7 @@ export function ProjectHeader({
     return () => {
       cancelled = true;
     };
-  }, [switcherOpen]);
+  }, [switcherOpen, projectListVersion]);
 
   useEffect(() => {
     if (!switcherOpen) return;
@@ -239,7 +277,11 @@ export function ProjectHeader({
           title={name}
           aria-haspopup="menu"
           aria-expanded={switcherOpen}
-          onClick={() => setSwitcherOpen((open) => !open)}
+          onClick={() => {
+            // Gate the counts request until this opening's project list has loaded.
+            if (!switcherOpen) setProjectsLoading(true);
+            setSwitcherOpen((open) => !open);
+          }}
         >
           <span className="project-switcher__copy">
             <span className="project-switcher__name">{name}</span>
@@ -254,19 +296,59 @@ export function ProjectHeader({
         </button>
 
         {switcherOpen ? (
-          <div className="project-switcher__menu" role="menu" aria-label="Switch project">
-            <div className="project-switcher__label">Projects</div>
+          <div className="project-switcher__menu" role="menu" aria-label="Switch project"
+            onKeyDown={event => {
+              if (event.nativeEvent.isComposing) return;
+              const menu = event.currentTarget;
+              const inSearch = event.target === searchRef.current;
+              if (inSearch && event.key === "Enter") {
+                event.preventDefault();
+                menu.querySelector<HTMLButtonElement>('[role="menuitemradio"]')?.click();
+                return;
+              }
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+              // Home/End retain normal text-editing behavior in search.
+              if (inSearch && (event.key === "Home" || event.key === "End")) return;
+              const items = Array.from(menu.querySelectorAll<HTMLElement>('input, [role="menuitemradio"], [role="menuitem"]'));
+              const index = items.indexOf(document.activeElement as HTMLElement);
+              const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+                : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+              event.preventDefault();
+              items[next]?.focus();
+            }}>
+            {!projectsLoading && !projectsError && <ProjectSessionActivity
+              projectIds={projects.filter((project) => project.id !== projectId)
+                .map((project) => project.workspaceId ?? project.id)}
+              onSummaryChange={setActivity}
+            />}
+            <div className="project-switcher__label">Recent projects</div>
+            <div className="project-switcher__search">
+              <Search size={15} aria-hidden="true" />
+              <input ref={searchRef} type="search" aria-label="Search projects"
+                placeholder="Search by name, path, or tag…" value={search}
+                onChange={event => setSearch(event.target.value)} />
+              {search && <button type="button" aria-label="Clear search" onClick={() => {
+                setSearch("");
+                searchRef.current?.focus();
+              }}><X size={14} aria-hidden="true" /></button>}
+            </div>
             <div className="project-switcher__list">
               {projectsLoading && projects.length === 0 ? (
                 <div className="project-switcher__state" role="status">Loading projects…</div>
               ) : null}
               {projectsError ? (
-                <div className="project-switcher__state" role="alert">Couldn’t load projects</div>
+                <div className="project-switcher__state" role="alert">
+                  Couldn’t load projects
+                  <button className="project-switcher__retry" type="button" onClick={() => setProjectListVersion(value => value + 1)}>Retry project list</button>
+                </div>
               ) : null}
               {!projectsLoading && !projectsError && projects.length === 0 ? (
-                <div className="project-switcher__state">No other projects</div>
+                <div className="project-switcher__state">No projects available</div>
               ) : null}
-              {projects.map((project) => {
+              {!projectsLoading && !projectsError && projects.length > 0 && filteredProjects.length === 0 && (
+                <div className="project-switcher__state" role="status">No matching projects</div>
+              )}
+              {filteredProjects.map((project) => {
                 const current = project.id === projectId;
                 return (
                   <button
@@ -278,6 +360,7 @@ export function ProjectHeader({
                     title={project.path}
                     onClick={() => {
                       setSwitcherOpen(false);
+                      switcherButtonRef.current?.focus();
                       if (!current) onSwitchProject(project.id, project.path);
                     }}
                   >
@@ -289,7 +372,8 @@ export function ProjectHeader({
                         {current ? name : project.name}
                       </span>
                       <span className="project-switcher__project-path">{project.path}</span>
-                      <ProjectAgentPreview project={project} sessions={sessions} />
+                      <ProjectAgentPreview project={project} sessions={current ? sessions : []}
+                        summary={current ? undefined : activityByProject.get(project.workspaceId ?? project.id)} />
                     </span>
                     <span className="project-switcher__project-check" aria-hidden="true">
                       {current ? <Check size={14} strokeWidth={2} /> : null}

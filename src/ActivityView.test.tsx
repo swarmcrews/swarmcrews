@@ -1,3 +1,4 @@
+import { openNavigationDraft } from "./navigation-drafts.tsx";
 import { activeWorkspaceId, createZone, visibleZoneNodes } from "./canvas-zones.ts";
 import { canvasReducer } from "./canvas-state.ts";
 import { createReplaySocket } from "../tests/harness/ws-replay.ts";
@@ -1566,6 +1567,18 @@ describe("ActivityView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(onLaunchLeader).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the exact retained launch draft from a navigation confirmation", () => {
+    const draft = leaderNode("", [], { sessionKey: null, status: "disconnected" });
+    render(<ActivityView {...noop} sessions={[session({ sessionKey: "other", taskName: "Existing work" })]}
+      nodes={[]} onLaunchLeader={() => draft} />);
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.change(screen.getByRole("textbox", { name: /leader prompt/i }), { target: { value: "Review this draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to activity" }));
+    expect(screen.queryByRole("textbox", { name: /leader prompt/i })).toBeNull();
+    act(() => openNavigationDraft());
+    expect(screen.getByRole("textbox", { name: /leader prompt/i })).toHaveValue("Review this draft");
   });
 
   it("keeps an unfinished leader as a resumable draft while browsing Activity or Canvas", () => {

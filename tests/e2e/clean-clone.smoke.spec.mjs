@@ -11,10 +11,14 @@ test("creates, launches, persists, and reloads an echo-backed project", async ({
     route.abort(),
   );
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Project Library", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Register repository" }).click();
-  await page.getByPlaceholder("/path/to/new/project...").fill(projectPath);
+  await expect(page.getByRole("button", { name: "Enter a path instead" }).or(page.getByRole("combobox", { name: "Search folders" }))).toBeVisible();
+  if (await page.getByRole("combobox", { name: "Search folders" }).isVisible()) await page.getByRole("combobox", { name: "Search folders" }).press("Escape");
+  await page.getByRole("button", { name: "Enter a path instead" }).click();
+  await page.getByRole("textbox", { name: "Repository path" }).fill(projectPath);
+  await page.getByRole("button", { name: "Use this path" }).click();
   await page
     .getByPlaceholder("Project name (optional, defaults to folder name)")
     .fill("Smoke Project");
@@ -59,8 +63,8 @@ test("creates, launches, persists, and reloads an echo-backed project", async ({
   await autosaved;
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
-  await page.getByText("Smoke Project", { exact: true }).click();
+  // Library navigation now preserves the exact project URL on reload.
+  await expect(page.locator(".project-header")).toContainText("Smoke Project");
   await page.getByRole("tab", { name: "Canvas" }).click();
   await expect(page.getByLabel("Enter fullscreen")).toBeVisible();
   await page.getByLabel("Enter fullscreen").click();

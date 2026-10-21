@@ -1,163 +1,201 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getRepositoryPathSuggestions } from "../api.ts";
+import { useState } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAuthToken } from "../api.ts";
+import type { RepositoryPathRequest, RepositoryPathSuggestions } from "../../shared/repository-paths.ts";
 import { RepositoryPathPicker } from "./RepositoryPathPicker.tsx";
 
-vi.mock("../api.ts", () => ({ getRepositoryPathSuggestions: vi.fn() }));
-
-const windowsResult = {
-  platform: "win32" as const,
-  separator: "\\" as const,
-  roots: [{ name: "C:", path: "C:\\" }],
-  directory: "C:\\work",
-  parent: "C:\\",
-  breadcrumbs: [{ name: "work", path: "C:\\work" }],
-  entries: [{ name: "demo", path: "C:\\work\\demo" }],
-  truncated: false,
+const home: RepositoryPathSuggestions = {
+  platform: "posix", separator: "/", roots: [{ name: "alex", path: "/home/alex" }],
+  directory: "/home/alex", parent: null, breadcrumbs: [{ name: "alex", path: "/home/alex" }],
+  entries: [{ name: "Projects", path: "/home/alex/Projects" }], truncated: false,
+};
+const projects: RepositoryPathSuggestions = {
+  ...home, directory: "/home/alex/Projects", parent: "/home/alex",
+  breadcrumbs: [...home.breadcrumbs, { name: "Projects", path: "/home/alex/Projects" }],
+  entries: [{ name: "Résumé project", path: "/home/alex/Projects/Résumé project" }],
+};
+const selected: RepositoryPathSuggestions = {
+  ...projects, directory: "/home/alex/Projects/Résumé project", parent: "/home/alex/Projects",
+  breadcrumbs: [...projects.breadcrumbs, { name: "Résumé project", path: "/home/alex/Projects/Résumé project" }], entries: [],
 };
 
-beforeEach(() => { vi.mocked(getRepositoryPathSuggestions).mockReset(); });
+function folders(handler: (request: RepositoryPathRequest, signal: AbortSignal) => RepositoryPathSuggestions | Response | Promise<RepositoryPathSuggestions | Response>) {
+  return vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === "/api/auth/token") return Response.json({ token: "test" });
+    const result = await handler(JSON.parse(String(init?.body)), init?.signal as AbortSignal);
+    return result instanceof Response ? result : Response.json(result);
+  }));
+}
+function Probe({ initial = "" }: { initial?: string }) {
+  const [value, setValue] = useState(initial);
+  return <RepositoryPathPicker value={value} onChange={setValue} />;
+}
+beforeEach(() => clearAuthToken());
+afterEach(() => { vi.unstubAllGlobals(); clearAuthToken(); });
 
-describe("RepositoryPathPicker", () => {
-  it("shows the full typed path outside the input and identifies the current browsing folder", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    render(<RepositoryPathPicker value={"C:\\work\\a-very-long-repository-name"} onChange={vi.fn()} />);
-    expect(screen.getByText("C:\\work\\a-very-long-repository-name")).toHaveClass("repository-path-picker__value");
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    expect(await screen.findByText("Browse folders")).toBeVisible();
-    // The heading is immediate; the directory arrives with the async response.
-    expect(await screen.findByText("C:\\work", { exact: true })).toHaveClass("repository-path-picker__directory-path");
-    expect(screen.getByText("Enter to explore · Esc to close")).toBeVisible();
+describe("folder-first repository picker", () => {
+  it("preserves a browsed folder when project availability is refreshed", async () => {
+    folders(request => request.path === projects.directory ? projects : home);
+    const change = vi.fn();
+    const view = render(<RepositoryPathPicker value="" onChange={change} defaultOpen />);
+    fireEvent.click(await screen.findByRole("option", { name: "Projects" }));
+    await screen.findByRole("option", { name: "Résumé project" });
+    view.rerender(<RepositoryPathPicker value="" onChange={change} defaultOpen={false} />);
+    view.rerender(<RepositoryPathPicker value="" onChange={change} defaultOpen />);
+    expect(screen.getByRole("option", { name: "Résumé project" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Use folder Projects" })).toBeEnabled();
+    expect(change).not.toHaveBeenCalled();
   });
-
-  it("retries a failed browse request without changing the typed path", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(windowsResult);
-    const onChange = vi.fn();
-    render(<RepositoryPathPicker value={"C:\\work"} onChange={onChange} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    await screen.findByRole("alert");
-    fireEvent.click(screen.getByRole("button", { name: "Retry folders" }));
-    expect(await screen.findByRole("option", { name: /demo/i })).toBeVisible();
-    expect(onChange).not.toHaveBeenCalled();
+  it("places the collapsed chooser actions below the header and hides them in either editor", async () => {
+    folders(() => home);
+    render(<Probe initial="/existing" />);
+    const change = screen.getByRole("button", { name: "Change folder" });
+    const manual = screen.getByRole("button", { name: "Enter a path instead" });
+    expect(change.parentElement).toBe(manual.parentElement);
+    expect(change.closest(".repository-path-picker__label-row")).toBeNull();
+    expect(manual.closest(".repository-path-picker__label-row")).toBeNull();
+    fireEvent.click(change);
+    await screen.findByRole("option");
+    expect(screen.queryByRole("button", { name: "Enter a path instead" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change folder" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enter a path instead" }));
+    expect(screen.queryByRole("button", { name: "Enter a path instead" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Change folder" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByRole("button", { name: "Change folder" })).toHaveFocus();
   });
-
-  it("closes from a focused folder row with Escape and restores input focus", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    render(<RepositoryPathPicker value="C:\\work" onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    const option = await screen.findByRole("option");
-    option.focus();
-    fireEvent.keyDown(option, { key: "Escape" });
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox")).toHaveFocus();
-  });
-  it("retains returned Windows paths exactly and selects with the keyboard", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    const onChange = vi.fn();
-    render(<RepositoryPathPicker value="C:\\work\\d" onChange={onChange} />);
-
-    const input = screen.getByRole("combobox", { name: "Folders on the server" });
-    fireEvent.focus(input);
-    await waitFor(() => expect(screen.getByRole("option", { name: /demo/i })).toBeInTheDocument());
-    fireEvent.keyDown(input, { key: "Enter" });
-
-    expect(onChange).toHaveBeenCalledWith("C:\\work\\demo");
-  });
-
-  it("browses roots and keeps manual input available after a failed request", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockRejectedValue(new Error("offline"));
-    const onChange = vi.fn();
-    render(<RepositoryPathPicker value="" onChange={onChange} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("offline");
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "/new/folder" } });
-    expect(onChange).toHaveBeenCalledWith("/new/folder");
-  });
-
-  it("dismisses suggestions with Escape", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    render(<RepositoryPathPicker value="C:\\work" onChange={vi.fn()} />);
-    const input = screen.getByRole("combobox");
-    fireEvent.focus(input);
-    await screen.findByRole("listbox");
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-  });
-
-  it("ignores an older browse response after a newer request", async () => {
-    let resolveFirst!: (value: typeof windowsResult) => void;
-    let resolveSecond!: (value: typeof windowsResult) => void;
-    vi.mocked(getRepositoryPathSuggestions)
-      .mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }))
-      .mockReturnValueOnce(new Promise((resolve) => { resolveSecond = resolve; }));
-    render(<RepositoryPathPicker value="C:\\work" onChange={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    await waitFor(() => expect(getRepositoryPathSuggestions).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    await waitFor(() => expect(getRepositoryPathSuggestions).toHaveBeenCalledTimes(2));
-    resolveSecond({ ...windowsResult, entries: [{ name: "new", path: "C:\\work\\new" }] });
-    expect(await screen.findByRole("option", { name: /new/i })).toBeInTheDocument();
-    resolveFirst(windowsResult);
-    await waitFor(() => expect(screen.getByRole("option", { name: /new/i })).toBeInTheDocument());
-  });
-
-  it("navigates into Windows roots and folders before explicitly selecting", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({ ...windowsResult, directory: null, entries: [] });
+  it("starts at Home with folder-name search and requires explicit path-entry opt-in", async () => {
+    const requests: RepositoryPathRequest[] = [];
+    folders(request => { requests.push(request); return home; });
     const change = vi.fn();
     render(<RepositoryPathPicker value="" onChange={change} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    const root = await screen.findByRole("button", { name: "C:\\" });
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    fireEvent.click(root);
-    const entry = await screen.findByRole("option", { name: /demo/ });
+    expect(await screen.findByRole("option", { name: "Projects" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Search folders" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Repository path" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Folder breadcrumbs" })).toHaveTextContent("Home");
+    expect(requests[0]).toMatchObject({ path: "~", mode: "browse" });
     expect(change).not.toHaveBeenCalled();
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({ ...windowsResult, directory: "C:\\work\\demo", entries: [] });
-    fireEvent.click(entry);
-    fireEvent.click(await screen.findByRole("button", { name: "Use this folder" }));
-    expect(change).toHaveBeenCalledWith("C:\\work\\demo");
-    expect(screen.getByRole("combobox")).toHaveFocus();
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
   });
 
-  it("invalidates old requests during the typing debounce and after dismissal", async () => {
-    let resolveOld!: (value: typeof windowsResult) => void;
-    vi.mocked(getRepositoryPathSuggestions).mockReturnValueOnce(new Promise((resolve) => { resolveOld = resolve; }));
-    render(<RepositoryPathPicker value="C:\\work" onChange={vi.fn()} />);
-    const input = screen.getByRole("combobox");
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    await waitFor(() => expect(getRepositoryPathSuggestions).toHaveBeenCalledTimes(1));
-    const signal = vi.mocked(getRepositoryPathSuggestions).mock.calls[0]![1]!;
-    fireEvent.change(input, { target: { value: "C:\\other" } });
-    expect(signal.aborted).toBe(true);
-    await act(async () => resolveOld(windowsResult));
-    expect(screen.queryByRole("option")).not.toBeInTheDocument();
-    fireEvent.keyDown(input, { key: "Escape" });
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
-  });
-
-  it.each(["Enter", "Tab"])("%s selects autocomplete without submitting a form", async (key) => {
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue(windowsResult);
-    const submit = vi.fn();
+  it("filters within the folder being browsed without changing the chosen path", async () => {
+    const requests: RepositoryPathRequest[] = [];
+    folders(request => {
+      requests.push(request);
+      if (request.path === "/home/alex/Projects") return projects;
+      return home;
+    });
     const change = vi.fn();
-    render(<form onSubmit={submit}><RepositoryPathPicker value="C:\\work\\d" onChange={change} onSubmit={submit} /><button>Open</button></form>);
-    const input = screen.getByRole("combobox");
-    fireEvent.focus(input);
+    render(<RepositoryPathPicker value="" onChange={change} />);
+    fireEvent.click(await screen.findByRole("option", { name: "Projects" }));
+    await screen.findByRole("option", { name: "Résumé project" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Search folders" }), { target: { value: "rés" } });
+    await waitFor(() => expect(requests.at(-1)).toMatchObject({ path: "/home/alex/Projects", mode: "browse", query: "rés" }));
+    expect(change).not.toHaveBeenCalled();
+  });
+
+  it("explores then explicitly selects exactly the current folder", async () => {
+    folders(request => request.path === selected.directory ? selected : request.path === projects.directory ? projects : home);
+    render(<Probe />);
+    fireEvent.click(await screen.findByRole("option", { name: "Projects" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Résumé project" }));
+    const use = await screen.findByRole("button", { name: "Use folder Résumé project" });
+    await waitFor(() => expect(use).toBeEnabled());
+    expect(use.closest(".repository-path-picker__breadcrumb-bar")).not.toBeNull();
+    expect(use.closest(".repository-path-picker__footer")).toBeNull();
+    fireEvent.click(use);
+    expect(screen.getByText(selected.directory!)).toHaveClass("repository-path-picker__value");
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change folder" })).toHaveFocus();
+  });
+
+  it("cancel and Escape retain the previously confirmed folder", async () => {
+    folders(() => projects);
+    render(<Probe initial="/home/alex/existing" />);
+    fireEvent.click(screen.getByRole("button", { name: "Change folder" }));
     await screen.findByRole("option");
-    fireEvent.keyDown(input, { key });
-    expect(change).toHaveBeenCalledWith("C:\\work\\demo");
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "other" } });
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    expect(screen.getByText("/home/alex/existing")).toHaveClass("repository-path-picker__value");
+    expect(screen.getByRole("button", { name: "Change folder" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Enter a path instead" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Repository path" }), { target: { value: "/mistake" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("/home/alex/existing")).toBeVisible();
+  });
+
+  it("keeps a manual draft separate until Use this path, including new or unbrowseable paths", async () => {
+    folders(() => home);
+    const change = vi.fn();
+    const submit = vi.fn(event => event.preventDefault());
+    render(<form onSubmit={submit}><RepositoryPathPicker value="" onChange={change} defaultOpen={false} /><button>Open project</button></form>);
+    fireEvent.click(screen.getByRole("button", { name: "Enter a path instead" }));
+    const path = screen.getByRole("textbox", { name: "Repository path" });
+    fireEvent.change(path, { target: { value: "  /mnt/new-project  " } });
+    expect(change).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Use this path" })).toBeEnabled();
+    fireEvent.keyDown(path, { key: "Enter" });
+    expect(change).toHaveBeenCalledWith("/mnt/new-project");
     expect(submit).not.toHaveBeenCalled();
   });
 
-  it("can recover an invalid typed path by browsing configured locations", async () => {
-    vi.mocked(getRepositoryPathSuggestions).mockRejectedValueOnce(new Error("Folder unavailable"));
-    render(<RepositoryPathPicker value="C:\\missing\\new" onChange={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Browse" }));
-    await screen.findByRole("alert");
-    vi.mocked(getRepositoryPathSuggestions).mockResolvedValue({ ...windowsResult, directory: null, entries: [] });
-    fireEvent.click(screen.getByRole("button", { name: "Browse locations" }));
-    expect(await screen.findByRole("button", { name: "C:\\" })).toBeInTheDocument();
-    expect(getRepositoryPathSuggestions).toHaveBeenLastCalledWith({ path: "", mode: "browse" }, expect.any(AbortSignal));
+  it("navigates and goes up from the search field without implicit selection or submission", async () => {
+    folders(request => request.path === projects.directory ? projects : home);
+    const change = vi.fn();
+    const submit = vi.fn(event => event.preventDefault());
+    render(<form onSubmit={submit}><RepositoryPathPicker value="" onChange={change} /></form>);
+    await screen.findByRole("option");
+    const input = screen.getByRole("combobox");
+    fireEvent.keyDown(input, { key: "Enter" });
+    await screen.findByRole("option", { name: "Résumé project" });
+    fireEvent.keyDown(input, { key: "ArrowUp", altKey: true });
+    await screen.findByRole("option", { name: "Projects" });
+    expect(change).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    expect(fireEvent.keyDown(input, { key: "Tab" })).toBe(true);
+    expect(screen.getByRole("region", { name: "Choose a project folder" })).toBeVisible();
+    fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+    expect(change).toHaveBeenCalledWith(home.directory);
+  });
+
+  it("ignores stale responses during filtering and after cancellation", async () => {
+    let finish!: (result: RepositoryPathSuggestions) => void;
+    let oldSignal!: AbortSignal;
+    folders((request, signal) => {
+      if (request.query === "old") { oldSignal = signal; return new Promise(resolve => { finish = resolve; }); }
+      return home;
+    });
+    render(<Probe />);
+    await screen.findByRole("option");
+    const input = screen.getByRole("combobox");
+    fireEvent.change(input, { target: { value: "old" } });
+    await waitFor(() => expect(finish).toBeDefined());
+    fireEvent.change(input, { target: { value: "new" } });
+    expect(oldSignal.aborted).toBe(true);
+    fireEvent.keyDown(input, { key: "Escape" });
+    await act(async () => finish(projects));
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    expect(screen.queryByText(projects.directory!)).not.toBeInTheDocument();
+  });
+
+  it("falls back to configured locations when Home is outside browsing roots", async () => {
+    folders(request => request.path === "~"
+      ? Response.json({ error: "Folder is unavailable or outside configured browse roots" }, { status: 403 })
+      : { ...home, directory: null, parent: null, breadcrumbs: [], entries: [] });
+    const change = vi.fn();
+    render(<RepositoryPathPicker value="" onChange={change} />);
+    expect(await screen.findByRole("option", { name: "alex" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Use folder/ })).not.toBeInTheDocument();
+    expect(change).not.toHaveBeenCalled();
+  });
+
+  it("retains Windows paths exactly and never interprets a folder-name query as a path", async () => {
+    folders(() => ({ ...home, platform: "win32", separator: "\\", directory: "C:\\work\\demo", roots: [], breadcrumbs: [{ name: "demo", path: "C:\\work\\demo" }], entries: [] }));
+    const change = vi.fn();
+    render(<RepositoryPathPicker value={"C:\\work\\demo"} onChange={change} />);
+    fireEvent.click(screen.getByRole("button", { name: "Change folder" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use folder demo" }));
+    expect(change).toHaveBeenCalledWith("C:\\work\\demo");
   });
 });

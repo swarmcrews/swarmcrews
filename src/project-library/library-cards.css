@@ -1,0 +1,67 @@
+/* Identity first, content-sized cards. Row alignment never reserves absent activity. */
+.pl-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-panel);
+  background: var(--bg-surface);
+  isolation: isolate;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.pl-card header { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 8px; }
+.pl-card h3 { min-width: 0; margin: 0; }
+.project-library .pl-card button { border-color: transparent; background: transparent; }
+.project-library .pl-card .pl-name { width: 100%; min-height: 44px; padding: 4px 0; text-align: left; font-size: 1.0625rem; font-weight: 600; line-height: 1.4; letter-spacing: -.015em; overflow-wrap: anywhere; }
+.pl-card .pl-name::after { position: absolute; inset: 0; border-radius: var(--radius-panel); content: ""; }
+.pl-card .pl-more, .pl-card .pl-state, .pl-card footer button, .pl-card .pl-restore { position: relative; z-index: 1; }
+.project-library .pl-card .pl-more { display: grid; place-items: center; min-width: 44px; min-height: 44px; padding: 0; color: var(--text-secondary); }
+.project-library .pl-card .pl-path { margin: 0 0 4px; color: var(--text-secondary); font: 400 .75rem/1.5 var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-card-status-note { color: var(--text-secondary); font-size: .75rem; }
+.project-library .pl-card .pl-state { display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; min-height: 44px; max-width: 100%; padding: 4px 0; color: var(--text-primary); text-align: left; font-size: .8125rem; }
+.pl-state-label { min-width: 0; overflow-wrap: anywhere; }
+.pl-card .pl-state > svg { flex-shrink: 0; color: var(--text-secondary); }
+.pl-card .pl-state[data-state="attention"] > svg:first-child { color: var(--status-warning); }
+.pl-card .pl-state[data-state="running"]::before, .pl-card .pl-state[data-state="new"]::before { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--status-running); content: ""; }
+.pl-card .pl-state[data-state="new"]::before { background: var(--accent); }
+.project-library .pl-card-agents { margin: 0 0 4px; color: var(--text-secondary); font-size: .75rem; line-height: 1.5; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pl-recent-row { min-width: 0; margin: 4px 0; }
+.project-library .pl-card .pl-recent { margin: 0; color: var(--text-secondary); font-size: .8125rem; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.pl-card footer { display: flex; flex-wrap: wrap; min-width: 0; align-items: center; justify-content: space-between; gap: 0 12px; margin-top: auto; padding-top: 4px; }
+.project-library .pl-card footer button { min-width: 44px; min-height: 44px; padding: 4px 0; color: var(--text-primary); text-align: left; font-size: .8125rem; }
+.pl-card footer time { color: var(--text-secondary); font-size: .75rem; }
+.pl-card .pl-unread { display: inline-flex; align-items: center; gap: 8px; white-space: normal; }
+.pl-archive-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 12px; margin-top: auto; }
+.pl-last-opened, .pl-archive-tags { position: relative; z-index: 1; }
+.pl-last-opened { display: flex; flex-wrap: wrap; gap: 4px 8px; color: var(--text-secondary); font-size: .75rem; }
+.pl-last-opened time { white-space: nowrap; }
+.project-library .pl-card .pl-restore { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 8px; font-size: .8125rem; }
+.project-library .pl-archive-tags { margin: 0 0 4px; color: var(--text-secondary); font-size: .75rem; overflow-wrap: anywhere; }
+
+/* Whole-card activation never steals clicks/focus from independent actions. */
+.project-library .pl-card .pl-name:focus-visible { outline: none; }
+.pl-card .pl-name:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -3px; }
+.project-library .pl-card button:not(.pl-name):focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg-secondary); }
+.pl-card-secondary { opacity: 1; transition: opacity 120ms ease; }
+@media (hover: hover) and (pointer: fine) {
+  .pl-project .pl-card-secondary { opacity: 0; pointer-events: none; }
+  .pl-project:hover .pl-card-secondary, .pl-project:focus-within .pl-card-secondary { opacity: 1; pointer-events: auto; }
+  .pl-card:has(.pl-name:hover) { border-color: var(--border-hover); background: var(--bg-secondary); }
+  .project-library .pl-card button:not(.pl-name):hover:not(:disabled) { background: var(--bg-elevated); }
+}
+/* Hybrid devices must not require a mouse before discovering an action. */
+@media (any-pointer: coarse) { .pl-project .pl-card-secondary { opacity: 1; pointer-events: auto; } }
+@media (prefers-reduced-motion: reduce) { .pl-card, .pl-card-secondary { transition: none; } }
+@media (forced-colors: active) { .pl-card .pl-name:focus-visible::after { outline-color: Highlight; } }
+
+/* A real compact archive row: identity at left, recovery at right. No fixed height. */
+@container projects (min-width: 700px) {
+  .pl-projects--list .pl-card--archived { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, .8fr); gap: 0 24px; align-items: center; }
+  .pl-projects--list .pl-card--archived header { grid-column: 1; grid-row: 1; }
+  .pl-projects--list .pl-card--archived .pl-path { grid-column: 1; grid-row: 2; }
+  .pl-projects--list .pl-card--archived .pl-archive-tags { grid-column: 1; grid-row: 3; }
+  .pl-projects--list .pl-card--archived .pl-archive-actions { grid-column: 2; grid-row: 1 / 4; margin: 0; justify-content: flex-end; }
+}

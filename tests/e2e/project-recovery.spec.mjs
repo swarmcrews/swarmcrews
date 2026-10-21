@@ -1,43 +1,18 @@
+import { boundaryLibrary, libraryProject, openDetails } from "./project-library-fixture.mjs";
 import { expect, test } from "@playwright/test";
 
 // HTTP/WS boundary simulation only: never writes a repository or starts a provider.
+// Library ingress and archive receipts replace recents/removal, not workflow semantics.
 async function fixture(page) {
-  const project = { id: "recovery", name: "Recovery Project", path: "/sample/recovery", nodes: [], graph: { edges: [] }, transform: { x: 0, y: 0, scale: 1 }, settings: {}, skills: [], hasSidecar: true, lastOpened: new Date().toISOString() };
-  const calls = [];
-  const failures = new Map();
-  const holds = new Map();
-  await page.route("**/api/**", async route => {
-    const request = route.request();
-    const path = new URL(request.url()).pathname;
-    const key = `${request.method()} ${path}`;
-    calls.push({ key, body: request.postDataJSON() });
-    if (holds.has(key)) await holds.get(key);
-    if (failures.has(key)) return route.fulfill({ status: 503, json: { error: failures.get(key) } });
-    let json = {};
-    if (path === "/api/auth/token") json = { token: "recovery-test" };
-    else if (path === "/api/projects" && request.method() === "GET") json = [project];
-    else if (path === "/api/projects/activity-summary") json = [{ projectId: project.id, activeLeaders: 0, activeCrew: 0 }];
-    else if (path === "/api/projects/git-status") json = { isRepository: true };
-    else if (path === "/api/readiness") json = { schemaVersion: 1, ready: true, readyHarnesses: [], harnesses: [] };
-    else if (path === "/api/projects/path-suggestions") json = { platform: "posix", separator: "/", roots: [], directory: null, parent: null, breadcrumbs: [], entries: [], truncated: false };
-    else if (path === "/api/projects/recovery" || path === "/api/projects/open" || (path === "/api/projects" && request.method() === "POST")) json = project;
-    else if (path.includes("skills")) json = [];
-    else if (path.includes("context")) json = { content: "" };
-    return route.fulfill({ json });
-  });
-  await page.routeWebSocket("**/ws*", socket => socket.onMessage(raw => {
-    const message = JSON.parse(raw);
-    if (message.type === "list_sessions") socket.send(JSON.stringify({ type: "session_list", topic: `project:${project.id}`, sessions: [], includeArchived: message.includeArchived === true }));
-    if (message.type === "list_harnesses") socket.send(JSON.stringify({ type: "harness_list", topic: "global", harnesses: [] }));
-    if (message.type === "list_work_items") socket.send(JSON.stringify({ type: "work_item_response", topic: "global", command: message.type, requestId: message.requestId, success: true, result: { projectId: project.id, items: [], nextCursor: null } }));
-  }));
-  await page.goto("/?view=desktop");
+  const project = libraryProject({ id: "recovery", name: "Recovery Project", path: "/sample/recovery" });
+  const f = await boundaryLibrary(page, { projects: [project] });
+  await f.goto();
   await expect(page.getByRole("button", { name: "Open Recovery Project" })).toBeVisible();
-  return { calls, failures, hold(key) { let release; holds.set(key, new Promise(resolve => { release = resolve; })); return () => { holds.delete(key); release(); }; } };
+  return f;
 }
 
 // U11: successful navigation is acknowledged by the loaded named workspace,
-// not the removed success toast. Error/registration-failure/rename/remove receipts remain.
+// not the removed success toast. Error/registration-failure/rename/archive receipts remain.
 async function expectOpenedWorkspace(page) {
   await expect(page.locator(".project-header")).toBeVisible();
   await expect(page.locator(".project-header")).toContainText("Recovery Project");
@@ -102,7 +77,7 @@ test("workspace error can return to Projects", async ({ page }) => {
   f.failures.set("GET /api/projects/recovery", "Not found");
   await page.getByRole("button", { name: "Open Recovery Project" }).click();
   await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Project Library", exact: true })).toBeVisible();
 });
 
 for (const mode of ["open", "register"]) for (const width of [1440, 320]) {
@@ -111,14 +86,15 @@ for (const mode of ["open", "register"]) for (const width of [1440, 320]) {
     const f = await fixture(page);
     const key = mode === "open" ? "POST /api/projects/open" : "POST /api/projects";
     if (mode === "register") await page.getByRole("button", { name: "Register repository" }).click();
-    const input = page.getByRole("combobox", { name: "Folders on the server" });
+    await page.getByRole("button", { name: "Enter a path instead" }).click();
+    const input = page.getByRole("textbox", { name: "Repository path" });
     await input.fill("/sample/" + "long-repository-name".repeat(10));
-    await input.press("Escape");
+    await page.getByRole("button", { name: "Use this path" }).click();
     if (mode === "register") await page.getByRole("textbox", { name: "Project name" }).fill("My repository");
     f.failures.set(key, "Server unavailable");
     await page.getByRole("button", { name: mode === "open" ? "Open" : "Create", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Server unavailable" })).toBeVisible();
-    await expect(input).toHaveValue("/sample/" + "long-repository-name".repeat(10));
+    await expect(page.locator(".repository-path-picker__value")).toHaveText("/sample/" + "long-repository-name".repeat(10));
     if (mode === "register") await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue("My repository");
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.screenshot({ path: info.outputPath(`repository-${mode}-error-${width}.png`) });
@@ -126,35 +102,41 @@ for (const mode of ["open", "register"]) for (const width of [1440, 320]) {
     const release = f.hold(key);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(page.getByRole("button", { name: /Opening|Registering/ })).toBeDisabled();
-    await expect(input).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Change folder" })).toBeDisabled();
     release();
     await expectOpenedWorkspace(page);
     expect(f.calls.filter(c => c.key === key)).toHaveLength(2);
   });
 }
 
-for (const width of [1440, 320]) test(`failed removal retains project, needs explicit retry confirmation, and acknowledges success at ${width}px`, async ({ page }, info) => {
+for (const width of [1440, 320]) test(`failed archive retains project and requires explicit retry confirmation at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 844 });
   const f = await fixture(page);
-  f.failures.set("DELETE /api/projects/recovery", "Removal unavailable");
-  await page.getByRole("button", { name: "Remove", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Your project folder and files will remain on disk");
-  await dialog.getByRole("button", { name: "Remove project" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Removal unavailable" })).toBeVisible();
+  const key = "POST /api/projects/library/projects/recovery/archive";
+  f.failures.set(key, "Archive unavailable");
+  const d = await openDetails(page, "Recovery Project");
+  await d.getByRole("button", { name: "Archive project", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Archive Recovery Project?" });
+  await expect(dialog).toContainText("Repository files, workspace identity, Canvas, work history, tags and collections are preserved");
+  await dialog.getByRole("button", { name: "Confirm archive" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Archive unavailable");
   await expect(page.getByRole("button", { name: "Open Recovery Project" })).toBeVisible();
-  await page.screenshot({ path: info.outputPath(`remove-error-${width}.png`) });
-  f.failures.delete("DELETE /api/projects/recovery");
-  await page.getByRole("button", { name: "Retry removal" }).click();
+  await page.screenshot({ path: info.outputPath(`archive-error-${width}.png`) });
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  f.failures.delete(key);
+  const retryDetails = await openDetails(page, "Recovery Project");
+  await retryDetails.getByRole("button", { name: "Archive project", exact: true }).click();
   await expect(dialog).toBeVisible();
-  expect(f.calls.filter(c => c.key === "DELETE /api/projects/recovery")).toHaveLength(1);
-  const release = f.hold("DELETE /api/projects/recovery");
-  await dialog.getByRole("button", { name: "Remove project" }).click();
-  await expect(page.getByRole("button", { name: "Remove", exact: true })).toBeDisabled();
+  expect(f.calls.filter(c => c.key === key)).toHaveLength(1);
+  const release = f.hold(key);
+  await dialog.getByRole("button", { name: "Confirm archive" }).click();
+  await expect(dialog.getByRole("button", { name: "Archiving…" })).toBeDisabled();
   release();
-  await expect(page.getByRole("status").filter({ hasText: "Removed" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^Archived/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open Recovery Project" })).toHaveCount(0);
-  expect(f.calls.filter(c => c.key === "DELETE /api/projects/recovery")).toHaveLength(2);
+  expect(f.calls.filter(c => c.key === key)).toHaveLength(2);
+  expect(f.calls.filter(c => c.key === key).map(c => c.body.expectedRevision)).toEqual([0, 0]);
+  expect(f.calls.filter(c => c.key.startsWith("DELETE "))).toEqual([]);
 });
 
 for (const width of [1440, 320]) test(`rename failure preserves draft and last saved title at ${width}px; Enter does not duplicate pending save`, async ({ page }, info) => {
@@ -192,9 +174,10 @@ test("acknowledges registration even when the subsequent workspace load fails", 
   const f = await fixture(page);
   f.failures.set("GET /api/projects/recovery", "Workspace temporarily unavailable");
   await page.getByRole("button", { name: "Register repository" }).click();
-  const input = page.getByRole("combobox", { name: "Folders on the server" });
+  await page.getByRole("button", { name: "Enter a path instead" }).click();
+  const input = page.getByRole("textbox", { name: "Repository path" });
   await input.fill("/sample/recovery");
-  await input.press("Escape");
+  await page.getByRole("button", { name: "Use this path" }).click();
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Couldn’t open workspace" })).toBeVisible();
   await expect(page.getByRole("status")).toHaveText("Project registered.");

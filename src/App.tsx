@@ -1,3 +1,10 @@
+import { NavigationDraftReveal } from "./navigation-drafts.tsx";
+import { DraftNavigationDialog } from "./project-library/DraftNavigationDialog.tsx";
+import { useDraftSurface } from "./project-library/use-draft-surface.ts";
+import { projectDestination, rememberDestination } from "./project-library/model.ts";
+import { useProjectNavigation } from "./project-library/use-project-navigation.ts";
+import { LibraryDialog } from "./project-library/LibraryDialog.tsx";
+import { ContextReader } from "./project-library/ContextReader.tsx";
 import { getDefaultSkillIds } from "./skills/registry.ts";
 import { ChatLinkScope } from "./components/ChatLink.tsx";
 import "./nodes/ClaudeSessionNode.tsx";
@@ -157,12 +164,14 @@ function ProjectView({
   acknowledgement = "",
   onClose,
   onSwitchProject,
+  registerGuard,
 }: {
   projectId: string;
   projectPath: string;
   acknowledgement?: string;
   onClose: () => void;
   onSwitchProject: (id: string, path: string) => void;
+  registerGuard: (guard: (() => boolean) | null) => void;
 }) {
   const socket = useSocket(WS_URL);
   const [nodes, dispatch] = useReducer(canvasReducer, []);
@@ -182,10 +191,14 @@ function ProjectView({
   const failedSettingsRef = useRef<ProjectSettings | null>(null);
   // Fade the shared loading screen away as soon as project data is ready.
   const [loaderUnmounted, setLoaderUnmounted] = useState(false);
-  const [activeView, setActiveView] = useState<ActiveView>("activity");
+  const [destination] = useState(() => projectDestination(projectId));
+  const [contextOpen, setContextOpen] = useState(destination.view === "context");
+  const [navigationBlocked, setNavigationBlocked] = useState(false);
+  const [activeView, setActiveView] = useState<ActiveView>(destination.view === "canvas" ? "canvas" : "activity");
+  const canvasDraft = useDraftSurface<ActiveView>(setActiveView);
   const [activityHomeRequest, setActivityHomeRequest] = useState(0);
   const [activityHasDraft, setActivityHasDraft] = useState(false);
-  const [activitySelection, setActivitySelection] = useState<string | null>(null);
+  const [activitySelection, setActivitySelection] = useState<string | null>(destination.workItemId ? `work-item:${destination.workItemId}` : null);
 
   // MCP servers is a still-evolving feature, gated off by default behind
   // a debug feature flag. When off, the dock panel is not mounted at all.
@@ -232,6 +245,15 @@ function ProjectView({
     graph,
     transform,
   );
+
+  useEffect(() => {
+    registerGuard(() => {
+      if (saveStatus === "unsaved" || saveStatus === "saving" || saveStatus === "error" || settingsSaveState.status === "saving" || settingsSaveState.status === "error") { setNavigationBlocked(true); return false; }
+      return true;
+    });
+    return () => registerGuard(null);
+  }, [registerGuard, saveStatus, settingsSaveState]);
+  useEffect(() => { rememberDestination(projectId, { view: activeView, ...(activitySelection?.startsWith("work-item:") ? { workItemId: activitySelection.slice(10) } : {}) }); }, [projectId, activeView, activitySelection]);
 
   const handleRename = useCallback(
     async (name: string) => {
@@ -371,7 +393,7 @@ function ProjectView({
       if (!node) return;
       // Canvas switches to the owning workspace before revealing the destination.
       setFocusNodeId(nodeId);
-      setActiveView("canvas");
+      canvasDraft.changeView("canvas");
     },
     [nodes],
   );
@@ -424,7 +446,7 @@ function ProjectView({
       const y = window.innerHeight / 2 - position.y - height / 2;
       setTransform({ x, y, scale: 1 });
       setFocusNodeId(nodeId);
-      setActiveView("canvas");
+      canvasDraft.changeView("canvas");
     },
     [nodes, handleFocusNode, positionInViewport, projectSettings, setTransform],
   );
@@ -505,7 +527,7 @@ function ProjectView({
       handleFocusNode(nodeId);
       requestLeaderFullscreen(nodeId, () => {
         setActivitySelection(selectedKey);
-        setActiveView(activeView);
+        canvasDraft.changeView(activeView);
       });
     },
     [handleFocusNode, activeView],
@@ -555,7 +577,7 @@ function ProjectView({
       },
     };
     dispatch({ type: "ADD_NODE", node });
-    setActiveView("canvas");
+    canvasDraft.changeView("canvas");
   }, [dispatch, positionInViewport, projectSettings]);
 
   // Skills customization handlers
@@ -687,6 +709,8 @@ function ProjectView({
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {navigationBlocked && <LibraryDialog title="Keep your unsaved work" onClose={() => setNavigationBlocked(false)}><p>Canvas or settings changes are still saving or failed to save. Finish or retry those saves before leaving; no work was removed.</p><button type="button" onClick={() => setNavigationBlocked(false)}>Return to project</button>{saveStatus === "error" && <button type="button" onClick={retry}>Retry Canvas save</button>}{settingsSaveState.status === "error" && <button type="button" onClick={retrySettingsSave}>Retry settings save</button>}</LibraryDialog>}
+      {contextOpen && <ContextReader projectId={projectId} onClose={() => setContextOpen(false)} />}
       {loaderOverlay}
       {loaded ? (
         <HarnessListProvider
@@ -709,7 +733,7 @@ function ProjectView({
               retryCount={retryCount}
               retry={retry}
               activeView={activeView}
-              onViewChange={view => { setActivitySelection(null); setActiveView(view); if (view === "activity") setActivityHomeRequest(value => value + 1); }}
+              onViewChange={view => { setActivitySelection(null); canvasDraft.changeView(view); if (view === "activity") setActivityHomeRequest(value => value + 1); }}
               activityAttentionCount={activityAttentionCount + changesCount}
               settings={projectSettings}
               onSettingsChange={handleSettingsChange}
@@ -718,8 +742,9 @@ function ProjectView({
               socketSend={socket.send}
               socketSubscribe={socket.subscribe}
             />
-            {(activeView === "activity" || activityHasDraft) && (
-              <div hidden={activeView !== "activity"} style={{ position: "absolute", top: PROJECT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
+            {destination.workItemId && activitySelection === `work-item:${destination.workItemId}` && !workItemState.loading && !workItemState.items[destination.workItemId] && <div role="status" style={{ position:"absolute", top:44, left:0, right:0, zIndex:960, background:"var(--bg-secondary)", padding:12 }}>The requested work item is unavailable. Project Activity is shown; another run was not substituted.<button type="button" onClick={() => setActivitySelection(null)}>Use project Activity</button></div>}
+            {(activeView === "activity" || activityHasDraft) && (!destination.workItemId || !workItemState.loading) && (
+              <NavigationDraftReveal onOpen={() => canvasDraft.changeView("activity")}><div hidden={activeView !== "activity"} style={{ position: "absolute", top: PROJECT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                 <ActivityView
                   active={activeView === "activity"}
                   homeRequest={activityHomeRequest}
@@ -730,10 +755,10 @@ function ProjectView({
                   connected={socket.connected}
                   lifecycleController={activityLifecycle}
                   sessions={activitySessions}
-                  initialSelectedKey={activitySelection}
+                  initialSelectedKey={activitySelection && (!destination.workItemId || workItemState.items[destination.workItemId]) ? activitySelection : null}
                   nodes={nodes}
                   edges={graph.edges}
-                  onOpenCanvas={() => { setActivitySelection(null); setActiveView("canvas"); }}
+                  onOpenCanvas={() => { setActivitySelection(null); canvasDraft.changeView("canvas"); }}
                   onLaunchLeader={handleLaunchActivityLeader}
                   onCommitLaunchLeader={(node, workspaceId) => dispatch({ type: "ADD_NODE", node, workspaceId })}
                   onCreateWorkspace={(name) => {
@@ -769,10 +794,10 @@ function ProjectView({
                   promptFailures={workItemState.promptFailures}
                   onClearPromptFailure={workItemState.clearPromptFailure}
                 />
-              </div>
+              </div></NavigationDraftReveal>
             )}
-            {activeView !== "activity" && (
-              <div style={{ position: "absolute", top: PROJECT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
+            {(activeView === "canvas" || canvasDraft.hasDraft) && (
+              <NavigationDraftReveal onOpen={() => canvasDraft.changeView("canvas")}><div ref={canvasDraft.root} hidden={activeView === "activity"} style={{ position: "absolute", top: PROJECT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0 }}>
                 <Canvas
                   nodes={nodes}
                   dispatch={dispatch}
@@ -794,7 +819,7 @@ function ProjectView({
                   activitySessions={activitySessions}
                   onOpenActivitySession={session => {
                     setActivitySelection(activityEntryId(session));
-                    setActiveView("activity");
+                    canvasDraft.changeView("activity");
                   }}
                 />
                 <ProjectPanel
@@ -810,7 +835,7 @@ function ProjectView({
                   onFocusNode={handleFocusNode}
                 />
                   <DockBar />
-                </div>
+                </div></NavigationDraftReveal>
             )}
             {mcpServersEnabled && <McpServersBrowser projectId={projectId} />}
             <SkillsBrowser
@@ -857,7 +882,8 @@ function ProjectView({
 }
 
 export default function App() {
-  const [currentProject, setCurrentProject] = useState<{ id: string; path: string; acknowledgement?: string } | null>(null);
+  const navigation = useProjectNavigation();
+  const currentProject = navigation.project;
   const [themeId, setThemeIdState] = useState(() => loadPersistedThemeId());
   usePreventBrowserZoom();
 
@@ -885,8 +911,10 @@ export default function App() {
   if (!currentProject) {
     return (
       <ThemeContext.Provider value={themeCtx}>
+        {navigation.blocked && <DraftNavigationDialog onClose={navigation.clearBlocked} onConfirm={navigation.confirmNavigation} onOpenDraft={navigation.openDraft} />}
+        {navigation.error && <div role="alert">{navigation.error}</div>}
         <ProjectList
-          onOpenProject={(id, projectPath, acknowledgement) => setCurrentProject({ id, path: projectPath, acknowledgement: acknowledgement ?? "" })}
+          onOpenProject={(id, projectPath, acknowledgement) => navigation.navigate({ id, path: projectPath, acknowledgement: acknowledgement ?? "" })}
         />
         <DebugModeAffordance />
       </ThemeContext.Provider>
@@ -895,13 +923,15 @@ export default function App() {
 
   return (
     <ThemeContext.Provider value={themeCtx}>
+        {navigation.blocked && <DraftNavigationDialog onClose={navigation.clearBlocked} onConfirm={navigation.confirmNavigation} onOpenDraft={navigation.openDraft} />}
       <ProjectView
         key={currentProject.id}
         projectId={currentProject.id}
         projectPath={currentProject.path}
         acknowledgement={currentProject.acknowledgement ?? ""}
-        onClose={() => setCurrentProject(null)}
-        onSwitchProject={(id, projectPath) => setCurrentProject({ id, path: projectPath })}
+        registerGuard={navigation.registerGuard}
+        onClose={() => navigation.navigate(null)}
+        onSwitchProject={(id, projectPath) => navigation.navigate({ id, path: projectPath })}
       />
       <DebugModeAffordance />
     </ThemeContext.Provider>

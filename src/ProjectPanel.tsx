@@ -1,3 +1,4 @@
+import { NavigationDraft } from "./navigation-drafts.tsx";
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { BookOpen } from "lucide-react";
 import {
@@ -179,11 +180,14 @@ export function ProjectPanel({
   const [editing, setEditing] = useState(false);
   const [editBuffer, setEditBuffer] = useState("");
   const [saving, setSaving] = useState(false);
-
+  const [editBaseline, setEditBaseline] = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const contextIsEmpty = isProjectContextEmpty(context);
 
   // Context is optional; loading or updating it must not change the user's tab.
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
+  const contextDraft = <NavigationDraft scope="project-context" dirty={editing && editBuffer !== editBaseline} pending={saving} failed={saveError !== null}
+    onOpen={() => { setCollapsed(false); setActiveTab("context"); }} />;
 
   // Re-read project instructions when opening Context or returning from an editor.
   useEffect(() => {
@@ -214,26 +218,33 @@ export function ProjectPanel({
 
   const handleEditStart = useCallback(() => {
     setEditBuffer(context?.content ?? "");
+    setEditBaseline(context?.content ?? "");
+    setSaveError(null);
     setEditing(true);
   }, [context]);
 
   const handleEditSave = useCallback(async () => {
+    if (saving) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await updateProjectContext(projectId, editBuffer);
       setContext({ content: editBuffer, exists: true });
       setEditing(false);
     } catch (err) {
+      setSaveError("Context could not be saved. Your edits are retained. Save to retry, or Cancel to discard.");
       log.error("context_save_failed", { error: err });
     } finally {
       setSaving(false);
     }
-  }, [projectId, editBuffer]);
+  }, [projectId, editBuffer, saving]);
 
   const handleEditCancel = useCallback(() => {
+    if (saving) return;
     setEditing(false);
     setEditBuffer("");
-  }, []);
+    setSaveError(null);
+  }, [saving]);
 
   const extractFilePathsCachedRef = useRef(createFilePathExtractor());
 
@@ -317,6 +328,7 @@ export function ProjectPanel({
   if (collapsed) {
     return (
       <div ref={panelRef} style={{ position: "absolute", top: 12, left: 16, zIndex: 100 }}>
+        {contextDraft}
         <button
           onClick={() => setCollapsed(false)}
           style={{
@@ -387,6 +399,7 @@ export function ProjectPanel({
         overflow: "hidden",
       }}
     >
+      {contextDraft}
       <div
         style={{
           padding: "10px 14px",
@@ -605,8 +618,10 @@ export function ProjectPanel({
 
             {editing && (
               <div>
+                {saveError && <p role="alert">{saveError}</p>}
                 <textarea
                   aria-label="Workspace context"
+                  disabled={saving}
                   value={editBuffer}
                   onChange={(e) => setEditBuffer(e.target.value)}
                   style={{
@@ -642,6 +657,7 @@ export function ProjectPanel({
                 >
                   <button
                     onClick={handleEditCancel}
+                    disabled={saving}
                     style={{
                       padding: "6px 12px",
                       fontSize: 11,

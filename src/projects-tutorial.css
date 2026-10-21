@@ -23,8 +23,6 @@
 .tutorial-link { text-decoration: underline; text-underline-offset: 3px; }
 .tutorial-link:hover, .tutorial-close:hover { color: var(--text-primary); background: var(--state-hover); }
 .tutorial-primary:focus-visible, .tutorial-secondary:focus-visible, .tutorial-link:focus-visible, .tutorial-close:focus-visible, .projects-tutorial textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.project-list-heading { position: relative; }
-.project-list-heading > .tutorial-link { position: absolute; top: 0; right: 0; }
 .projects-tutorial {
   width: min(1400px, calc(100vw - 32px));
   max-width: none;

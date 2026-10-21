@@ -2,8 +2,113 @@ import fs from "node:fs";
 import path from "node:path";
 import { test, expect } from "@playwright/test";
 
+async function openChooser(page) {
+  const search = page.getByRole("combobox", { name: "Search folders" });
+  const choose = page.getByRole("button", { name: "Choose folder", exact: true });
+  await expect(search.or(choose)).toBeVisible();
+  if (await choose.isVisible()) await choose.click();
+}
+
 for (const view of ["desktop", "mobile"]) {
-  test(`${view} browses server folders without opening a project`, async ({ page }) => {
+  test(`${view} chooses a missing folder from an empty search without creating it yet`, async ({ page }) => {
+    const home = process.env.MINIONS_E2E_HOME;
+    if (!home) throw new Error("MINIONS_E2E_HOME is required");
+    const parent = fs.mkdtempSync(path.join(home, "new-folder-picker-"));
+    const destination = path.join(parent, "Fresh app");
+    const mutations = [];
+    page.on("request", request => {
+      if (request.method() === "POST" && /\/api\/projects(?:\/open|\/git-status)?$/.test(new URL(request.url()).pathname)) mutations.push(request.url());
+    });
+    await page.setViewportSize(view === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 });
+    await page.goto(`/?view=${view}`);
+    if (view === "mobile") await page.getByRole("button", { name: "Add repository", exact: true }).click();
+    await openChooser(page);
+    const search = page.getByRole("combobox", { name: "Search folders" });
+    await search.fill(path.basename(parent));
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(parent);
+    await search.fill("Fresh app");
+    await expect(page.getByRole("button", { name: "Use new folder Fresh app", exact: true })).toBeVisible();
+    expect(fs.existsSync(destination)).toBe(false);
+    await search.press("Enter");
+    await expect(page.locator(".repository-path-picker__value")).toHaveCount(0);
+    await page.getByRole("button", { name: "Use new folder Fresh app", exact: true }).click();
+    await expect(page.locator(".repository-path-picker__value")).toHaveText(destination);
+    await expect(page.getByRole("button", { name: view === "mobile" ? "Register project" : "Create", exact: true })).toBeEnabled();
+    expect(fs.existsSync(destination)).toBe(false);
+    expect(mutations).toEqual([]);
+    await page.getByRole("button", { name: "Change folder", exact: true }).click();
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(parent);
+  });
+
+  test(`${view} remembers multiple starred locations without selecting a project`, async ({ page }) => {
+    const home = process.env.MINIONS_E2E_HOME;
+    if (!home) throw new Error("MINIONS_E2E_HOME is required");
+    const parent = fs.mkdtempSync(path.join(home, "star-picker-"));
+    const first = path.join(parent, "First project");
+    const second = path.join(parent, "Second project");
+    fs.mkdirSync(first);
+    fs.mkdirSync(second);
+    const mutations = [];
+    page.on("request", request => {
+      if (request.method() === "POST" && /\/api\/projects(?:\/open|\/git-status)?$/.test(new URL(request.url()).pathname)) mutations.push(request.url());
+    });
+    await page.setViewportSize(view === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 });
+    const visit = async () => {
+      await page.goto(`/?view=${view}`);
+      if (view === "mobile") await page.getByRole("button", { name: "Add repository", exact: true }).click();
+    };
+    await visit();
+    await openChooser(page);
+    const search = page.getByRole("combobox", { name: "Search folders" });
+    await search.fill(path.basename(parent));
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await page.getByRole("option", { name: "First project", exact: true }).click();
+    await page.getByRole("button", { name: "Star folder First project", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Unstar folder First project", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await search.press("Alt+ArrowUp");
+    await page.getByRole("option", { name: "Second project", exact: true }).click();
+    await page.getByRole("button", { name: "Star folder Second project", exact: true }).click();
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("swarmcrews:starred-project-folders")))).toEqual([first, second]);
+    await visit();
+    await openChooser(page);
+    await expect(page.getByRole("navigation", { name: "Folder breadcrumbs" })).toContainText("Home");
+    await expect(page.locator(".repository-path-picker__value")).toHaveCount(0);
+    const action = page.getByRole("button", { name: view === "mobile" ? "Register project" : "Open", exact: true });
+    await expect(action).toBeDisabled();
+    await page.getByRole("button", { name: "Locations", exact: true }).click();
+    const locations = page.getByRole("region", { name: "Folder locations" });
+    await expect(locations.getByRole("button").first()).toHaveText("Home");
+    await expect(locations.getByRole("button", { name: `Open starred folder ${first}`, exact: true })).toBeVisible();
+    await locations.getByRole("button", { name: `Open starred folder ${second}`, exact: true }).click();
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(second);
+    await expect(action).toBeDisabled();
+    await page.getByRole("button", { name: "Use folder Second project", exact: true }).click();
+    await expect(page.locator(".repository-path-picker__value")).toHaveText(second);
+    const change = page.getByRole("button", { name: "Change folder", exact: true });
+    await expect(change).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(view === "mobile" ? page.getByRole("textbox", { name: "Name", exact: true }) : action).toBeFocused();
+    await change.click();
+    await page.getByRole("button", { name: "Unstar folder Second project", exact: true }).click();
+    await expect(page.locator(".repository-path-picker__value")).toHaveText(second);
+    await search.press("Escape");
+    await visit();
+    await openChooser(page);
+    await expect(page.getByRole("navigation", { name: "Folder breadcrumbs" })).toContainText("Home");
+    await expect(page.locator(".repository-path-picker__value")).toHaveCount(0);
+    await page.getByRole("button", { name: "Locations", exact: true }).click();
+    await expect(locations.getByRole("button", { name: `Open starred folder ${first}`, exact: true })).toBeVisible();
+    await expect(locations.getByRole("button", { name: `Open starred folder ${second}`, exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("swarmcrews:starred-project-folders")))).toEqual([first]);
+    expect(mutations).toEqual([]);
+    expect(fs.readdirSync(first)).toEqual([]);
+    expect(fs.readdirSync(second)).toEqual([]);
+  });
+
+  test(`${view} chooses server folders by name without editing paths or files`, async ({ page }, info) => {
     const home = process.env.MINIONS_E2E_HOME;
     if (!home) throw new Error("MINIONS_E2E_HOME is required");
     const parent = fs.mkdtempSync(path.join(home, "picker-"));
@@ -11,24 +116,95 @@ for (const view of ["desktop", "mobile"]) {
     fs.mkdirSync(child);
     fs.writeFileSync(path.join(parent, "private-file.txt"), "must not appear");
     const mutations = [];
-    page.on("request", (request) => {
-      if (request.method() === "POST" && /\/api\/projects(?:\/open|\/git-status)?$/.test(new URL(request.url()).pathname)) {
-        mutations.push(request.url());
-      }
+    page.on("request", request => {
+      if (request.method() === "POST" && /\/api\/projects(?:\/open|\/git-status)?$/.test(new URL(request.url()).pathname)) mutations.push(request.url());
     });
     await page.setViewportSize(view === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 });
     await page.goto(`/?view=${view}`);
     if (view === "mobile") await page.getByRole("button", { name: "Add repository", exact: true }).click();
-    const input = page.getByRole("combobox", { name: "Folders on the server" });
-    await input.fill(parent);
-    await page.getByRole("button", { name: "Browse", exact: true }).click();
-    await expect(page.getByRole("option").filter({ hasText: "Résumé project" })).toBeVisible();
+    await openChooser(page);
+    const action = page.getByRole("button", { name: view === "mobile" ? "Register project" : "Open", exact: true });
+    const search = page.getByRole("combobox", { name: "Search folders" });
+    await expect(search).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Repository path" })).toHaveCount(0);
+    await expect(action).toBeDisabled();
+    await expect(page.getByRole("navigation", { name: "Folder breadcrumbs" })).toContainText("Home");
+    await search.fill(path.basename(parent));
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(parent);
+    await expect(search).toHaveValue("");
+    await expect(page.getByRole("option", { name: "Résumé project" })).toBeVisible();
     await expect(page.getByText("private-file.txt", { exact: true })).toHaveCount(0);
-    await page.getByRole("option").filter({ hasText: "Résumé project" }).click();
-    await page.getByRole("button", { name: "Use this folder", exact: true }).click();
-    await expect(input).toHaveValue(child);
+    await search.fill("RÉSUMÉ");
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(child);
+    await expect(action).toBeDisabled();
+    await page.getByRole("region", { name: "Choose a project folder" }).screenshot({ path: info.outputPath("folder-browser.png") });
+    await page.getByRole("button", { name: "Use folder Résumé project", exact: true }).click();
+    const summary = page.locator(".repository-path-picker__value");
+    await expect(summary).toHaveText(child);
+    await expect(action).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Change folder" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(view === "mobile" ? page.getByRole("textbox", { name: "Name", exact: true }) : action).toBeFocused();
+    await page.getByRole("button", { name: "Change folder" }).click();
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(child);
+    await expect(action).toBeDisabled();
+    await search.press("Alt+ArrowUp");
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(parent);
+    await search.fill("no such child");
+    await expect(page.getByText("No folders match this search. You can use this name for a new folder.")).toBeVisible();
+    await search.press("Escape");
+    await expect(summary).toHaveText(child);
+    await expect(action).toBeEnabled();
+    await page.getByRole("button", { name: "Enter a path instead" }).click();
+    const manual = page.getByRole("textbox", { name: "Repository path" });
+    await manual.fill("mistake");
+    await manual.press("Tab");
+    await expect(page.getByRole("button", { name: "Use this path" })).toBeFocused();
+    await expect(summary).toHaveText(child);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(summary).toHaveText(child);
     expect(mutations).toEqual([]);
     expect(fs.readdirSync(child)).toEqual([]);
-    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", await page.evaluate(() => document.documentElement.clientWidth));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(view === "mobile" ? 390 : 1280);
+  });
+
+  test(`${view} searches a large nested folder and keeps manual entry explicit`, async ({ page }) => {
+    const home = process.env.MINIONS_E2E_HOME;
+    const parent = fs.mkdtempSync(path.join(home, "large-picker-"));
+    for (let i = 0; i < 105; i++) fs.mkdirSync(path.join(parent, `project-${String(i).padStart(3, "0")}`));
+    await page.setViewportSize(view === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 });
+    await page.goto(`/?view=${view}`);
+    if (view === "mobile") await page.getByRole("button", { name: "Add repository", exact: true }).click();
+    await openChooser(page);
+    const search = page.getByRole("combobox", { name: "Search folders" });
+    await search.fill(path.basename(parent));
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(page.getByRole("option")).toHaveCount(100);
+    await search.fill("104");
+    await expect(page.getByRole("option", { name: "project-104", exact: true })).toBeVisible();
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await search.press("Enter");
+    await expect(page.locator(".repository-path-picker__directory-path")).toHaveText(path.join(parent, "project-104"));
+    await page.getByRole("button", { name: "Use folder project-104" }).click();
+    const selected = page.locator(".repository-path-picker__value");
+    await page.getByRole("button", { name: "Enter a path instead" }).click();
+    const manual = page.getByRole("textbox", { name: "Repository path" });
+    const newPath = path.join(parent, "new folder");
+    await manual.fill(newPath);
+    await expect(selected).toHaveText(path.join(parent, "project-104"));
+    await manual.press("Enter");
+    await expect(selected).toHaveText(newPath);
+    await expect(manual).toHaveCount(0);
+    expect(fs.existsSync(newPath)).toBe(false);
+    await page.getByRole("button", { name: "Enter a path instead" }).click();
+    await manual.fill("");
+    await expect(page.getByRole("button", { name: "Use this path" })).toBeDisabled();
+    await manual.press("Escape");
+    await expect(selected).toHaveText(newPath);
   });
 }

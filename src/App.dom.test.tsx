@@ -1,10 +1,43 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App, { formatProjectDocumentTitle } from "./App.tsx";
-import { getProject, listProjects, updateProject } from "./api.ts";
+import { getProject, updateProject, type ProjectSummary } from "./api.ts";
 import { useLeaderFullscreenRequest } from "./use-leader-fullscreen-request.ts";
 import type { ActivityViewProps } from "./ActivityView.tsx";
+
+let listedProjects: ProjectSummary[] = [];
+const libraryActivity = { activeLeaders: 0, activeCrew: 0 };
+const jsonResponse = (body: unknown) => new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
+beforeEach(() => {
+  window.history.replaceState(null, "", "/");
+  sessionStorage.clear();
+  listedProjects = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
+    const url = String(input);
+    if (url === "/api/auth/token") return jsonResponse({ token: "test" });
+    if (url === "/api/projects/library") return jsonResponse({ projects: listedProjects.map(project => ({
+      ...project, id: project.workspaceId ?? project.id, workspaceId: project.workspaceId ?? project.id,
+      sourceRoot: project.path, displayName: null, description: "", tags: [], collectionIds: [],
+      archived: false, focusOrder: null, revision: 0, createdAt: "2026-01-01T00:00:00.000Z",
+    })), collections: [], focusRevision: 0 });
+    if (url === "/api/projects/library/summary") {
+      const { projectIds } = JSON.parse(options?.body as string) as { projectIds: string[] };
+      return jsonResponse(projectIds.map(projectId => ({ projectId, freshness: "fresh",
+        checkedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 15000).toISOString(),
+        state: libraryActivity.activeLeaders || libraryActivity.activeCrew ? "running" : "up_to_date",
+        ...libraryActivity, activeOther: 0, activeWorkItems: 0,
+        attention: { total: 0, decision: 0, review: 0, conflict: 0 }, unread: 0, recent: null,
+        archiveEligible: !libraryActivity.activeLeaders && !libraryActivity.activeCrew,
+      })));
+    }
+    if (url.endsWith("/events?limit=50")) return jsonResponse({ events: [], receipt: "test-receipt", nextCursor: null });
+    if (url.endsWith("/attention?limit=50")) return jsonResponse({ items: [], nextCursor: null });
+    throw new Error(`Unexpected shell fixture request: ${url}`);
+  }));
+});
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 const canvasUnmount = vi.hoisted(() => vi.fn());
 
@@ -19,7 +52,6 @@ vi.mock("./nodes/RenderNode.tsx", () => ({}));
 vi.mock("./nodes/ImageNode.tsx", () => ({}));
 
 vi.mock("./api.ts", () => ({
-  listProjects: vi.fn(),
   createProject: vi.fn(),
   openProject: vi.fn(),
   deleteProject: vi.fn(),
@@ -134,7 +166,7 @@ vi.mock("./components/DebugModeAffordance.tsx", () => ({
 
 describe("App document title", () => {
   beforeEach(() => {
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       {
         id: "project-1",
         path: "/tmp/alpha",
@@ -142,7 +174,7 @@ describe("App document title", () => {
         lastOpened: new Date().toISOString(),
         hasSidecar: true,
       },
-    ]);
+    ];
     vi.mocked(getProject).mockResolvedValue({
       id: "project-1",
       path: "/tmp/alpha",
@@ -261,7 +293,7 @@ describe("MCP servers feature flag gating", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
-    vi.mocked(listProjects).mockResolvedValue([
+    listedProjects = [
       {
         id: "project-1",
         path: "/tmp/alpha",
@@ -269,7 +301,7 @@ describe("MCP servers feature flag gating", () => {
         lastOpened: new Date().toISOString(),
         hasSidecar: true,
       },
-    ]);
+    ];
     vi.mocked(getProject).mockResolvedValue({
       id: "project-1",
       path: "/tmp/alpha",

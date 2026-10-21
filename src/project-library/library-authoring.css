@@ -1,0 +1,49 @@
+/* Contextual authoring uses existing tokens; density comes from fewer layers, not smaller targets. */
+.pl-tools { position: relative; margin-left: auto; flex-shrink: 0; z-index: 10; }
+.pl-tools > summary { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 8px 12px; border: 1px solid transparent; border-radius: var(--radius-control); background: transparent; color: var(--text-secondary); font-size: .8125rem; cursor: pointer; list-style: none; }
+.pl-tools > summary::-webkit-details-marker { display: none; }
+.pl-tools > summary:hover, .pl-tools[open] > summary { background: var(--bg-elevated); color: var(--text-primary); }
+.pl-tools-popover { position: absolute; right: 0; top: calc(100% + 6px); display: flex; flex-direction: column; align-items: stretch; gap: 6px; width: min(300px, calc(100vw - 48px)); padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-panel); background: var(--bg-surface); box-shadow: var(--shadow-lg); }
+.pl-tools-popover button { text-align: left; }
+.pl-tools-popover .pl-hint { margin: 0 0 6px; }
+.pl-tools-popover .tutorial-link { display: flex; align-items: center; min-height: 44px; }
+.pl-filter-reset .pl-filter-chip { border-color: var(--border-default); background: var(--bg-surface); border-radius: 999px; max-width: 100%; }
+.pl-filters [role="group"] button { min-width: 44px; justify-content: center; }
+
+/* Modal semantics deliberately retain the existing draft-loss guard while keeping project context visible. */
+.pl-dialog-backdrop--sheet { justify-content: flex-end; padding: 12px; background: color-mix(in srgb, var(--overlay-bg) 45%, transparent); }
+.pl-dialog--sheet { width: min(560px, 100%); height: 100%; }
+.pl-dialog .pl-editable-title { position: relative; flex: 1; min-width: 0; }
+.pl-dialog .pl-editable-title input { padding: 8px 32px 8px 8px; border-color: var(--text-secondary); background: transparent; font: 600 1.375rem/1.3 var(--font-display); letter-spacing: -.025em; }
+.pl-editable-title > svg { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; }
+.pl-dialog .pl-description-editor textarea { min-height: 88px; padding: 10px 12px; border-color: var(--text-secondary); background: transparent; font-size: .9375rem; line-height: 1.6; }
+.pl-dialog .pl-editable-title input:hover, .pl-dialog .pl-description-editor textarea:hover { border-color: var(--text-secondary); }
+.pl-dialog .pl-editable-title input:focus, .pl-dialog .pl-description-editor textarea:focus { background: var(--bg-primary); border-color: var(--text-secondary); }
+.pl-dialog--details .pl-identity { display: flex; flex-direction: column; gap: 6px; }
+.pl-dialog--details .pl-identity > label { color: var(--text-secondary); font-size: .75rem; }
+.pl-dialog--details .pl-identity .pl-hint { font-size: .75rem; }
+.pl-dialog .pl-token-field { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px; border: 1px solid var(--text-secondary); border-radius: var(--radius-control); background: var(--bg-primary); }
+.pl-dialog .pl-token-field > input { flex: 1 1 120px; width: 120px; min-height: 44px; padding: 8px; border: 0; background: transparent; }
+.pl-dialog .pl-token { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; max-width: 100%; overflow-wrap: anywhere; background: var(--bg-secondary); text-align: left; }
+.pl-token > svg { flex-shrink: 0; }
+.pl-dialog .pl-token-field > button { min-width: 44px; }
+.pl-tag-suggestions { display: flex; flex-wrap: wrap; gap: 6px; }
+.pl-dialog .pl-tag-suggestions > button { display: inline-flex; align-items: center; gap: 4px; border-color: transparent; background: transparent; color: var(--text-secondary); }
+.pl-dialog--details .pl-picker-search { position: relative; }
+.pl-picker-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); pointer-events: none; }
+.pl-dialog .pl-picker-search input { padding-left: 36px; }
+.pl-collection-picker .pl-chips { max-height: 240px; overflow-y: auto; padding: 6px; scrollbar-gutter: stable; }
+.pl-create-collection { display: flex; flex-direction: column; align-items: start; gap: 6px; }
+.pl-create-collection > button { display: inline-flex; align-items: center; gap: 6px; text-align: left; }
+.pl-collection-row > form { flex: 1 1 100%; }
+.pl-collection-row:has(form) { padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-control); }
+.pl-collection-row > button[hidden] { display: none; }
+@media (max-width: 600px) {
+  .pl-dialog-backdrop--sheet { padding: 0; }
+  .pl-dialog--sheet { width: 100%; max-height: 100dvh; border-radius: 0; }
+  .pl-dialog .pl-editable-title input { font-size: 1.25rem; }
+  .pl-dialog .pl-token-field > input, .pl-dialog .pl-picker-search input, .pl-dialog .pl-description-editor textarea { font-size: 1rem; }
+}
+@container library (max-width: 600px) {
+  .pl-tools-popover { width: min(280px, calc(100vw - 32px)); }
+}

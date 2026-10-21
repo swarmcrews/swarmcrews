@@ -5,11 +5,12 @@ summary: Users persist project files, markdown, images, annotations, presets, sk
 constraints: []
 risks:
   - risk.project_worktree_content_split
-suggested_files: [ shared/project-context.ts, server/task-tools/update-project-context.ts, src/ProjectPanel.tsx, src/components/ProjectTree.tsx, src/nodes/MarkdownNode.tsx, src/SkillsBrowser.tsx, src/McpServersBrowser.tsx, src/api.ts ]
-suggested_tests: [ server/task-tools/update-project-context.test.ts, src/ProjectPanel.test.tsx, src/components/ProjectTree.test.tsx, src/nodes/MarkdownNode.test.tsx, src/SkillsBrowser.test.tsx, src/McpServersBrowser.test.tsx, src/api.test.ts ]
+suggested_files: [ shared/project-context.ts, server/task-tools/update-project-context.ts, src/ProjectPanel.tsx, src/ContextActionsSettings.tsx, src/SettingsMenu.tsx, src/mobile/SettingsScreen.tsx, src/components/ProjectTree.tsx, src/nodes/MarkdownNode.tsx, src/SkillsBrowser.tsx, src/McpServersBrowser.tsx, src/api.ts ]
+suggested_tests: [ server/task-tools/update-project-context.test.ts, src/ProjectPanel.test.ts, src/ProjectPanel.drafts.test.tsx, src/project-library/editor-continuity.test.tsx, src/SettingsMenu.continuity.test.tsx, src/mobile/SettingsScreen.test.tsx, src/components/ProjectTree.test.tsx, src/nodes/MarkdownNode.test.tsx, src/SkillsBrowser.test.tsx, src/McpServersBrowser.test.tsx, src/api.test.ts ]
 steps:
   - Edit a supported project artifact through authenticated REST or spatial autosave.
   - Reflect the source project's AGENTS.md (or existing agents.md) in Context, and save manual or Leader-generated updates to that file through REST or update_project_context. Missing instructions stay absent until a user initiates saving or generation.
+  - Manual Context and Context Action recipe editors publish dirty/pending/failed ownership. Retain manual Context across Activity and collapsed panels; Open draft expands the panel and selects Context without replacing failed-save text; guard desktop/mobile recipe category departures and internal recipe replacement until save or explicit discard. Compare recipe fields semantically so successful saves release ownership; failed writes retain retry.
   - Enforce project ownership, path guards, artifact sanitation, and honest error reporting.
   - Persist canvas state and other workspace artifacts beneath the registered UUID state root; project Context remains in the source folder's agent instructions file.
   - Reuse the artifact deliberately as graph context, card context, preset, skill, or future MCP configuration.

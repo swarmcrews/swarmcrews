@@ -1,0 +1,25 @@
+/* Filters find records. Result controls arrange and page them. */
+.pl-results-toolbar { margin-block: 12px; scroll-margin-top: 16px; }
+.pl-results-controls, .pl-results-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+.project-library .pl-results-controls .pl-result-count { margin: 0; }
+.pl-results-options { margin-left: auto; }
+.pl-results-options .pl-sort { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-secondary); font: .8125rem/1.4 var(--font-sans); }
+.pl-results-options .pl-sort select { min-width: 0; max-width: 100%; min-height: 44px; padding: 8px 28px 8px 10px; border: 1px solid var(--text-secondary); border-radius: var(--radius-control); background: var(--bg-primary); color: var(--text-primary); font: inherit; }
+.project-library .pl-layout-switch { display: inline-flex; flex-shrink: 0; gap: 0; padding: 2px; border: 1px solid var(--border-default); border-radius: var(--radius-control); }
+.project-library .pl-layout-switch button { display: grid; place-items: center; min-width: 44px; padding: 8px; border-color: transparent; background: transparent; }
+.project-library .pl-layout-switch button[aria-pressed="true"] { border-color: var(--text-secondary); background: var(--bg-elevated); box-shadow: none; }
+.project-library .pl-archive-help { margin: 0 0 12px; max-width: 75ch; color: var(--text-secondary); font-size: .75rem; line-height: 1.5; }
+.pl-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 16px; color: var(--text-secondary); font-size: .8125rem; }
+.pl-results-toolbar .pl-pagination { margin-top: 8px; }
+.pl-pagination button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.pl-pagination > span { font-variant-numeric: tabular-nums; }
+.project-library .pl-registration-toggle--quiet { background: transparent; border-color: transparent; color: var(--text-secondary); font-weight: 500; }
+
+@container library (max-width: 37.5rem) {
+  .pl-results-options { margin-left: 0; width: 100%; }
+  .pl-results-options .pl-sort { flex: 1 1 180px; }
+  .pl-results-options .pl-sort select { flex: 1; }
+  .pl-pagination { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; text-align: center; }
+  .pl-pagination button { width: 44px; padding: 8px; }
+  .pl-pagination button span { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

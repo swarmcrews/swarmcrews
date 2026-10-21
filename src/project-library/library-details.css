@@ -1,0 +1,58 @@
+/* Details sheet: grouped fields, hairline sections, chip collections and an even action grid. Dialogs render in a portal, so nothing here is scoped to .project-library. */
+.pl-dialog--details .pl-dialog-body { gap: 20px; }
+.pl-dialog--details label:not(.pl-check) { gap: 6px; color: var(--text-primary); font-weight: 500; }
+.pl-dialog--details textarea { min-height: 88px; }
+/* Repository identity remains selectable but is not another editable field. */
+.pl-dialog--details .pl-full-value { border: 0; padding: 0; background: transparent; font-size: .75rem; user-select: all; }
+
+/* Sections are hairline-separated groups with a heading above, not boxes with a label cut into the border. */
+.pl-dialog--details fieldset { padding: 20px 0 0; border: 0; border-top: 1px solid var(--border-default); border-radius: 0; }
+.pl-dialog--details legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 0;
+  color: var(--text-secondary);
+  font: 600 .6875rem/1.4 var(--font-sans);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.pl-dialog--details legend + * { clear: both; }
+.pl-dialog--details fieldset > :not(legend) + * { margin-top: 12px; }
+
+.pl-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pl-dialog--details .pl-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 0 16px 0 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-primary);
+  font-size: .8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.pl-dialog--details .pl-check:hover { border-color: var(--text-secondary); }
+.pl-dialog--details .pl-check:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--bg-surface)); }
+.pl-dialog--details fieldset:disabled .pl-check { cursor: not-allowed; opacity: .6; }
+
+.pl-org-actions { display: flex; flex-direction: column; gap: 16px; }
+.pl-org-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pl-org-group button { display: inline-flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; text-align: left; }
+.pl-org-group button svg { color: var(--text-secondary); }
+.pl-org-group--danger { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 16px; border-top: 1px solid var(--border-default); }
+.pl-org-group--danger button { flex: 0 0 auto; width: auto; }
+.pl-org-group--danger button svg { color: inherit; }
+.pl-org-group--danger > span { flex: 1 1 180px; min-width: 0; color: var(--text-secondary); font-size: .75rem; line-height: 1.5; }
+
+.pl-dialog--details > footer { justify-content: flex-end; }
+.pl-dialog footer > .pl-footer-status[data-dirty="true"] { color: var(--text-primary); }
+.pl-dialog footer > .pl-footer-status[data-dirty="true"] svg { color: var(--status-warning); }
+.pl-dialog footer > .pl-footer-status[data-dirty="false"] svg { color: var(--status-success); }
+
+@media (max-width: 440px) {
+  .pl-org-group { grid-template-columns: minmax(0, 1fr); }
+}

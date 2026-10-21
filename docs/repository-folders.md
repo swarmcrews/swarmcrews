@@ -1,21 +1,66 @@
 # Choosing repository folders
 
-The project path field supports typing, pasting, autocomplete, and **Browse** on
-desktop and mobile. All paths refer to the machine running the Swarmcrews
-server. For example, a phone connected to a Windows server selects Windows
-folders.
+On the desktop home page, the folder chooser stays closed while projects load and when
+you already have projects. **Choose folder** and **Enter a path instead** appear
+together below the Project folder header. If your project list is empty, the
+chooser opens automatically. Cancel keeps it closed until you open it again.
 
-Type part of a path to see matching child folders. Use the arrow keys and
-Enter or Tab to select a suggestion. Escape dismisses suggestions. **Browse**
-lets you navigate folders and breadcrumbs; **Use this folder** fills the path
-field. Click **Open** or **Create** when you are ready to initialize the project.
-You can also type a new folder path directly.
+The folder browser starts at **Home** on the machine running Swarmcrews, on
+desktop and mobile. For example, a phone connected to a Windows server selects
+Windows folders. If Home is outside the server's configured browsing locations,
+the chooser shows those locations instead.
 
-When you type an ancestor or partial ancestor of a browsing location (for
-example `/home` or `/ho` when the server home is `/home/alex`), suggestions
-point directly to the permitted location. Swarmcrews does not list other users’
-folders or make the ancestor selectable. **Browse locations** always returns to
-the configured locations, including after an unavailable path.
+Choose **Star folder** beside the current breadcrumb to save a browsing shortcut.
+You can star multiple folders. To star a parent folder, navigate to it using its
+breadcrumb and click its star. **Locations** lists Home first, your starred
+folders with their full paths, and an option to browse configured server locations.
+Click a saved folder to browse inside it; **Use “folder-name”** still confirms the
+project selection. New visits start at Home without automatically selecting a
+starred folder. Stars are saved in this browser for this server address, on
+desktop and mobile.
+
+Click the filled star beside the breadcrumbs, or the remove-star button beside a
+saved location, to unstar that folder. Removing a shortcut keeps your current
+project selection. If a saved folder is unavailable or outside browsing locations,
+choose Home or another location; you can still remove its shortcut in Locations.
+
+Click a folder to open it. **Search folders** filters folder names inside the
+current location as you type, including when the initial list is truncated.
+Use the breadcrumbs, **Home**, **Locations**, and **Up one folder** to navigate.
+The search text is a folder-name filter, not a filepath or a recursive search.
+
+If a search has no matching folders, Swarmcrews can offer **Use new folder
+“name”** with its full destination path inside the current folder. It checks that
+the name is valid and unused, including collisions with files or symlinks.
+Choose that option, or Ctrl+Enter, to select the destination. The desktop form
+switches to **Create**. Selecting it keeps the filesystem unchanged; click
+**Create** (or **Register project** on mobile) and choose Git initialization or
+continuing without Git when prompted. That action creates the folder.
+Use manual entry for full paths or nested folder paths. **Change folder** returns
+to the existing parent while the selected new folder has not been created.
+
+Choose **Use “folder-name”** beside the breadcrumbs to confirm the current folder.
+The selected folder's name and full path appear in a summary; **Change folder**
+opens the chooser again.
+Browsing, searching, Cancel, and Escape keep your existing choice. Opening or
+registering a project stays disabled until you confirm a folder and finish the
+chooser. Browsing and starring do not change
+files, create a project, or initialize Git.
+
+Use up/down arrows to navigate folder rows and Enter to open one. Alt+Up goes up
+one folder within the allowed location. Tab moves between controls; Escape
+cancels. The confirmation button selects the current folder; Ctrl+Enter from
+the search field is its keyboard shortcut. When an empty search offers a new
+folder, Ctrl+Enter selects that destination instead.
+
+To paste or write a full filepath, close the browser with Cancel or Escape,
+then choose **Enter a path instead** beside **Choose folder** or **Change folder**.
+This opens a separate draft field. **Use this path** (or Enter in that field)
+confirms the typed path, including a new folder path or one outside browsing
+locations. Cancel keeps your existing selection. The typed path does not need
+folder discovery to succeed. Then click **Open** or **Create** to continue the
+project workflow; creating a folder or initializing Git follows that separate,
+explicit action.
 
 ## Paths on each server platform
 
@@ -78,6 +123,6 @@ or type its path manually instead of browsing.
 Discovery lists directories within the configured roots, including checks on
 resolved symlink or junction targets. It does not read file contents, create
 folders, initialize Git, or register projects. Listings are shallow and bounded;
-if results are truncated, type a more specific prefix. The browsing roots govern
+if results are truncated, use Search folders to narrow the current location. The browsing roots govern
 discovery; manually opening a path still follows the existing explicit project
 registration flow.

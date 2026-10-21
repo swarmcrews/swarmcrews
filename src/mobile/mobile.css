@@ -24,12 +24,11 @@
 
 .mob-app button {
   touch-action: manipulation;
-  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease,
-    opacity 120ms ease;
+  transition: var(--button-transition);
 }
 
-.mob-app button:active:not(:disabled) {
-  transform: scale(0.98);
+.mob-app button:disabled {
+  cursor: not-allowed;
 }
 
 .mob-app :is(button, a, input, textarea, select, summary):focus-visible {
@@ -76,7 +75,7 @@
   min-height: 44px;
   min-width: 44px;
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--bg-elevated);
   color: var(--text-primary);
   font: inherit;
@@ -518,7 +517,7 @@
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--bg-elevated);
   color: var(--text-primary);
   font-size: 13px;
@@ -527,14 +526,14 @@
 }
 
 .mob-mini-btn--icon {
-  width: 40px;
-  min-width: 40px;
+  width: 44px;
+  min-width: 44px;
   padding: 0;
   display: inline-grid;
   place-items: center;
 }
 
-.mob-mini-btn:active {
+.mob-mini-btn:active:not(:disabled) {
   background: var(--state-active);
 }
 
@@ -548,7 +547,7 @@
   color: var(--text-muted);
 }
 
-.mob-mini-btn--dismiss:active {
+.mob-mini-btn--dismiss:active:not(:disabled) {
   color: var(--status-error);
   border-color: color-mix(in srgb, var(--status-error) 45%, transparent);
 }
@@ -798,13 +797,13 @@
 
 .mob-session-card:active,
 .mob-approval-card:active,
-.mob-tabbar-button:active,
-.mob-send-button:active,
-.mob-attach-button:active,
-.mob-launch-submit:active,
-.mob-stop-button:active,
-.mob-review-actions button:active,
-.mob-conflict-actions button:active {
+.mob-tabbar-button:active:not(:disabled),
+.mob-send-button:active:not(:disabled),
+.mob-attach-button:active:not(:disabled),
+.mob-launch-submit:active:not(:disabled),
+.mob-stop-button:active:not(:disabled),
+.mob-review-actions button:active:not(:disabled),
+.mob-conflict-actions button:active:not(:disabled) {
   background: var(--state-active);
 }
 
@@ -2941,11 +2940,15 @@ article.mob-plan-row {
 .mob-launch-submit {
   min-height: 48px;
   padding: 0 14px;
-  border-radius: 12px;
+  border-radius: var(--radius-control);
   background: var(--accent);
   border-color: var(--accent-dark);
   color: var(--text-on-accent);
   font-weight: 700;
+}
+
+.mob-launch-submit:active:not(:disabled) {
+  background: var(--accent-dark);
 }
 
 .mob-launch-submit:disabled {
@@ -2954,9 +2957,9 @@ article.mob-plan-row {
 
 .mob-launch-submit-help {
   margin: 6px 2px 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.35;
+  color: var(--text-secondary);
+  font: 400 var(--text-size-ui)/var(--leading-ui) var(--font-sans);
+  overflow-wrap: anywhere;
 }
 
 .mob-launch-status,
@@ -2966,7 +2969,9 @@ article.mob-plan-row {
   border: 1px solid var(--border-default);
   border-radius: 8px;
   background: var(--bg-surface);
-  color: var(--text-muted);
+  color: var(--text-secondary);
+  font: 400 var(--text-size-ui)/var(--leading-ui) var(--font-sans);
+  overflow-wrap: anywhere;
 }
 
 .mob-launch-error {
@@ -3464,6 +3469,15 @@ article.mob-plan-row {
   white-space: nowrap;
 }
 
+/* Registration stays alongside the mobile Library view selector. */
+.mob-projects .pl-mobile-row > .mob-header-action {
+  padding-inline: 14px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-weight: 600;
+}
+
 .mob-project-create {
   display: grid;
   min-width: 0;
@@ -3633,196 +3647,6 @@ article.mob-plan-row {
   color: var(--status-error);
 }
 
-.mob-settings-group {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-}
-
-.mob-settings-group-heading {
-  display: grid;
-  gap: 4px;
-  padding: 0 2px;
-}
-
-.mob-settings-group-heading h2 {
-  font-size: 14px;
-  line-height: 1.25;
-  letter-spacing: 0.01em;
-}
-
-.mob-settings-group-heading p {
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.mob-settings-disclosure {
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-panel);
-  background: var(--bg-surface);
-}
-
-.mob-settings-disclosure--danger {
-  border-color: color-mix(in srgb, var(--status-error) 45%, var(--border-default));
-  background: color-mix(in srgb, var(--status-error) 5%, var(--bg-surface));
-}
-
-.mob-settings-disclosure > summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 12px;
-  min-height: 44px;
-  align-content: center;
-  cursor: pointer;
-  list-style: none;
-}
-
-.mob-settings-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-
-.mob-settings-disclosure > summary::after {
-  content: "+";
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: center;
-  color: var(--text-muted);
-  font-size: 22px;
-  line-height: 1;
-}
-
-.mob-settings-disclosure[open] > summary::after {
-  content: "−";
-}
-
-.mob-settings-disclosure > summary:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
-  outline-offset: 3px;
-  border-radius: 6px;
-}
-
-.mob-settings-disclosure-title {
-  min-width: 0;
-  color: var(--text-primary);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.mob-settings-disclosure-description {
-  min-width: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.mob-settings-disclosure-content {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
-  padding-top: 14px;
-  margin-top: 14px;
-  border-top: 1px solid var(--border-default);
-}
-
-.mob-settings-control {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-}
-
-.mob-settings-control > span {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.mob-tier-routing,
-.mob-tier-panel {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-}
-
-.mob-tier-tabs {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  overflow: hidden;
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-}
-
-.mob-tier-tabs button {
-  min-width: 0;
-  min-height: 44px;
-  padding: 8px 5px;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 650;
-  text-overflow: ellipsis;
-  background: var(--bg-elevated);
-  border: 0;
-  border-left: 1px solid var(--border-default);
-}
-
-.mob-tier-tabs button:first-child {
-  border-left: 0;
-}
-
-.mob-tier-tabs button[data-active="true"] {
-  color: var(--text-primary);
-  background: var(--state-active);
-  box-shadow: inset 0 -3px var(--accent);
-}
-
-.mob-tier-panel {
-  padding: 12px;
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-  border: 1px solid var(--border-default);
-  border-radius: 8px;
-}
-
-.mob-tier-panel > p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.mob-tier-panel--fixed {
-  padding: 0;
-  background: transparent;
-  border: 0;
-}
-
-.mob-settings-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 44px;
-  cursor: pointer;
-}
-
-.mob-settings-toggle > span {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.mob-settings-toggle small,
-.mob-settings-disclosure-title small {
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .mob-settings select {
   min-height: 44px;
   min-width: 0;
@@ -3864,61 +3688,6 @@ article.mob-plan-row {
 .mob-settings input[type="checkbox"]:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 42%, transparent);
   outline-offset: 3px;
-}
-
-/* ThinkingControls is shared with the dense desktop settings menu. Reflow it
-   into full-width touch rows inside mobile settings. */
-.mob-settings .settings-reasoning {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  min-width: 0;
-}
-
-.mob-settings .settings-reasoning__toggle {
-  min-height: 44px;
-  gap: 8px;
-  margin: 0;
-  font: 600 12px/1.2 var(--font-sans);
-}
-
-.mob-settings .settings-reasoning__segment {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  overflow: hidden;
-  border-radius: 8px;
-}
-
-.mob-settings .settings-reasoning__segment:last-child {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.mob-settings .settings-reasoning__segment button {
-  min-width: 0;
-  min-height: 44px;
-  padding: 6px;
-  overflow-wrap: anywhere;
-  font: 650 11px/1.15 var(--font-sans);
-}
-
-.mob-settings .settings-reasoning__segment button:nth-child(3n + 1) {
-  border-left: 0;
-}
-
-.mob-settings .settings-reasoning__segment button:nth-child(n + 4) {
-  border-top: 1px solid var(--border-default);
-}
-
-.mob-settings .settings-reasoning__segment:last-child button:nth-child(odd) {
-  border-left: 0;
-}
-
-.mob-settings .settings-reasoning--unavailable {
-  padding: 10px;
-  border: 1px dashed var(--border-default);
-  border-radius: 8px;
-  font: 400 12px/1.4 var(--font-sans);
 }
 
 .mob-settings-danger-button {
@@ -4004,10 +3773,6 @@ article.mob-plan-row {
 
   .mob-connection-pill[data-state="connected"]::before {
     margin-right: 0;
-  }
-
-  .mob-settings-disclosure {
-    padding: 12px;
   }
 
   .mob-launch-templates {
@@ -4121,11 +3886,6 @@ article.mob-plan-row {
   font-size: 16px;
 }
 
-/* ModelSelect carries desktop inline styles. Override only its mobile host. */
-.mob-settings .mob-launch-field select {
-  font-size: 16px !important;
-  font-family: var(--font-sans) !important;
-}
 .mob-app select:focus-visible {
   outline: 2px solid var(--accent) !important;
   outline-offset: 2px;
